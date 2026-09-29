@@ -21,3 +21,21 @@ Open in Android Studio (Ladybug or newer) and run the `app` configuration, or wi
 Then choose QitaUI as the default home app in Android settings to use it as your launcher.
 
 This is an original UI inspired by the Vita's look; it uses no Sony assets.
+
+## Controller
+
+Built for handhelds with a gamepad:
+
+| Button | Action |
+| --- | --- |
+| A | Select (or click in cursor mode; hold to drag or long-press) |
+| B | Back |
+| X | Toggle the desktop |
+| Y | Toggle search |
+| Start | Toggle launcher settings |
+| Select | Toggle cursor mode |
+| L1 / R1 | Previous / next page |
+| D-pad, left stick | Move the highlight (or the pointer in cursor mode) |
+| Right stick | Scroll (cursor mode) |
+
+Cursor mode (Settings > Controller, or Select) shows an on-screen pointer that works on every screen, including drag-to-rearrange and the corner peel.

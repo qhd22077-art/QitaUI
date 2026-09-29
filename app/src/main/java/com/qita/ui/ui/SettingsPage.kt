@@ -145,6 +145,23 @@ fun SettingsPage(
                     ToggleRow("Sort newest apps first", settings.sortNewest) { onChange(settings.copy(sortNewest = it)) }
                     ToggleRow("Vibrate on long-press", settings.haptics) { onChange(settings.copy(haptics = it)) }
                 }
+                Card("Controller") {
+                    ToggleRow("Cursor mode", settings.cursorMode) { onChange(settings.copy(cursorMode = it)) }
+                    Text("Cursor speed", color = Color.White, fontSize = 14.sp)
+                    Slider(
+                        value = settings.cursorSpeed,
+                        onValueChange = { onChange(settings.copy(cursorSpeed = it)) },
+                        valueRange = 0.5f..2.5f,
+                        modifier = Modifier.width(320.dp),
+                    )
+                    Text(
+                        "A select / click   B back   X desktop   Y search   Start settings\n" +
+                            "Select toggle cursor mode   L1/R1 change page\n" +
+                            "Cursor mode: left stick moves the pointer, A clicks (hold to drag or long-press), right stick scrolls.\n" +
+                            "Otherwise: D-pad or left stick moves the highlight.",
+                        color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp,
+                    )
+                }
                 Card("Apps") {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Pill("Remove all from home") { onClearHome() }

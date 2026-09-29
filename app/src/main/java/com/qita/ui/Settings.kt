@@ -43,6 +43,8 @@ data class Settings(
     val particleCount: Int = 28,
     val dim: Float = 0f,
     val haptics: Boolean = true,
+    val cursorMode: Boolean = false,
+    val cursorSpeed: Float = 1f,
 ) {
     val theme: Theme get() = THEMES[themeIndex.coerceIn(THEMES.indices)]
 }
@@ -66,6 +68,8 @@ class SettingsStore(private val context: Context) {
         particleCount = prefs.getInt("particleCount", 28),
         dim = prefs.getFloat("dim", 0f),
         haptics = prefs.getBoolean("haptics", true),
+        cursorMode = prefs.getBoolean("cursorMode", false),
+        cursorSpeed = prefs.getFloat("cursorSpeed", 1f),
     )
 
     fun save(s: Settings) {
@@ -83,6 +87,8 @@ class SettingsStore(private val context: Context) {
             .putInt("particleCount", s.particleCount)
             .putFloat("dim", s.dim)
             .putBoolean("haptics", s.haptics)
+            .putBoolean("cursorMode", s.cursorMode)
+            .putFloat("cursorSpeed", s.cursorSpeed)
             .apply()
     }
 

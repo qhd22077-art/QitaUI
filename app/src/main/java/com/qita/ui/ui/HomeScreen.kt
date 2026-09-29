@@ -58,6 +58,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.qita.ui.AppRepository
+import com.qita.ui.Command
+import com.qita.ui.Controller
+import com.qita.ui.CursorLayer
 import com.qita.ui.LAYOUTS
 import com.qita.ui.LaunchableApp
 import com.qita.ui.Settings
@@ -78,6 +81,9 @@ fun HomeScreen(homePresses: Int = 0) {
     var wallpaper by remember { mutableStateOf(store.loadWallpaper()) }
     var home by remember { mutableStateOf(store.loadHome()) }
     var showDesktop by remember { mutableStateOf(false) }
+    var toast by remember { mutableStateOf<String?>(null) }
+    // Push the saved controller settings into the shared state before the first frame.
+    remember(store) { Controller.cursorMode = settings.cursorMode; Controller.speed = settings.cursorSpeed; 0 }
     var showSearch by remember { mutableStateOf(false) }
     var apps by remember { mutableStateOf<List<LaunchableApp>>(emptyList()) }
     var reload by remember { mutableStateOf(0) }
@@ -110,6 +116,18 @@ fun HomeScreen(homePresses: Int = 0) {
         onDispose { context.unregisterReceiver(receiver) }
     }
     LaunchedEffect(selected) { if (selected != null) lastSelected = selected }
+
+    // Select on the controller toggles cursor mode: persist it and confirm with a short message.
+    LaunchedEffect(Controller.cursorMode) {
+        val on = Controller.cursorMode
+        if (settings.cursorMode != on) {
+            settings = settings.copy(cursorMode = on)
+            store.save(settings)
+            toast = if (on) "Cursor mode on \u2013 Select to turn off" else "Cursor mode off"
+            delay(1800)
+            toast = null
+        }
+    }
 
     val rowSizes = LAYOUTS[settings.layoutIndex.coerceIn(LAYOUTS.indices)].second
     val pageSize = rowSizes.sum()
@@ -165,6 +183,20 @@ fun HomeScreen(homePresses: Int = 0) {
         if (settings.sortNewest) {
             settings = settings.copy(sortNewest = false)
             store.save(settings)
+        }
+    }
+
+    // Gamepad shortcut buttons (see MainActivity).
+    LaunchedEffect(Unit) {
+        Controller.commands.collect { cmd ->
+            when (cmd) {
+                is Command.Page -> if (!showDesktop && !showSettings && !showSearch && selected == null) {
+                    pagerState.animateScrollToPage((pagerState.currentPage + cmd.delta).coerceIn(0, pageCount - 1))
+                }
+                Command.Desktop -> { showSettings = false; showSearch = false; showDesktop = !showDesktop }
+                Command.Search -> { showDesktop = false; showSettings = false; showSearch = !showSearch }
+                Command.Settings -> showSettings = !showSettings
+            }
         }
     }
 
@@ -258,7 +290,10 @@ fun HomeScreen(homePresses: Int = 0) {
                 settings = settings,
                 hasWallpaper = wallpaper != null,
                 wallpaper = wallpaper,
-                onChange = { settings = it; store.save(it) },
+                onChange = {
+                    settings = it; store.save(it)
+                    Controller.cursorMode = it.cursorMode; Controller.speed = it.cursorSpeed
+                },
                 onWallpaper = { uri -> store.saveWallpaper(uri)?.let { wallpaper = it } },
                 onClearWallpaper = { store.clearWallpaper(); wallpaper = null },
                 onClearHome = { home = emptyList(); store.saveHome(home) },
@@ -272,6 +307,18 @@ fun HomeScreen(homePresses: Int = 0) {
                 onClose = { showSearch = false },
             )
         }
+        toast?.let {
+            Text(
+                it,
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 24.dp)
+                    .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(50))
+                    .padding(horizontal = 18.dp, vertical = 8.dp),
+                color = Color.White, fontSize = 13.sp,
+            )
+        }
+        CursorLayer()
     }
 
     menuFor?.let { app ->

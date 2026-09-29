@@ -16,13 +16,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
@@ -61,7 +64,8 @@ fun Bubble(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.92f else 1f, label = "press")
+    var focused by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(if (pressed) 0.92f else if (focused) 1.1f else 1f, label = "press")
     val start by rememberUpdatedState(onDragStart)
     val drag by rememberUpdatedState(onDrag)
     val end by rememberUpdatedState(onDragEnd)
@@ -71,6 +75,7 @@ fun Bubble(
             .onGloballyPositioned { onPositioned(it.boundsInRoot()) }
             .alpha(if (hidden) 0f else 1f)
             .scale(scale)
+            .onFocusChanged { focused = it.isFocused }
             .clickable(interaction, indication = null, onClick = onClick)
             // After clickable in the chain so it sees events first and consumes the final "up" of a
             // long-press drag, which stops the clickable from also firing a tap.
@@ -89,7 +94,7 @@ fun Bubble(
                 .size(size)
                 .clip(shape)
                 .background(Brush.verticalGradient(listOf(Color.White, Color(0xFFD5EBFA))))
-                .border(2.dp, Color.White.copy(alpha = 0.8f), shape),
+                .border(if (focused) 4.dp else 2.dp, if (focused) Color(0xFFFFD54F) else Color.White.copy(alpha = 0.8f), shape),
             contentAlignment = Alignment.Center,
         ) {
             Image(

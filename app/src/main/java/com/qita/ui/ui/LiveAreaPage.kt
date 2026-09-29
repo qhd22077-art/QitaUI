@@ -121,6 +121,16 @@ fun LiveAreaPage(app: LaunchableApp, settings: Settings, wallpaper: ImageBitmap?
                                 .padding(horizontal = 44.dp, vertical = 12.dp),
                             color = Color(0xFF0B3D91), fontSize = 18.sp, fontWeight = FontWeight.Bold,
                         )
+                        // Controller-friendly alternative to the corner peel.
+                        Text(
+                            "Close app",
+                            Modifier
+                                .padding(top = 10.dp)
+                                .background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(50))
+                                .clickable { AppRepository.close(context, app); onClose() }
+                                .padding(horizontal = 28.dp, vertical = 8.dp),
+                            color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                        )
                     }
                     // Right: horizontally scrolling info cards.
                     Row(
