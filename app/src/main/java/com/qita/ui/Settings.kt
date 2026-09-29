@@ -86,17 +86,12 @@ class SettingsStore(private val context: Context) {
             .apply()
     }
 
-    fun loadOrder(): List<String> =
-        prefs.getString("order", "").orEmpty().split('\n').filter { it.isNotBlank() }
+    /** Packages shown on the home screen, in display order. Empty until the user adds apps. */
+    fun loadHome(): List<String> =
+        prefs.getString("home", "").orEmpty().split('\n').filter { it.isNotBlank() }
 
-    fun saveOrder(order: List<String>) {
-        prefs.edit().putString("order", order.joinToString("\n")).apply()
-    }
-
-    fun loadHidden(): Set<String> = prefs.getStringSet("hidden", emptySet()).orEmpty().toSet()
-
-    fun saveHidden(hidden: Set<String>) {
-        prefs.edit().putStringSet("hidden", hidden).apply()
+    fun saveHome(home: List<String>) {
+        prefs.edit().putString("home", home.joinToString("\n")).apply()
     }
 
     fun loadWallpaper(): ImageBitmap? =

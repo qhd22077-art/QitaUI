@@ -50,9 +50,7 @@ fun SettingsPage(
     onChange: (Settings) -> Unit,
     onWallpaper: (Uri) -> Unit,
     onClearWallpaper: () -> Unit,
-    onResetOrder: () -> Unit,
-    hiddenCount: Int,
-    onUnhideAll: () -> Unit,
+    onClearHome: () -> Unit,
     onClose: () -> Unit,
 ) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -149,13 +147,12 @@ fun SettingsPage(
                 }
                 Card("Apps") {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Pill("Reset app order") { onResetOrder() }
-                        if (hiddenCount > 0) Pill("Unhide $hiddenCount app${if (hiddenCount == 1) "" else "s"}") { onUnhideAll() }
+                        Pill("Remove all from home") { onClearHome() }
                         Pill("Reset settings") { onChange(Settings()) }
                     }
                 }
                 Text(
-                    "Tip: long-press a bubble and drag to rearrange. Long-press without moving for App info, Hide and Uninstall.",
+                    "Tip: add apps to home from the desktop (\uD83D\uDDA5 in the top strip). Long-press a bubble and drag to rearrange; long-press without moving for App info, Remove and Uninstall.",
                     color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp, modifier = Modifier.padding(bottom = 16.dp),
                 )
             }

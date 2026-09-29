@@ -3,7 +3,8 @@
 A PlayStation Vita-style home screen (launcher) for Android, built with Kotlin and Jetpack Compose.
 
 - Blue gradient background with drifting particles
-- Swipeable pages of 10 round app bubbles (staggered rows), page dots down the left edge
+- Home shows only the apps you add, as swipeable pages of bubbles (staggered rows), page dots down the left edge
+- Desktop (🖥 in the top strip): a Linux-style file-manager window listing every app on the device, with folders (games, media, social, system...), a filter box and a shell-style prompt; tap an app to launch it, "+ home" to add it to the home screen, plus shortcuts to Android and Wi-Fi settings
 - Tap a bubble to open its full-screen LiveArea page: icon, title, **Start** button and swipeable cards
 - Drag the folded top-right corner diagonally to peel the page away: past a threshold it closes the page and the app's background processes. Dragging down from the top edge also dismisses the page.
 - Status strip: clock, Wi-Fi, battery (with charging bolt) and a settings gear

@@ -3,6 +3,7 @@ package com.qita.ui
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.net.Uri
 import android.provider.Settings as AndroidSettings
 import android.graphics.Bitmap
@@ -19,6 +20,8 @@ data class LaunchableApp(
     val icon: ImageBitmap,
     val installTime: Long = 0L,
     val version: String = "",
+    val category: Int = -1,
+    val isSystem: Boolean = false,
 )
 
 object AppRepository {
@@ -35,6 +38,8 @@ object AppRepository {
                     icon = it.loadIcon(pm).toBitmap(128).asImageBitmap(),
                     installTime = info?.firstInstallTime ?: 0L,
                     version = info?.versionName.orEmpty(),
+                    category = it.activityInfo.applicationInfo.category,
+                    isSystem = it.activityInfo.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0,
                 )
             }
             .distinctBy { it.packageName }

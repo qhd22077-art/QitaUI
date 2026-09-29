@@ -11,6 +11,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -65,15 +67,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
-/** Puts apps in the saved [order]; apps not in it (new installs) keep their loaded order at the end. */
-private fun applyOrder(apps: List<LaunchableApp>, order: List<String>): List<LaunchableApp> {
-    if (order.isEmpty()) return apps
-    val byPackage = apps.associateBy { it.packageName }
-    val ordered = order.mapNotNull { byPackage[it] }
-    val known = ordered.map { it.packageName }.toSet()
-    return ordered + apps.filter { it.packageName !in known }
-}
-
 /** Vita-style home: swipeable pages of bubbles; tap one to open its full-screen LiveArea page. */
 @Composable
 fun HomeScreen(homePresses: Int = 0) {
@@ -83,8 +76,8 @@ fun HomeScreen(homePresses: Int = 0) {
     val store = remember { SettingsStore(context) }
     var settings by remember { mutableStateOf(store.load()) }
     var wallpaper by remember { mutableStateOf(store.loadWallpaper()) }
-    var order by remember { mutableStateOf(store.loadOrder()) }
-    var hidden by remember { mutableStateOf(store.loadHidden()) }
+    var home by remember { mutableStateOf(store.loadHome()) }
+    var showDesktop by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
     var apps by remember { mutableStateOf<List<LaunchableApp>>(emptyList()) }
     var reload by remember { mutableStateOf(0) }
@@ -120,10 +113,13 @@ fun HomeScreen(homePresses: Int = 0) {
 
     val rowSizes = LAYOUTS[settings.layoutIndex.coerceIn(LAYOUTS.indices)].second
     val pageSize = rowSizes.sum()
-    val visible = remember(apps, hidden) { apps.filter { it.packageName !in hidden } }
-    val shown = remember(visible, order, settings.sortNewest) {
-        if (settings.sortNewest) visible.sortedByDescending { it.installTime } else applyOrder(visible, order)
+    // Only apps the user has added appear on the home screen; the desktop lists everything.
+    val shown = remember(apps, home, settings.sortNewest) {
+        val byPackage = apps.associateBy { it.packageName }
+        val list = home.mapNotNull { byPackage[it] }
+        if (settings.sortNewest) list.sortedByDescending { it.installTime } else list
     }
+    val homeSet = remember(home) { home.toSet() }
     val pageCount = maxOf(1, (shown.size + pageSize - 1) / pageSize)
     val pagerState = rememberPagerState { pageCount }
 
@@ -146,7 +142,7 @@ fun HomeScreen(homePresses: Int = 0) {
     // Pressing Home while the launcher is open closes everything and returns to the first page.
     LaunchedEffect(homePresses) {
         if (homePresses > 0) {
-            selected = null; showSettings = false; showSearch = false; menuFor = null; dragApp = null
+            selected = null; showSettings = false; showSearch = false; showDesktop = false; menuFor = null; dragApp = null
             pagerState.animateScrollToPage(0)
         }
     }
@@ -163,8 +159,8 @@ fun HomeScreen(homePresses: Int = 0) {
         val moved = list.toMutableList()
         val item = moved.removeAt(from)
         moved.add(to.coerceIn(0, moved.size), item)
-        order = moved.map { it.packageName }
-        store.saveOrder(order)
+        home = moved.map { it.packageName }
+        store.saveHome(home)
         // A manual order replaces the "newest first" sort.
         if (settings.sortNewest) {
             settings = settings.copy(sortNewest = false)
@@ -172,9 +168,17 @@ fun HomeScreen(homePresses: Int = 0) {
         }
     }
 
-    BackHandler(enabled = showSearch) { showSearch = false }
-    BackHandler(enabled = !showSearch && showSettings) { showSettings = false }
-    BackHandler(enabled = !showSearch && !showSettings && selected != null) { selected = null }
+    fun addToHome(app: LaunchableApp) {
+        if (app.packageName !in home) { home = home + app.packageName; store.saveHome(home) }
+    }
+    fun removeFromHome(app: LaunchableApp) {
+        home = home - app.packageName; store.saveHome(home)
+    }
+
+    BackHandler(enabled = showSettings) { showSettings = false }
+    BackHandler(enabled = showSearch && !showSettings) { showSearch = false }
+    BackHandler(enabled = showDesktop && !showSearch && !showSettings) { showDesktop = false }
+    BackHandler(enabled = selected != null && !showDesktop && !showSearch && !showSettings) { selected = null }
 
     Box(Modifier.fillMaxSize().onSizeChanged { rootWidth = it.width }) {
         BubbleBackground(
@@ -182,7 +186,7 @@ fun HomeScreen(homePresses: Int = 0) {
             wallpaper = wallpaper, particleCount = settings.particleCount, dim = settings.dim,
         )
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            StatusBar(settings.use24h, settings.showBattery, onSearch = { showSearch = true }, onSettings = { showSettings = true })
+            StatusBar(settings.use24h, settings.showBattery, onDesktop = { showDesktop = true }, onSearch = { showSearch = true }, onSettings = { showSettings = true })
             BubblePager(
                 apps = shown,
                 pagerState = pagerState,
@@ -192,6 +196,7 @@ fun HomeScreen(homePresses: Int = 0) {
                 hiddenPackage = dragApp?.packageName,
                 modifier = Modifier.weight(1f),
                 onSelect = { selected = it },
+                onOpenDesktop = { showDesktop = true },
                 onDragStart = { app, local ->
                     dragApp = app
                     dragTravel = 0f
@@ -234,6 +239,19 @@ fun HomeScreen(homePresses: Int = 0) {
                 LiveAreaPage(it, settings, wallpaper, onClose = { selected = null })
             }
         }
+        AnimatedVisibility(visible = showDesktop, enter = fadeIn(), exit = fadeOut()) {
+            DesktopScreen(
+                apps = apps,
+                onHome = homeSet,
+                settings = settings,
+                wallpaper = wallpaper,
+                onLaunch = { AppRepository.launch(context, it) },
+                onToggleHome = { if (it.packageName in homeSet) removeFromHome(it) else addToHome(it) },
+                onLongPress = { menuFor = it },
+                onLauncherSettings = { showSettings = true },
+                onClose = { showDesktop = false },
+            )
+        }
         AnimatedVisibility(visible = showSettings, enter = fadeIn(), exit = fadeOut()) {
             SettingsPage(
                 settings = settings,
@@ -242,15 +260,13 @@ fun HomeScreen(homePresses: Int = 0) {
                 onChange = { settings = it; store.save(it) },
                 onWallpaper = { uri -> store.saveWallpaper(uri)?.let { wallpaper = it } },
                 onClearWallpaper = { store.clearWallpaper(); wallpaper = null },
-                onResetOrder = { order = emptyList(); store.saveOrder(order) },
-                hiddenCount = hidden.count { h -> apps.any { it.packageName == h } },
-                onUnhideAll = { hidden = emptySet(); store.saveHidden(hidden) },
+                onClearHome = { home = emptyList(); store.saveHome(home) },
                 onClose = { showSettings = false },
             )
         }
         AnimatedVisibility(visible = showSearch, enter = fadeIn(), exit = fadeOut()) {
             SearchOverlay(
-                apps = visible, settings = settings, wallpaper = wallpaper,
+                apps = apps, settings = settings, wallpaper = wallpaper,
                 onPick = { showSearch = false; selected = it },
                 onClose = { showSearch = false },
             )
@@ -265,11 +281,11 @@ fun HomeScreen(homePresses: Int = 0) {
                 Column {
                     Text(app.packageName, fontSize = 12.sp)
                     TextButton(onClick = { menuFor = null; AppRepository.showInfo(context, app) }) { Text("App info") }
-                    TextButton(onClick = {
-                        menuFor = null
-                        hidden = hidden + app.packageName
-                        store.saveHidden(hidden)
-                    }) { Text("Hide from home") }
+                    if (app.packageName in homeSet) {
+                        TextButton(onClick = { menuFor = null; removeFromHome(app) }) { Text("Remove from home") }
+                    } else {
+                        TextButton(onClick = { menuFor = null; addToHome(app) }) { Text("Add to home") }
+                    }
                     TextButton(onClick = { menuFor = null; AppRepository.uninstall(context, app) }) { Text("Uninstall") }
                 }
             },
@@ -288,6 +304,7 @@ private fun BubblePager(
     hiddenPackage: String?,
     modifier: Modifier,
     onSelect: (LaunchableApp) -> Unit,
+    onOpenDesktop: () -> Unit,
     onDragStart: (LaunchableApp, Offset) -> Unit,
     onDrag: (Offset) -> Unit,
     onDragEnd: () -> Unit,
@@ -298,7 +315,15 @@ private fun BubblePager(
     val pages = apps.chunked(rowSizes.sum())
     if (pages.isEmpty()) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No apps found", color = Color.White, fontSize = 18.sp)
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Your home screen is empty", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text("Add the apps you want here from the desktop.", color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
+                Text(
+                    "Open desktop",
+                    Modifier.background(Color.White, RoundedCornerShape(50)).clickable(onClick = onOpenDesktop).padding(horizontal = 28.dp, vertical = 10.dp),
+                    color = Color(0xFF0B3D91), fontWeight = FontWeight.Bold, fontSize = 16.sp,
+                )
+            }
         }
         return
     }

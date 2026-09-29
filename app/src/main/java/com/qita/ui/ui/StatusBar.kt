@@ -34,7 +34,7 @@ private data class Status(val battery: Int, val charging: Boolean, val wifi: Boo
 
 /** Top strip: clock on the left; Wi-Fi, battery and the settings gear on the right. */
 @Composable
-fun StatusBar(use24h: Boolean, showBattery: Boolean, onSearch: () -> Unit, onSettings: () -> Unit, modifier: Modifier = Modifier) {
+fun StatusBar(use24h: Boolean, showBattery: Boolean, onDesktop: () -> Unit, onSearch: () -> Unit, onSettings: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var now by remember { mutableStateOf(Date()) }
     var status by remember { mutableStateOf(readStatus(context)) }
@@ -60,6 +60,7 @@ fun StatusBar(use24h: Boolean, showBattery: Boolean, onSearch: () -> Unit, onSet
                     color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
                 )
             }
+            Text("\uD83D\uDDA5", Modifier.clickable(onClick = onDesktop).padding(horizontal = 6.dp), color = Color.White, fontSize = 18.sp)
             Text("\uD83D\uDD0D", Modifier.clickable(onClick = onSearch).padding(horizontal = 6.dp), color = Color.White, fontSize = 18.sp)
             Text("\u2699", Modifier.clickable(onClick = onSettings).padding(horizontal = 6.dp), color = Color.White, fontSize = 22.sp)
         }
