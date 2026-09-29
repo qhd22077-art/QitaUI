@@ -28,6 +28,13 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+    // Lint prints its findings to the build log (and never fails the build) so CI can surface them.
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
+        textReport = true
+        textOutput = file("stdout")
+    }
     buildFeatures {
         compose = true
     }

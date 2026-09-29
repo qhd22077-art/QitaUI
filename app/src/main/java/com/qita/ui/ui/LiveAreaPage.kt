@@ -108,7 +108,7 @@ fun LiveAreaPage(
                         translationY = dismissY.value
                         shape = PeelShape(baseFold + peel.value, cornerRadius)
                         clip = true
-                        alpha = 1f - (dismissY.value / size.height).coerceIn(0f, 1f) * 0.6f
+                        alpha = if (size.height > 0f) 1f - (dismissY.value / size.height).coerceIn(0f, 1f) * 0.6f else 1f
                     },
             ) {
                 BubbleBackground(
