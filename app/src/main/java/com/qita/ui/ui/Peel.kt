@@ -193,20 +193,28 @@ fun PeelCorner(
                 detectTapGestures(onTap = { if (tapToPeel) finish() else scope.launch { wiggle() } })
             }
             .pointerInput(Unit) {
+                // Speed of the drag along the peel direction (px/s), so a quick flick finishes the peel.
+                var velocity = 0f
+                var lastTime = 0L
                 detectDragGestures(
                     onDragStart = {
                         dragging = true
+                        velocity = 0f
+                        lastTime = 0L
                         scope.launch { peel.stop() }
                     },
                     onDrag = { change, drag ->
                         change.consume()
                         // Project the drag onto the diagonal from the top-right corner toward the bottom-left.
                         val along = (-drag.x + drag.y) / 1.4142f
+                        val dt = change.uptimeMillis - (if (lastTime == 0L) change.previousUptimeMillis else lastTime)
+                        if (dt > 0) velocity = 0.6f * velocity + 0.4f * (along / dt * 1000f)
+                        lastTime = change.uptimeMillis
                         scope.launch { peel.snapTo((peel.value + along).coerceAtLeast(0f)) }
                     },
                     onDragEnd = {
                         dragging = false
-                        if (peel.value > width * 0.25f) finish()
+                        if (peel.value > width * 0.25f || (velocity > 1400f && peel.value > 40f)) finish()
                         else scope.launch { peel.animateTo(0f, spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessMedium)) }
                     },
                     onDragCancel = {

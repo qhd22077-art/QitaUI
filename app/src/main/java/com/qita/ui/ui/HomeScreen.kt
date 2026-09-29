@@ -143,6 +143,7 @@ fun HomeScreen(homePresses: Int = 0) {
     var pageBg by remember { mutableStateOf(store.loadPageBg()) }
     var pageWallpapers by remember { mutableStateOf(store.loadPageWallpapers(pageBg)) }
     var showBackgrounds by remember { mutableStateOf(false) }
+    var showIndex by remember { mutableStateOf(false) }
 
     // Push the saved controller settings into the shared state before the first frame.
     remember(store) {
@@ -346,7 +347,7 @@ fun HomeScreen(homePresses: Int = 0) {
     val commandHandler = rememberUpdatedState<(Command) -> Unit> { cmd ->
         if (!showLock) when (cmd) {
             is Command.Page -> when {
-                selected != null && !showDesktop && !showSearch && !showSettings && !menuOpen && !showTutorial -> {
+                selected != null && !showIndex && !showDesktop && !showSearch && !showSettings && !menuOpen && !showTutorial -> {
                     val index = openPages.indexOfFirst { it.packageName == selected?.packageName } + cmd.delta
                     if (index < 0) selected = null else openPages.getOrNull(index)?.let { selected = it }
                 }
@@ -389,7 +390,11 @@ fun HomeScreen(homePresses: Int = 0) {
 
     // Pressing Home while the launcher is open closes everything and returns to the first page.
     LaunchedEffect(homePresses) {
-        if (homePresses > 0) {
+        if (homePresses > 0 && selected != null && !showIndex && !showLock && !showDesktop && !showSearch && !showSettings) {
+            // Home while a LiveArea is open shows the index of open pages; pressing it again goes home.
+            showIndex = true
+        } else if (homePresses > 0) {
+            showIndex = false
             selected = null; showSettings = false; showSearch = false; showDesktop = false; menuFor = null; showQuickMenu = false; editMode = false; showBackgrounds = false; dragApp = null
             endMove(true)
             pagerState.animateScrollToPage(0)
@@ -427,6 +432,7 @@ fun HomeScreen(homePresses: Int = 0) {
     BackHandler(enabled = showSearch && !showSettings && !menuOpen && !showTutorial) { showSearch = false }
     BackHandler(enabled = showDesktop && !showSearch && !showSettings && !menuOpen && !showTutorial) { showDesktop = false }
     BackHandler(enabled = selected != null && !showDesktop && !showSearch && !showSettings && !menuOpen && !showTutorial) { selected = null }
+    BackHandler(enabled = showIndex && !showLock) { showIndex = false }
     // Registered last so it wins: while locked, Back does nothing.
     BackHandler(enabled = showLock) { }
 
@@ -556,6 +562,21 @@ fun HomeScreen(homePresses: Int = 0) {
                     onLaunch = { launchApp(it) },
                     onClosePage = { closePage(it) },
                     onInfo = { if (it.action == null) AppRepository.showInfo(context, it) },
+                )
+            }
+        }
+        AnimatedVisibility(
+            visible = showIndex,
+            enter = fadeIn(tween(VitaMotion.Medium)) + scaleIn(initialScale = 0.94f, animationSpec = VitaMotion.settle()),
+            exit = fadeOut(tween(VitaMotion.Short)),
+        ) {
+            CompositionLocalProvider(LocalPadLayer provides 2) {
+                IndexScreen(
+                    pages = openPages,
+                    current = openPages.indexOfFirst { it.packageName == selected?.packageName },
+                    onPick = { i -> showIndex = false; selected = if (i < 0) null else openPages.getOrNull(i) },
+                    onClose = { app -> closePage(app); if (openPages.isEmpty()) showIndex = false },
+                    onDismiss = { showIndex = false },
                 )
             }
         }
@@ -762,6 +783,7 @@ fun HomeScreen(homePresses: Int = 0) {
             showLock -> listOf("A" to "Unlock")
             showTutorial -> listOf("A" to "Got it")
             menuOpen -> listOf("D-pad" to "Move", "A" to "Choose", "B" to "Cancel")
+            showIndex -> listOf("D-pad" to "Move", "A" to "Open", "HOME" to "Home screen", "B" to "Back")
             showBackgrounds -> listOf("D-pad" to "Choose", "A" to "Apply", "L1" to "Prev page", "R1" to "Next page", "B" to "Back")
             Controller.movingPackage != null -> listOf("D-pad" to "Move", "A" to "Drop", "B" to "Cancel")
             showSettings -> listOf("D-pad" to "Move / adjust", "A" to "Toggle", "B" to "Done")

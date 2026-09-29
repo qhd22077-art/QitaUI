@@ -4,6 +4,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -40,6 +41,8 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
@@ -52,6 +55,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
@@ -107,10 +111,14 @@ fun LiveAreaHost(
             } else {
                 Box(
                     Modifier.fillMaxSize().graphicsLayer {
-                        val distance = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction).absoluteValue.coerceIn(0f, 1f)
-                        val s = 1f - 0.06f * distance
+                        val signed = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
+                        val distance = signed.absoluteValue.coerceIn(0f, 1f)
+                        // The page in the middle floats above its neighbours, which are smaller, dimmer and drift slower.
+                        val s = 1f - 0.12f * distance
                         scaleX = s
                         scaleY = s
+                        alpha = 1f - 0.40f * distance
+                        translationX = signed.coerceIn(-1f, 1f) * size.width * 0.05f
                     },
                 ) {
                     LiveAreaPage(
@@ -183,13 +191,18 @@ fun LiveAreaPage(
                     particles = settings.particles,
                     particleCount = settings.particleCount,
                 )
+                // A huge, soft copy of the app's art behind everything, so each page has its own look.
+                Image(
+                    app.icon, null,
+                    Modifier.fillMaxSize().graphicsLayer { scaleX = 2.6f; scaleY = 2.6f; rotationZ = -14f; alpha = 0.22f },
+                    contentScale = ContentScale.Crop,
+                )
                 // The translucent panel that frames the page, like the one on the lock screen.
                 Row(
                     Modifier
                         .fillMaxSize()
                         .padding(horizontal = 26.dp, vertical = 14.dp)
-                        .background(Color.White.copy(alpha = 0.07f), RoundedCornerShape(16.dp))
-                        .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                        .vitaPanel(16.dp, 0.75f)
                         .padding(20.dp),
                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                 ) {
@@ -232,16 +245,23 @@ fun LiveAreaPage(
     }
 }
 
-/** The big launch gate: the app's sphere and name over a translucent card, with Start along the bottom. */
+/** The launch gate: a framed card of the app's art with its sphere and name, and a Start bar along the bottom. */
 @Composable
 private fun Gate(app: LaunchableApp, onLaunch: () -> Unit, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(22.dp)
     Box(
         modifier
             .padClickable("card:start:${app.packageName}", corner = 22.dp, onClick = onLaunch)
-            .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.30f), Color.White.copy(alpha = 0.10f))), shape)
-            .border(1.5.dp, Color.White.copy(alpha = 0.55f), shape),
+            .shadow(14.dp, shape, ambientColor = Color.Black, spotColor = Color.Black)
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(lerp(app.tint, Color.White, 0.35f), lerp(app.tint, Color.Black, 0.35f)))),
     ) {
+        // The art, enlarged and soft, fills the card.
+        Image(
+            app.icon, null,
+            Modifier.fillMaxSize().graphicsLayer { scaleX = 2.0f; scaleY = 2.0f; alpha = 0.40f },
+            contentScale = ContentScale.Crop,
+        )
         BoxWithConstraints(Modifier.fillMaxSize().padding(bottom = 46.dp)) {
             val sphere = minOf(maxHeight * 0.66f, maxWidth * 0.62f)
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -259,14 +279,15 @@ private fun Gate(app: LaunchableApp, onLaunch: () -> Unit, modifier: Modifier = 
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .height(46.dp)
-                .background(
-                    Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.10f), Color.Black.copy(alpha = 0.38f))),
-                    RoundedCornerShape(bottomStart = 22.dp, bottomEnd = 22.dp),
-                ),
+                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.18f), Color.Black.copy(alpha = 0.50f)))),
             contentAlignment = Alignment.Center,
         ) {
+            // A fine light line along the top of the bar.
+            Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.45f)))
             Text("Start", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Medium)
         }
+        // The white frame goes on top of everything.
+        Box(Modifier.fillMaxSize().border(2.5.dp, Brush.verticalGradient(listOf(Color.White, Color.White.copy(alpha = 0.55f))), shape))
     }
 }
 
@@ -276,8 +297,7 @@ private fun Banner(title: String, content: @Composable () -> Unit) {
     Column(
         Modifier
             .fillMaxWidth()
-            .background(Color.White.copy(alpha = 0.13f), shape)
-            .border(1.dp, Color.White.copy(alpha = 0.30f), shape)
+            .vitaPanel(14.dp)
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
@@ -302,8 +322,7 @@ private fun ActionPill(key: String, label: String, onClick: () -> Unit) {
         label,
         Modifier
             .padClickable(key, corner = null, onClick = onClick)
-            .background(Color.White.copy(alpha = 0.22f), RoundedCornerShape(50))
-            .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(50))
+            .vitaPanel(20.dp, 1.4f)
             .padding(horizontal = 22.dp, vertical = 9.dp),
         color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
     )
