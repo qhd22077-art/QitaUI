@@ -5,6 +5,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,7 +30,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathOperation
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.Canvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -49,12 +59,19 @@ fun LiveAreaPage(app: LaunchableApp, onClose: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val dismissY = remember { Animatable(0f) }
+    val density = LocalDensity.current
+    val screenW = with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
+    val baseFold = with(density) { 56.dp.toPx() }
+    // Extra px the corner has been peeled beyond its resting size.
+    val peel = remember { Animatable(0f) }
     Box(Modifier.fillMaxSize()) {
       Box(
         Modifier
             .fillMaxSize()
             .graphicsLayer {
                 translationY = dismissY.value
+                shape = PeelShape(baseFold + peel.value)
+                clip = true
                 alpha = 1f - (dismissY.value / size.height).coerceIn(0f, 1f) * 0.6f
             },
       ) {
@@ -88,12 +105,14 @@ fun LiveAreaPage(app: LaunchableApp, onClose: () -> Unit) {
             }
         }
 
-        FoldedCorner(Modifier.align(Alignment.TopEnd))
       }
+
+        PeelBack(baseFold + peel.value)
 
         // Top-edge grab zone (outside the translated layer so drag deltas stay stable): drag down to dismiss.
         Box(
             Modifier
+                .padding(end = 72.dp)
                 .fillMaxWidth()
                 .height(72.dp)
                 .pointerInput(Unit) {
@@ -113,17 +132,58 @@ fun LiveAreaPage(app: LaunchableApp, onClose: () -> Unit) {
         ) {
             Box(Modifier.align(Alignment.Center).padding(top = 8.dp).size(48.dp, 4.dp).alpha(0.6f).background(Color.White, CircleShape))
         }
+
+        // Corner grab zone: drag diagonally toward the bottom-left to peel the page away.
+        Box(
+            Modifier
+                .align(Alignment.TopEnd)
+                .size(72.dp)
+                .pointerInput(Unit) {
+                    detectDragGestures(
+                        onDrag = { change, drag ->
+                            change.consume()
+                            // Project the drag onto the diagonal from the top-right corner.
+                            val along = (-drag.x + drag.y) / 1.4142f
+                            scope.launch { peel.snapTo((peel.value + along).coerceAtLeast(0f)) }
+                        },
+                        onDragEnd = {
+                            scope.launch {
+                                if (peel.value > screenW * 0.3f) {
+                                    // Peeled far enough: finish the peel, then close the app and the page.
+                                    peel.animateTo(screenW * 2f)
+                                    AppRepository.close(context, app)
+                                    onClose()
+                                } else {
+                                    peel.animateTo(0f)
+                                }
+                            }
+                        },
+                        onDragCancel = { scope.launch { peel.animateTo(0f) } },
+                    )
+                },
+        )
     }
 }
 
-/** Folded-back top-right corner, the Vita's visual cue that the page can be peeled away. */
-@Composable
-private fun FoldedCorner(modifier: Modifier = Modifier) {
-    androidx.compose.foundation.Canvas(modifier.size(56.dp)) {
-        val fold = Path().apply {
-            moveTo(0f, 0f); lineTo(size.width, 0f); lineTo(size.width, size.height); close()
+/** Page shape with the top-right corner triangle (legs of [fold] px) removed, so what is behind shows through. */
+private class PeelShape(private val fold: Float) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        val page = Path().apply { addRect(androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height)) }
+        val corner = Path().apply {
+            moveTo(size.width - fold, 0f); lineTo(size.width, 0f); lineTo(size.width, fold); close()
         }
-        drawPath(fold, Color.White.copy(alpha = 0.85f))
-        drawLine(Color.Black.copy(alpha = 0.15f), Offset(0f, 0f), Offset(size.width, size.height), strokeWidth = 2f)
+        return Outline.Generic(Path.combine(PathOperation.Difference, page, corner))
+    }
+}
+
+/** The back of the peeled corner: the removed triangle reflected across the fold line. */
+@Composable
+private fun PeelBack(fold: Float) {
+    Canvas(Modifier.fillMaxSize()) {
+        val back = Path().apply {
+            moveTo(size.width - fold, 0f); lineTo(size.width, fold); lineTo(size.width - fold, fold); close()
+        }
+        drawPath(back, Color.White.copy(alpha = 0.92f))
+        drawLine(Color.Black.copy(alpha = 0.18f), Offset(size.width - fold, 0f), Offset(size.width, fold), strokeWidth = 2f)
     }
 }

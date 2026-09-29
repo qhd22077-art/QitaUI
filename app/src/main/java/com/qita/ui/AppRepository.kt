@@ -1,5 +1,6 @@
 package com.qita.ui
 
+import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -37,6 +38,15 @@ object AppRepository {
         context.packageManager.getLaunchIntentForPackage(app.packageName)
             ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             ?.let(context::startActivity)
+    }
+
+    /**
+     * Ends the app's background processes. Android does not let a launcher force-stop an app
+     * that is in the foreground, so this takes effect once the app is no longer on screen.
+     */
+    fun close(context: Context, app: LaunchableApp) {
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        am.killBackgroundProcesses(app.packageName)
     }
 
     private fun Drawable.toBitmap(size: Int): Bitmap {

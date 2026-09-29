@@ -5,7 +5,7 @@ A PlayStation Vita-style home screen (launcher) for Android, built with Kotlin a
 - Blue gradient background with drifting particles
 - Swipeable pages of 10 round app bubbles (staggered rows), page dots down the left edge
 - Tap a bubble to open its full-screen LiveArea page: icon, title, **Start** button and swipeable cards
-- Drag down from the top edge of a page (it has a folded corner, like the Vita) to peel it away
+- Drag the folded top-right corner diagonally to peel the page away: past a threshold it closes the page and the app's background processes. Dragging down from the top edge also dismisses the page.
 - Clock and battery in the top status strip
 - Landscape, immersive; registers as a HOME app so it can be set as your default launcher
 
