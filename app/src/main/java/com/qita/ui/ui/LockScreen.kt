@@ -82,8 +82,7 @@ fun LockScreen(settings: Settings, onUnlock: () -> Unit) {
                             shape = PeelShape(baseFold + peel.value, radius)
                             clip = true
                         }
-                        .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(14.dp))
-                        .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(14.dp)),
+                        .vitaPanel(14.dp, 0.6f),
                 ) {
                     val clockSize = (maxHeight.value * 0.40f).sp
                     val dateSize = (maxHeight.value * 0.075f).sp

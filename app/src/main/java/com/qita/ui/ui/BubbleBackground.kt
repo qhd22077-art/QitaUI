@@ -63,6 +63,8 @@ fun BubbleBackground(
     }
 }
 
+private class Bokeh(val x: Float, val y: Float, val r: Float, val alpha: Float, val speed: Float, val seed: Float)
+
 @Composable
 private fun Swooshes(colors: () -> Triple<Color, Color, Color>, scroll: () -> Float) {
     val phase by rememberInfiniteTransition(label = "swoosh").animateFloat(
@@ -70,34 +72,61 @@ private fun Swooshes(colors: () -> Triple<Color, Color, Color>, scroll: () -> Fl
         infiniteRepeatable(tween(22_000, easing = LinearEasing), RepeatMode.Restart),
         label = "phase",
     )
+    // One path is reused for every band, and the soft light dots are fixed once.
+    val path = remember { Path() }
+    val bokeh = remember {
+        val rnd = Random(11)
+        List(12) { Bokeh(rnd.nextFloat(), 0.10f + rnd.nextFloat() * 0.60f, 0.010f + rnd.nextFloat() * 0.028f, 0.05f + rnd.nextFloat() * 0.09f, 0.5f + rnd.nextFloat(), rnd.nextFloat() * 6.28f) }
+    }
     Canvas(Modifier.fillMaxSize()) {
         val (top, mid, bottom) = colors()
-        drawRect(Brush.verticalGradient(0f to top, 0.55f to mid, 1f to bottom))
-        // Extra glow along the bottom edge.
-        drawRect(
-            Brush.verticalGradient(listOf(Color.Transparent, Color.White.copy(alpha = 0.35f)), startY = size.height * 0.62f, endY = size.height),
-        )
-        // Each band drifts a different distance as the page changes, which gives a sense of depth.
+        val w = size.width
+        val h = size.height
         val page = scroll()
-        swoosh(0.74f - page * 0.030f, 0.040f, 0.16f, 0.55f, phase)
-        swoosh(0.83f - page * 0.050f, 0.050f, 0.20f, 0.28f, phase * 0.7f + 1.5f)
-        swoosh(0.63f - page * 0.020f, 0.035f, 0.10f, 0.16f, phase * 1.2f + 3f)
+        drawRect(Brush.verticalGradient(0f to top, 0.55f to mid, 1f to bottom))
+        // Two wide, faint beams of light falling from the upper left.
+        val beamAlpha = 0.05f + 0.02f * sin(phase)
+        for ((x0, x1) in listOf(0.05f to 0.38f, 0.40f to 0.62f)) {
+            path.rewind()
+            path.moveTo(w * x0, 0f); path.lineTo(w * x1, 0f); path.lineTo(w * (x1 + 0.35f), h); path.lineTo(w * (x0 + 0.20f), h); path.close()
+            drawPath(path, Brush.verticalGradient(listOf(Color.White.copy(alpha = beamAlpha), Color.Transparent), startY = 0f, endY = h * 0.9f))
+        }
+        // Bright glow along the horizon that follows the page a little.
+        drawRect(
+            Brush.radialGradient(
+                listOf(Color.White.copy(alpha = 0.55f), Color.Transparent),
+                center = Offset(w * (0.5f - page * 0.02f), h * 1.04f), radius = w * 0.8f,
+            ),
+        )
+        drawRect(
+            Brush.verticalGradient(listOf(Color.Transparent, Color.White.copy(alpha = 0.30f)), startY = h * 0.62f, endY = h),
+        )
+        // Soft dots of light that drift slowly, nearer ones moving more with the page.
+        bokeh.forEach { b ->
+            val cx = (b.x - page * 0.03f * b.speed).mod(1f) * w
+            val cy = (b.y + sin(phase * b.speed + b.seed) * 0.012f) * h
+            drawCircle(Color.White.copy(alpha = b.alpha), b.r * w, Offset(cx, cy))
+        }
+        // Each band drifts a different distance as the page changes, which gives a sense of depth.
+        swoosh(path, 0.74f - page * 0.030f, 0.040f, 0.16f, 0.55f, phase)
+        swoosh(path, 0.83f - page * 0.050f, 0.050f, 0.20f, 0.28f, phase * 0.7f + 1.5f)
+        swoosh(path, 0.63f - page * 0.020f, 0.035f, 0.10f, 0.16f, phase * 1.2f + 3f)
+        swoosh(path, 0.70f - page * 0.040f, 0.030f, 0.06f, 0.12f, phase * 0.5f + 4.5f)
     }
 }
 
 /** One soft curved band of light that bobs gently up and down. */
-private fun DrawScope.swoosh(yBase: Float, amp: Float, thickness: Float, alpha: Float, phase: Float) {
+private fun DrawScope.swoosh(path: Path, yBase: Float, amp: Float, thickness: Float, alpha: Float, phase: Float) {
     val w = size.width
     val h = size.height
     val y0 = h * yBase + sin(phase) * amp * h
     val t = h * thickness
-    val path = Path().apply {
-        moveTo(-w * 0.05f, y0 + t * 0.6f)
-        cubicTo(w * 0.30f, y0 - t * 0.9f, w * 0.62f, y0 + t * 1.1f, w * 1.05f, y0 - t * 0.7f)
-        lineTo(w * 1.05f, y0 - t * 0.7f + t)
-        cubicTo(w * 0.62f, y0 + t * 2.4f, w * 0.30f, y0 + t * 0.3f, -w * 0.05f, y0 + t * 1.4f)
-        close()
-    }
+    path.rewind()
+    path.moveTo(-w * 0.05f, y0 + t * 0.6f)
+    path.cubicTo(w * 0.30f, y0 - t * 0.9f, w * 0.62f, y0 + t * 1.1f, w * 1.05f, y0 - t * 0.7f)
+    path.lineTo(w * 1.05f, y0 - t * 0.7f + t)
+    path.cubicTo(w * 0.62f, y0 + t * 2.4f, w * 0.30f, y0 + t * 0.3f, -w * 0.05f, y0 + t * 1.4f)
+    path.close()
     drawPath(
         path,
         Brush.horizontalGradient(

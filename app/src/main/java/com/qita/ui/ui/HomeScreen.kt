@@ -917,8 +917,7 @@ private fun BubblePager(
                             .fillMaxSize()
                             .padding(2.dp)
                             .graphicsLayer { alpha = editAmt() }
-                            .background(Color.White.copy(alpha = 0.16f), frame)
-                            .border(1.dp, Color.White.copy(alpha = 0.5f), frame),
+                            .vitaPanel(6.dp, 0.9f),
                     )
                 }
                 pageApps.forEachIndexed { i, app ->
