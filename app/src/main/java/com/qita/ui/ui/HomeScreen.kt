@@ -437,6 +437,8 @@ fun HomeScreen(homePresses: Int = 0) {
     BackHandler(enabled = showLock) { }
 
     // Depth: the home screen recedes a little while something is open on top of it.
+    // While a LiveArea is open only the wallpaper shows behind it, as on the Vita.
+    val liveOpen by animateFloatAsState(if (selected != null) 1f else 0f, tween(VitaMotion.Medium, easing = VitaMotion.Ease), label = "liveOpen")
     val depth by animateFloatAsState(if (anyOverlay) 1f else 0f, spring(dampingRatio = 0.9f, stiffness = 300f), label = "depth")
     // Leave room for the button hints while the gamepad is in use.
     // A tween, never a spring: springs overshoot and padding must never go negative.
@@ -471,7 +473,7 @@ fun HomeScreen(homePresses: Int = 0) {
                     val s = 1f - 0.04f * depth
                     scaleX = s
                     scaleY = s
-                    alpha = 1f - 0.35f * depth
+                    alpha = (1f - 0.35f * depth) * (1f - liveOpen)
                 },
         ) {
             // Room for the information bar, which is drawn once above everything so it never moves.

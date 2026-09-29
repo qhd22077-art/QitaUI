@@ -17,11 +17,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.layout.ContentScale
 import kotlin.math.PI
 import kotlin.math.sin
@@ -106,6 +108,19 @@ private fun Swooshes(colors: () -> Triple<Color, Color, Color>, scroll: () -> Fl
             val cx = (b.x - page * 0.03f * b.speed).mod(1f) * w
             val cy = (b.y + sin(phase * b.speed + b.seed) * 0.012f) * h
             drawCircle(Color.White.copy(alpha = b.alpha), b.r * w, Offset(cx, cy))
+        }
+        // The long bright streak of light through the middle, like the Vita's default wallpaper.
+        val streakY = h * (0.50f - page * 0.02f) + sin(phase * 0.6f) * h * 0.012f
+        rotate(-3f, Offset(w / 2f, streakY)) {
+            for ((thick, a) in listOf(0.16f to 0.08f, 0.07f to 0.14f, 0.022f to 0.34f)) {
+                drawOval(
+                    Brush.horizontalGradient(
+                        listOf(Color.Transparent, Color.White.copy(alpha = a), Color.White.copy(alpha = a * 0.55f), Color.Transparent),
+                    ),
+                    topLeft = Offset(-w * 0.1f, streakY - h * thick / 2f),
+                    size = Size(w * 1.2f, h * thick),
+                )
+            }
         }
         // Each band drifts a different distance as the page changes, which gives a sense of depth.
         swoosh(path, 0.74f - page * 0.030f, 0.040f, 0.16f, 0.55f, phase)

@@ -142,12 +142,12 @@ fun Bubble(
                     val r = size.toPx() / 2f
                     drawCircle(
                         Brush.radialGradient(
-                            0.55f to Color.White.copy(alpha = 0.50f * glow), 1f to Color.Transparent,
+                            0.50f to Color(0xFF16E0FF).copy(alpha = 0.55f * glow), 1f to Color.Transparent,
                             center = c, radius = r * 1.55f,
                         ),
                         radius = r * 1.55f, center = c,
                     )
-                    drawCircle(Color(0xFF7AE8FF).copy(alpha = 0.55f * glow * glowPulse), radius = r + 7.dp.toPx(), center = c, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx()))
+                    drawCircle(Color(0xFF3FE6FF).copy(alpha = 0.85f * glow * glowPulse), radius = r + 6.dp.toPx(), center = c, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 6.dp.toPx()))
                     drawCircle(Color.White.copy(alpha = glow), radius = r + 2.dp.toPx(), center = c, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx()))
                 }
                 val p = ring.value
@@ -196,6 +196,7 @@ fun Bubble(
                 // Registered on the sphere itself so the gamepad ring hugs it, not the label.
                 modifier = Modifier.padTarget(padKey, corner = null, app = app, pad = 10.dp, bring = false, ring = false, onClick = onClick),
                 shape = shape,
+                glow = { glow },
                 elevation = if (lit) (12 + 6 * pulse).dp else 7.dp,
                 spot = if (moving) MoveCyan else Color(0xFF0A2A6A),
                 rim = if (moving) Brush.linearGradient(listOf(MoveCyan, MoveCyan)) else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.95f), Color.White.copy(alpha = 0.35f))),

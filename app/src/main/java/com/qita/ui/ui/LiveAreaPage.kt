@@ -41,7 +41,9 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -97,12 +99,12 @@ fun LiveAreaHost(
         val target = (current + 1).coerceIn(0, pages.size)
         if (pagerState.currentPage != target) pagerState.animateScrollToPage(target)
     }
-    Box(Modifier.fillMaxSize()) {
-        // Padding on both sides lets the neighbouring pages peek in at the edges, like the Vita.
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        // The page sits inside side margins where the wallpaper shows and the neighbouring pages barely peek in.
         HorizontalPager(
             pagerState,
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 40.dp),
+            contentPadding = PaddingValues(horizontal = maxWidth * 0.07f),
             key = { i -> if (i == 0) "home" else pages.getOrNull(i - 1)?.packageName ?: i },
         ) { page ->
             val app = pages.getOrNull(page - 1)
@@ -117,7 +119,7 @@ fun LiveAreaHost(
                         val s = 1f - 0.12f * distance
                         scaleX = s
                         scaleY = s
-                        alpha = 1f - 0.40f * distance
+                        alpha = 1f - 0.85f * distance
                         translationX = signed.coerceIn(-1f, 1f) * size.width * 0.05f
                     },
                 ) {
@@ -220,16 +222,35 @@ fun LiveAreaPage(
                                 Line("Opened from here $launches time${if (launches == 1) "" else "s"}")
                             }
                             Banner("Package") { Line(app.packageName, mono = true) }
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                ActionPill("card:info:${app.packageName}", "App info", onInfo)
-                                ActionPill("card:close:${app.packageName}", "Close app", onCloseApp)
-                            }
                             Line("Drag the curled corner to close the app.", dim = true)
                         }
                     }
                 }
             }
 
+            // The sheet's edges fall into shadow, so it looks like it floats above the wallpaper.
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .drawBehind {
+                        val edge = 18.dp.toPx()
+                        drawRect(Brush.horizontalGradient(listOf(Color.Black.copy(alpha = 0.32f), Color.Transparent), 0f, edge), size = Size(edge, size.height))
+                        drawRect(
+                            Brush.horizontalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.32f)), size.width - edge, size.width),
+                            topLeft = Offset(size.width - edge, 0f), size = Size(edge, size.height),
+                        )
+                    },
+            )
+            // Square action tiles hang from the top edge, like the Vita's Update / Help tiles.
+            Row(
+                Modifier.align(Alignment.TopCenter).padding(top = 0.dp),
+                horizontalArrangement = Arrangement.spacedBy(26.dp),
+            ) {
+                if (app.action == null) {
+                    ActionTile("card:info:${app.packageName}", "i", Color(0xFF2E7DD7), onInfo)
+                    ActionTile("card:close:${app.packageName}", "\u2715", Color(0xFFE0453A), onCloseApp)
+                }
+            }
             PeelBack(baseFold + peel.value, tint)
             PeelCorner(
                 peel = peel,
@@ -314,6 +335,32 @@ private fun Line(text: String, mono: Boolean = false, dim: Boolean = false) {
         fontSize = if (mono) 11.sp else 13.sp,
         fontFamily = if (mono) FontFamily.Monospace else FontFamily.Default,
     )
+}
+
+/** A square glossy tile with a round symbol on it, hanging from the top of the page. */
+@Composable
+private fun ActionTile(key: String, glyph: String, color: Color, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp)
+    Box(
+        Modifier
+            .size(58.dp)
+            .padClickable(key, corner = 8.dp, onClick = onClick)
+            .shadow(6.dp, shape)
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(Color.White, Color(0xFFD6DCE6))))
+            .border(1.dp, Color.White.copy(alpha = 0.9f), shape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(Brush.verticalGradient(listOf(lerp(color, Color.White, 0.35f), color))),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(glyph, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        }
+    }
 }
 
 @Composable

@@ -50,6 +50,8 @@ fun Sphere(
     spot: Color = Color(0xFF0A2A6A),
     rim: Brush = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.95f), Color.White.copy(alpha = 0.35f))),
     rimWidth: Dp = 2.5.dp,
+    /** 0..1 selection glow, read while drawing: tints the bubble cyan like the Vita's selected bubble. */
+    glow: () -> Float = { 0f },
 ) {
     val full = LocalFullArt.current
     val light = lerp(app.tint, Color.White, 0.42f)
@@ -69,6 +71,14 @@ fun Sphere(
                         center = Offset(this.size.width / 2f, this.size.height / 2f + lift * 0.28f),
                     )
                 }
+                // A flat shadow on the "floor" under the bubble makes it read as a ball.
+                for (i in 3 downTo 1) {
+                    drawOval(
+                        Color.Black.copy(alpha = 0.10f),
+                        Offset(this.size.width / 2f - r * (0.55f + 0.12f * i), this.size.height / 2f + r * (1.02f + 0.03f * i)),
+                        Size(r * (1.10f + 0.24f * i), r * (0.20f + 0.05f * i)),
+                    )
+                }
                 drawCircle(Color.White.copy(alpha = 0.10f), radius = r + 8.dp.toPx())
                 drawCircle(Color.White.copy(alpha = 0.16f), radius = r + 4.dp.toPx())
             }
@@ -85,43 +95,42 @@ fun Sphere(
         contentAlignment = Alignment.Center,
     ) {
         if (full) {
-            // The art fills the bubble.
+            // The art fills the bubble, then a glass dome goes over it so it reads as a solid ball.
             Image(app.icon, app.label, Modifier.fillMaxSize())
             Box(
                 Modifier.fillMaxSize().drawWithCache {
                     val w = this.size.width
                     val h = this.size.height
+                    val c = Offset(w / 2f, h / 2f)
+                    val radius = minOf(w, h) / 2f
+                    // Dark toward the rim, so the middle bulges toward you.
                     val edge = Brush.radialGradient(
-                        0f to Color.Transparent, 0.66f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.32f),
-                        center = Offset(w / 2f, h / 2f), radius = minOf(w, h) / 2f,
+                        0f to Color.Transparent, 0.50f to Color.Transparent, 0.85f to Color.Black.copy(alpha = 0.22f),
+                        1f to Color.Black.copy(alpha = 0.55f), center = c, radius = radius,
                     )
-                    // A curved crescent of light along the top-left, like the Vita's glossy bubbles.
-                    val outer = Path().apply { addOval(Rect(w * 0.06f, h * 0.03f, w * 0.94f, h * 0.70f)) }
-                    val inner = Path().apply { addOval(Rect(w * 0.02f, h * 0.15f, w * 0.98f, h * 0.84f)) }
-                    val crescent = Path.combine(PathOperation.Difference, outer, inner)
-                    val gloss = Brush.linearGradient(
-                        listOf(Color.White.copy(alpha = 0.85f), Color.White.copy(alpha = 0.10f)),
-                        Offset(w * 0.25f, h * 0.05f), Offset(w * 0.75f, h * 0.30f),
+                    // Light bounced up from the floor, near the bottom.
+                    val bounce = Brush.radialGradient(
+                        listOf(Color.White.copy(alpha = 0.42f), Color.Transparent),
+                        center = Offset(w * 0.5f, h * 1.02f), radius = w * 0.58f,
                     )
-                    // A soft sheen over the upper half.
-                    val sheen = Brush.verticalGradient(
-                        listOf(Color.White.copy(alpha = 0.22f), Color.Transparent),
-                        startY = 0f, endY = h * 0.55f,
+                    // A big soft highlight across the top.
+                    val soft = Brush.verticalGradient(
+                        listOf(Color.White.copy(alpha = 0.62f), Color.White.copy(alpha = 0.06f)),
+                        startY = h * 0.04f, endY = h * 0.46f,
                     )
-                    val bounce = Brush.horizontalGradient(
-                        listOf(Color.Transparent, Color.White.copy(alpha = 0.55f), Color.Transparent),
+                    val spec = Brush.radialGradient(
+                        listOf(Color.White.copy(alpha = 0.95f), Color.White.copy(alpha = 0f)),
+                        center = Offset(w * 0.30f, h * 0.20f), radius = w * 0.11f,
                     )
-                    val bounceStroke = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
-                    val inset = 4.dp.toPx()
+                    val cyan = Color(0xFF16E0FF)
                     onDrawBehind {
                         drawRect(edge)
-                        drawRect(sheen)
-                        drawPath(crescent, gloss)
-                        // Light bouncing along the bottom rim.
-                        drawArc(
-                            bounce, startAngle = 45f, sweepAngle = 90f, useCenter = false,
-                            topLeft = Offset(inset, inset), size = Size(w - 2 * inset, h - 2 * inset), style = bounceStroke,
-                        )
+                        drawRect(bounce)
+                        drawOval(soft, topLeft = Offset(w * 0.14f, h * 0.045f), size = Size(w * 0.72f, h * 0.42f))
+                        // The sharp little glint of a window's reflection.
+                        drawOval(spec, topLeft = Offset(w * 0.19f, h * 0.12f), size = Size(w * 0.22f, h * 0.15f))
+                        val g = glow()
+                        if (g > 0.01f) drawRect(cyan.copy(alpha = 0.32f * g))
                     }
                 },
             )
