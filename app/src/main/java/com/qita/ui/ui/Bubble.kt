@@ -94,6 +94,10 @@ fun Bubble(
     val focused = padHighlighted(padKey)
     val lit = focused || moving
     val pulse = rememberPulse(moving)
+    // Vita-style selection: a white halo and ring with a slow cyan pulse, instead of the yellow ring.
+    val hot = focused || padHovered(padKey)
+    val glow by animateFloatAsState(if (hot) 1f else 0f, tween(VitaMotion.Short), label = "glow")
+    val glowPulse = rememberPulse(hot)
 
     // Springy grow/shrink for press, highlight and lift.
     val scale by animateFloatAsState(
@@ -133,6 +137,19 @@ fun Bubble(
         modifier
             .onGloballyPositioned { onPositioned(it.boundsInRoot()) }
             .drawBehind {
+                if (glow > 0.01f) {
+                    val c = Offset(this.size.width / 2f, size.toPx() / 2f)
+                    val r = size.toPx() / 2f
+                    drawCircle(
+                        Brush.radialGradient(
+                            0.55f to Color.White.copy(alpha = 0.50f * glow), 1f to Color.Transparent,
+                            center = c, radius = r * 1.55f,
+                        ),
+                        radius = r * 1.55f, center = c,
+                    )
+                    drawCircle(Color(0xFF7AE8FF).copy(alpha = 0.55f * glow * glowPulse), radius = r + 7.dp.toPx(), center = c, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx()))
+                    drawCircle(Color.White.copy(alpha = glow), radius = r + 2.dp.toPx(), center = c, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx()))
+                }
                 val p = ring.value
                 if (p < 1f) {
                     drawCircle(
@@ -177,7 +194,7 @@ fun Bubble(
             Sphere(
                 app, size,
                 // Registered on the sphere itself so the gamepad ring hugs it, not the label.
-                modifier = Modifier.padTarget(padKey, corner = null, app = app, pad = 10.dp, bring = false, onClick = onClick),
+                modifier = Modifier.padTarget(padKey, corner = null, app = app, pad = 10.dp, bring = false, ring = false, onClick = onClick),
                 shape = shape,
                 elevation = if (lit) (12 + 6 * pulse).dp else 7.dp,
                 spot = if (moving) MoveCyan else Color(0xFF0A2A6A),
@@ -206,10 +223,10 @@ fun Bubble(
                 Modifier
                     .padding(top = 6.dp)
                     .then(
-                        if (lit) Modifier.background(if (moving) MoveCyan else FocusYellow, RoundedCornerShape(50)).padding(horizontal = 8.dp, vertical = 1.dp)
+                        if (lit) Modifier.background(if (moving) MoveCyan else Color.White, RoundedCornerShape(50)).padding(horizontal = 9.dp, vertical = 1.dp)
                         else Modifier,
                     ),
-                color = if (lit) Color(0xFF1B1B1B) else Color.White,
+                color = if (lit) Color(0xFF0B3D91) else Color.White,
                 fontSize = 13.sp,
                 fontWeight = if (lit) FontWeight.Bold else FontWeight.Normal,
                 style = TextStyle(shadow = if (lit) null else Shadow(Color.Black.copy(alpha = 0.55f), Offset(0f, 2f), 5f)),

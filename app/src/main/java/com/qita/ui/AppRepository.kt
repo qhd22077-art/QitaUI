@@ -8,6 +8,7 @@ import android.net.Uri
 import android.provider.Settings as AndroidSettings
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import androidx.compose.ui.graphics.Color
@@ -37,7 +38,7 @@ object AppRepository {
             .filter { it.activityInfo.packageName != context.packageName }
             .map {
                 val info = runCatching { pm.getPackageInfo(it.activityInfo.packageName, 0) }.getOrNull()
-                val bitmap = it.loadIcon(pm).toBitmap(192)
+                val bitmap = bubbleArt(it.loadIcon(pm), 192)
                 LaunchableApp(
                     label = it.loadLabel(pm).toString(),
                     packageName = it.activityInfo.packageName,
@@ -99,6 +100,28 @@ object AppRepository {
         }
         if (n == 0L) return Color(0xFF4A78D0)
         return Color((r / n).toInt(), (g / n).toInt(), (b / n).toInt())
+    }
+
+    /**
+     * The art for a bubble. Adaptive icons are drawn as their background layer edge to edge with the
+     * foreground on top, cropped to the centre 72/108 that the launcher mask shows, which gives a clean round
+     * disc. Older icons are drawn a little smaller so the bubble's colour shows around them.
+     */
+    private fun bubbleArt(icon: Drawable, size: Int): Bitmap {
+        if (icon is AdaptiveIconDrawable) {
+            val full = size * 3 / 2
+            val big = Bitmap.createBitmap(full, full, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(big)
+            icon.background?.apply { setBounds(0, 0, full, full); draw(canvas) }
+            icon.foreground?.apply { setBounds(0, 0, full, full); draw(canvas) }
+            val offset = (full - size) / 2
+            return Bitmap.createBitmap(big, offset, offset, size, size)
+        }
+        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val inset = size / 10
+        icon.setBounds(inset, inset, size - inset, size - inset)
+        icon.draw(Canvas(bmp))
+        return bmp
     }
 
     private fun Drawable.toBitmap(size: Int): Bitmap {

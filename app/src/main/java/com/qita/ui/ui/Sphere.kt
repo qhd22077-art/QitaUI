@@ -15,11 +15,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathOperation
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -45,7 +49,7 @@ fun Sphere(
     elevation: Dp = 7.dp,
     spot: Color = Color(0xFF0A2A6A),
     rim: Brush = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.95f), Color.White.copy(alpha = 0.35f))),
-    rimWidth: Dp = 2.dp,
+    rimWidth: Dp = 2.5.dp,
 ) {
     val full = LocalFullArt.current
     val light = lerp(app.tint, Color.White, 0.42f)
@@ -54,9 +58,20 @@ fun Sphere(
         Modifier
             .size(size)
             .then(modifier)
-            // Soft white halo just outside the rim.
-            .drawBehind { drawCircle(Color.White.copy(alpha = 0.20f), radius = this.size.minDimension / 2f + 5.dp.toPx()) }
-            .shadow(elevation, shape, ambientColor = Color(0xFF0A2A6A), spotColor = spot)
+            // Soft shadow under the bubble and a faint white halo around it, both drawn cheaply.
+            .drawBehind {
+                val r = this.size.minDimension / 2f
+                val lift = elevation.toPx()
+                for (i in 4 downTo 1) {
+                    drawCircle(
+                        spot.copy(alpha = 0.10f),
+                        radius = r + lift * 0.10f * i,
+                        center = Offset(this.size.width / 2f, this.size.height / 2f + lift * 0.28f),
+                    )
+                }
+                drawCircle(Color.White.copy(alpha = 0.10f), radius = r + 8.dp.toPx())
+                drawCircle(Color.White.copy(alpha = 0.16f), radius = r + 4.dp.toPx())
+            }
             .clip(shape)
             .drawBehind {
                 drawRect(
@@ -70,23 +85,43 @@ fun Sphere(
         contentAlignment = Alignment.Center,
     ) {
         if (full) {
-            // The art fills the bubble; a touch larger so the corners of squircle icons are hidden.
-            Image(app.icon, app.label, Modifier.fillMaxSize().graphicsLayer { scaleX = 1.05f; scaleY = 1.05f })
+            // The art fills the bubble.
+            Image(app.icon, app.label, Modifier.fillMaxSize())
             Box(
                 Modifier.fillMaxSize().drawWithCache {
                     val w = this.size.width
                     val h = this.size.height
                     val edge = Brush.radialGradient(
-                        0f to Color.Transparent, 0.70f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.26f),
+                        0f to Color.Transparent, 0.66f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.32f),
                         center = Offset(w / 2f, h / 2f), radius = minOf(w, h) / 2f,
                     )
-                    val gloss = Brush.verticalGradient(
-                        listOf(Color.White.copy(alpha = 0.50f), Color.White.copy(alpha = 0.03f)),
-                        startY = 0f, endY = h * 0.48f,
+                    // A curved crescent of light along the top-left, like the Vita's glossy bubbles.
+                    val outer = Path().apply { addOval(Rect(w * 0.06f, h * 0.03f, w * 0.94f, h * 0.70f)) }
+                    val inner = Path().apply { addOval(Rect(w * 0.02f, h * 0.15f, w * 0.98f, h * 0.84f)) }
+                    val crescent = Path.combine(PathOperation.Difference, outer, inner)
+                    val gloss = Brush.linearGradient(
+                        listOf(Color.White.copy(alpha = 0.85f), Color.White.copy(alpha = 0.10f)),
+                        Offset(w * 0.25f, h * 0.05f), Offset(w * 0.75f, h * 0.30f),
                     )
+                    // A soft sheen over the upper half.
+                    val sheen = Brush.verticalGradient(
+                        listOf(Color.White.copy(alpha = 0.22f), Color.Transparent),
+                        startY = 0f, endY = h * 0.55f,
+                    )
+                    val bounce = Brush.horizontalGradient(
+                        listOf(Color.Transparent, Color.White.copy(alpha = 0.55f), Color.Transparent),
+                    )
+                    val bounceStroke = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
+                    val inset = 4.dp.toPx()
                     onDrawBehind {
                         drawRect(edge)
-                        drawOval(gloss, topLeft = Offset(w * 0.10f, h * 0.035f), size = Size(w * 0.80f, h * 0.44f))
+                        drawRect(sheen)
+                        drawPath(crescent, gloss)
+                        // Light bouncing along the bottom rim.
+                        drawArc(
+                            bounce, startAngle = 45f, sweepAngle = 90f, useCenter = false,
+                            topLeft = Offset(inset, inset), size = Size(w - 2 * inset, h - 2 * inset), style = bounceStroke,
+                        )
                     }
                 },
             )
@@ -110,7 +145,8 @@ fun Sphere(
                     .background(Brush.verticalGradient(listOf(Color.Transparent, Color.White.copy(alpha = 0.30f)))),
             )
         }
-        // The rim goes on last so the art never covers it.
+        // A fine dark ring inside the white rim gives the edge some depth. Both go on last so art never covers them.
+        Box(Modifier.fillMaxSize().padding(rimWidth).border(1.dp, Color.Black.copy(alpha = 0.22f), shape))
         Box(Modifier.fillMaxSize().border(rimWidth, rim, shape))
     }
 }
