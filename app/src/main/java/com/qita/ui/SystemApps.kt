@@ -7,6 +7,8 @@ import androidx.compose.ui.graphics.Canvas as ComposeCanvas
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -43,10 +45,8 @@ val SYSTEM_APPS: List<LaunchableApp> by lazy {
 
 private val Ink = Color(0xFF14161A)
 
-private fun systemApp(action: SystemAction, tint: Color, art: DrawScope.() -> Unit) = LaunchableApp(
-    label = action.label,
-    packageName = action.id,
-    icon = drawIcon {
+private fun systemApp(action: SystemAction, tint: Color, art: DrawScope.() -> Unit): LaunchableApp {
+    val icon = drawIcon {
         // A dark backdrop with a faint light in the upper left.
         drawRect(Brush.linearGradient(listOf(Color(0xFF30343C), Color(0xFF07080A)), Offset.Zero, Offset(ICON.toFloat(), ICON.toFloat())))
         drawCircle(
@@ -54,10 +54,16 @@ private fun systemApp(action: SystemAction, tint: Color, art: DrawScope.() -> Un
             radius = ICON * 0.55f, center = Offset(ICON * 0.3f, ICON * 0.25f),
         )
         art()
-    },
-    tint = tint,
-    action = action,
-)
+    }
+    return LaunchableApp(
+        label = action.label,
+        packageName = action.id,
+        icon = icon,
+        tint = tint,
+        action = action,
+        ball = SphereRenderer.render(icon.asAndroidBitmap(), 224, 0xFF0A0B0D.toInt()).asImageBitmap(),
+    )
+}
 
 private const val ICON = 256
 

@@ -54,6 +54,8 @@ fun Sphere(
     glow: () -> Float = { 0f },
 ) {
     val full = LocalFullArt.current
+    // Round bubbles use the icon pre-rendered as a lit glass ball; other shapes fall back to painted art.
+    val ball = if (full && shape == CircleShape) app.ball else null
     val light = lerp(app.tint, Color.White, 0.42f)
     val dark = lerp(app.tint, Color.Black, 0.38f)
     Box(
@@ -84,7 +86,7 @@ fun Sphere(
             }
             .clip(shape)
             .drawBehind {
-                drawRect(
+                if (ball == null) drawRect(
                     Brush.radialGradient(
                         listOf(light, app.tint, dark),
                         center = Offset(this.size.width * 0.42f, this.size.height * 0.30f),
@@ -94,7 +96,16 @@ fun Sphere(
             },
         contentAlignment = Alignment.Center,
     ) {
-        if (full) {
+        if (ball != null) {
+            Image(ball, app.label, Modifier.fillMaxSize())
+            // Selected: the whole ball glows cyan.
+            Box(
+                Modifier.fillMaxSize().drawBehind {
+                    val g = glow()
+                    if (g > 0.01f) drawCircle(Color(0xFF16E0FF).copy(alpha = 0.34f * g))
+                },
+            )
+        } else if (full) {
             // The art fills the bubble, then a glass dome goes over it so it reads as a solid ball.
             Image(app.icon, app.label, Modifier.fillMaxSize())
             Box(
@@ -154,8 +165,10 @@ fun Sphere(
                     .background(Brush.verticalGradient(listOf(Color.Transparent, Color.White.copy(alpha = 0.30f)))),
             )
         }
-        // A fine dark ring inside the white rim gives the edge some depth. Both go on last so art never covers them.
-        Box(Modifier.fillMaxSize().padding(rimWidth).border(1.dp, Color.Black.copy(alpha = 0.22f), shape))
-        Box(Modifier.fillMaxSize().border(rimWidth, rim, shape))
+        if (ball == null) {
+            // A fine dark ring inside the white rim gives the edge some depth. Both go on last so art never covers them.
+            Box(Modifier.fillMaxSize().padding(rimWidth).border(1.dp, Color.Black.copy(alpha = 0.22f), shape))
+            Box(Modifier.fillMaxSize().border(rimWidth, rim, shape))
+        }
     }
 }

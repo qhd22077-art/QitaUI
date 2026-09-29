@@ -28,6 +28,8 @@ data class LaunchableApp(
     val tint: Color = Color(0xFF4A78D0),
     /** Set for the built-in bubbles (Settings, Store, Desktop), which are not real Android apps. */
     val action: SystemAction? = null,
+    /** The icon rendered as a lit glass ball (see [SphereRenderer]); null until rendered. */
+    val ball: ImageBitmap? = null,
 )
 
 object AppRepository {
@@ -39,11 +41,13 @@ object AppRepository {
             .map {
                 val info = runCatching { pm.getPackageInfo(it.activityInfo.packageName, 0) }.getOrNull()
                 val bitmap = bubbleArt(it.loadIcon(pm), 192)
+                val tint = averageColor(bitmap)
                 LaunchableApp(
                     label = it.loadLabel(pm).toString(),
                     packageName = it.activityInfo.packageName,
                     icon = bitmap.asImageBitmap(),
-                    tint = averageColor(bitmap),
+                    tint = tint,
+                    ball = SphereRenderer.render(bitmap, 224, darkBody(tint)).asImageBitmap(),
                     installTime = info?.firstInstallTime ?: 0L,
                     version = info?.versionName.orEmpty(),
                     category = it.activityInfo.applicationInfo.category,
@@ -80,6 +84,14 @@ object AppRepository {
     fun close(context: Context, app: LaunchableApp) {
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         am.killBackgroundProcesses(app.packageName)
+    }
+
+    /** The glass body colour behind transparent parts of an icon: the icon's colour, darkened. */
+    internal fun darkBody(tint: Color): Int {
+        val r = (tint.red * 0.35f * 255f).toInt()
+        val g = (tint.green * 0.35f * 255f).toInt()
+        val b = (tint.blue * 0.35f * 255f).toInt()
+        return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
     }
 
     /** Mean colour of the opaque pixels, sampled on a coarse grid. */
