@@ -31,9 +31,9 @@ val SYSTEM_IDS: List<String> = SystemAction.values().map { it.id }
 /** The three built-in bubbles. Their icons are drawn in code, so no image assets are needed. */
 val SYSTEM_APPS: List<LaunchableApp> by lazy {
     listOf(
-        systemApp(SystemAction.SETTINGS, Color(0xFF3FAA55), ::drawToolbox),
-        systemApp(SystemAction.STORE, Color(0xFF2E7DD7), ::drawBag),
-        systemApp(SystemAction.DESKTOP, Color(0xFFE2761B), ::drawMonitor),
+        systemApp(SystemAction.SETTINGS, Color(0xFF3FAA55)) { drawToolbox(it) },
+        systemApp(SystemAction.STORE, Color(0xFF2E7DD7)) { drawBag(it) },
+        systemApp(SystemAction.DESKTOP, Color(0xFFE2761B)) { drawMonitor(it) },
     )
 }
 
