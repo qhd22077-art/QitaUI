@@ -64,6 +64,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -112,6 +113,8 @@ fun HomeScreen(homePresses: Int = 0) {
     var showTutorial by remember { mutableStateOf(!store.tutorialSeen()) }
     var showQuickMenu by remember { mutableStateOf(false) }
     var showLock by remember { mutableStateOf(settings.lockScreen) }
+    var editMode by remember { mutableStateOf(false) }
+    var liveOrigin by remember { mutableStateOf(TransformOrigin.Center) }
     var toast by remember { mutableStateOf<String?>(null) }
     var lastToast by remember { mutableStateOf("") }
     var apps by remember { mutableStateOf<List<LaunchableApp>>(emptyList()) }
@@ -172,7 +175,9 @@ fun HomeScreen(homePresses: Int = 0) {
         toast = "Closed ${app.label}"
     }
     /** Opens (or brings to the front) an app's LiveArea page. */
-    fun openLiveArea(app: LaunchableApp) {
+    fun openLiveArea(app: LaunchableApp, from: Offset? = null) {
+        // The page grows out of the bubble that was tapped (and shrinks back into it).
+        liveOrigin = if (from != null && rootWidth > 0 && rootHeight > 0) TransformOrigin(from.x / rootWidth, from.y / rootHeight) else TransformOrigin.Center
         openPages = (listOf(app) + openPages.filter { it.packageName != app.packageName }).take(6)
         selected = app
     }
@@ -347,7 +352,7 @@ fun HomeScreen(homePresses: Int = 0) {
     // Pressing Home while the launcher is open closes everything and returns to the first page.
     LaunchedEffect(homePresses) {
         if (homePresses > 0) {
-            selected = null; showSettings = false; showSearch = false; showDesktop = false; menuFor = null; showQuickMenu = false; dragApp = null
+            selected = null; showSettings = false; showSearch = false; showDesktop = false; menuFor = null; showQuickMenu = false; editMode = false; dragApp = null
             endMove(true)
             pagerState.animateScrollToPage(0)
         }
@@ -374,6 +379,8 @@ fun HomeScreen(homePresses: Int = 0) {
         }
     }
 
+    // Lowest priority: Back leaves edit mode only when nothing else is open.
+    BackHandler(enabled = editMode) { editMode = false }
     BackHandler(enabled = crashTrace != null && !showLock) { CrashReporter.clear(context); crashTrace = null }
     BackHandler(enabled = menuOpen && crashTrace == null) { menuFor = null; showQuickMenu = false }
     BackHandler(enabled = showTutorial && !menuOpen) { showTutorial = false; store.setTutorialSeen() }
@@ -394,6 +401,7 @@ fun HomeScreen(homePresses: Int = 0) {
         BubbleBackground(
             top = settings.theme.top, mid = settings.theme.mid, bottom = settings.theme.bottom, particles = settings.particles,
             wallpaper = wallpaper, particleCount = settings.particleCount, dim = settings.dim,
+            scroll = { pagerState.currentPage + pagerState.currentPageOffsetFraction },
         )
         Column(
             Modifier
@@ -416,9 +424,11 @@ fun HomeScreen(homePresses: Int = 0) {
                 hiddenPackage = dragApp?.packageName,
                 movingPackage = Controller.movingPackage,
                 modifier = Modifier.weight(1f).padding(bottom = hintPad.coerceAtLeast(0.dp)),
-                onSelect = { openLiveArea(it) },
+                onSelect = { app -> if (editMode) menuFor = app else openLiveArea(app, rects[app.packageName]?.center) },
                 onOpenDesktop = { showDesktop = true },
                 onOpenRecent = { openPages.firstOrNull()?.let { selected = it } },
+                editing = editMode,
+                onRemove = { removeFromHome(it) },
                 onDragStart = { app, local ->
                     dragApp = app
                     dragTravel = 0f
@@ -428,8 +438,8 @@ fun HomeScreen(homePresses: Int = 0) {
                 onDrag = { delta -> dragPos += delta; dragTravel += delta.getDistance() },
                 onDragEnd = {
                     dragApp?.let { app ->
-                        // No real movement means a plain long-press: show the app menu instead of rearranging.
-                        if (dragTravel < 24f) menuFor = app else drop(app)
+                        // No real movement means a plain long-press: enter edit mode (wiggling bubbles).
+                        if (dragTravel < 24f) { if (!editMode) editMode = true } else drop(app)
                     }
                     dragApp = null
                 },
@@ -442,6 +452,22 @@ fun HomeScreen(homePresses: Int = 0) {
             onClick = { showQuickMenu = true },
             modifier = Modifier.align(Alignment.TopEnd).offset(x = 24.dp, y = (-22).dp),
         )
+        // Edit mode: a Done pill in the bottom-right corner ends it.
+        AnimatedVisibility(
+            visible = editMode,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 22.dp, bottom = 18.dp),
+            enter = fadeIn(tween(160)) + slideInVertically(spring(dampingRatio = 0.75f, stiffness = 450f)) { it },
+            exit = fadeOut(tween(140)) + slideOutVertically(tween(160)) { it },
+        ) {
+            Text(
+                "Done",
+                Modifier
+                    .padClickable("home:done", corner = null, onClick = { editMode = false })
+                    .background(Color.White, RoundedCornerShape(50))
+                    .padding(horizontal = 30.dp, vertical = 10.dp),
+                color = Color(0xFF0B3D91), fontWeight = FontWeight.Bold, fontSize = 16.sp,
+            )
+        }
         // The bubble being dragged, following the finger.
         dragApp?.let { app ->
             val half = with(density) { 44.dp.toPx() }
@@ -457,8 +483,8 @@ fun HomeScreen(homePresses: Int = 0) {
         }
         AnimatedVisibility(
             visible = selected != null,
-            enter = fadeIn(tween(220)) + scaleIn(initialScale = 0.9f, animationSpec = spring(dampingRatio = 0.8f, stiffness = 380f)),
-            exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.94f, animationSpec = tween(200)),
+            enter = fadeIn(tween(200)) + scaleIn(initialScale = 0.12f, transformOrigin = liveOrigin, animationSpec = spring(dampingRatio = 0.82f, stiffness = 330f)),
+            exit = fadeOut(tween(220)) + scaleOut(targetScale = 0.12f, transformOrigin = liveOrigin, animationSpec = tween(280)),
         ) {
             CompositionLocalProvider(LocalPadLayer provides 1) {
                 LiveAreaHost(
@@ -503,7 +529,7 @@ fun HomeScreen(homePresses: Int = 0) {
             CompositionLocalProvider(LocalPadLayer provides 2) {
                 SearchOverlay(
                     apps = apps, settings = settings, wallpaper = wallpaper,
-                    onPick = { showSearch = false; openLiveArea(it) },
+                    onPick = { showSearch = false; openLiveArea(it, null) },
                     onClose = { showSearch = false },
                 )
             }
@@ -538,6 +564,7 @@ fun HomeScreen(homePresses: Int = 0) {
                 title = "QitaUI",
                 subtitle = "Launcher menu",
                 items = listOf(
+                    MenuItem("Edit home screen") { showQuickMenu = false; editMode = true },
                     MenuItem("Desktop") { showQuickMenu = false; showDesktop = true },
                     MenuItem("Search") { showQuickMenu = false; showSearch = true },
                     MenuItem("Settings") { showQuickMenu = false; showSettings = true },
@@ -621,6 +648,7 @@ fun HomeScreen(homePresses: Int = 0) {
             showSettings -> listOf("D-pad" to "Move / adjust", "A" to "Toggle", "B" to "Done")
             showSearch -> listOf("D-pad" to "Move", "A" to "Open", "B" to "Close")
             showDesktop -> listOf("A" to "Launch", "X" to "Options", "Y" to "Add / remove", "L1" to "Folder", "L2" to "Close", "B" to "Back")
+            editMode && selected == null -> listOf("A" to "Options", "Y" to "Move", "B" to "Done")
             selected != null -> listOf("A" to "Start", "X" to "Options", "L1" to "Prev", "R1" to "Next", "B" to "Home")
             else -> listOf("A" to "Open", "X" to "Options", "Y" to "Move", "L1" to "Prev", "R1" to "Next", "L2" to "Desktop", "R2" to "Search", "START" to "Settings")
         }
@@ -664,6 +692,8 @@ private fun BubblePager(
     onSelect: (LaunchableApp) -> Unit,
     onOpenDesktop: () -> Unit,
     onOpenRecent: () -> Unit,
+    editing: Boolean,
+    onRemove: (LaunchableApp) -> Unit,
     onDragStart: (LaunchableApp, Offset) -> Unit,
     onDrag: (Offset) -> Unit,
     onDragEnd: () -> Unit,
@@ -742,6 +772,8 @@ private fun BubblePager(
                             shape = if (settings.roundedBubbles) RoundedCornerShape(28) else CircleShape,
                             showLabel = settings.showLabels,
                             moving = app.packageName == movingPackage,
+                            editing = editing,
+                            onRemove = { onRemove(app) },
                             enterDelay = i * 45,
                             onDragStart = { onDragStart(app, it) },
                             onDrag = onDrag,

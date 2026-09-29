@@ -1,14 +1,22 @@
 package com.qita.ui.ui
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
@@ -20,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -69,6 +78,8 @@ fun Bubble(
     shape: Shape = CircleShape,
     showLabel: Boolean = true,
     moving: Boolean = false,
+    editing: Boolean = false,
+    onRemove: () -> Unit = {},
     enterDelay: Int = 0,
     onDragStart: (Offset) -> Unit = {},
     onDrag: (Offset) -> Unit = {},
@@ -95,6 +106,15 @@ fun Bubble(
         appear.animateTo(1f, spring(dampingRatio = 0.65f, stiffness = 300f))
     }
 
+    // Edit mode: the bubble wiggles, each with its own rhythm, and shows a remove badge.
+    val wiggle: State<Float>? = if (editing) {
+        rememberInfiniteTransition(label = "wiggle").animateFloat(
+            -2.4f, 2.4f,
+            infiniteRepeatable(tween(120 + (app.packageName.hashCode() and 0x3F), easing = LinearEasing), RepeatMode.Reverse),
+            label = "wiggleAngle",
+        )
+    } else null
+
     val start by rememberUpdatedState(onDragStart)
     val drag by rememberUpdatedState(onDrag)
     val end by rememberUpdatedState(onDragEnd)
@@ -106,31 +126,59 @@ fun Bubble(
                 val s = scale * (0.6f + 0.4f * appear.value)
                 scaleX = s
                 scaleY = s
+                rotationZ = wiggle?.value ?: 0f
                 alpha = (if (hidden) 0f else 1f) * appear.value.coerceIn(0f, 1f)
             }
             .clickable(interaction, indication = null, onClick = onClick)
             // After clickable in the chain so it sees events first and consumes the final "up" of a
             // long-press drag, which stops the clickable from also firing a tap.
-            .pointerInput(Unit) {
-                detectDragGesturesAfterLongPress(
-                    onDragStart = { start(it) },
-                    onDrag = { change, amount -> change.consume(); drag(amount) },
-                    onDragEnd = { end() },
-                    onDragCancel = { cancel() },
-                )
+            .pointerInput(editing) {
+                if (editing) {
+                    // While editing, a bubble can be picked up straight away.
+                    detectDragGestures(
+                        onDragStart = { start(it) },
+                        onDrag = { change, amount -> change.consume(); drag(amount) },
+                        onDragEnd = { end() },
+                        onDragCancel = { cancel() },
+                    )
+                } else {
+                    detectDragGesturesAfterLongPress(
+                        onDragStart = { start(it) },
+                        onDrag = { change, amount -> change.consume(); drag(amount) },
+                        onDragEnd = { end() },
+                        onDragCancel = { cancel() },
+                    )
+                }
             },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Sphere(
-            app, size,
-            // Registered on the sphere itself so the gamepad ring hugs it, not the label.
-            modifier = Modifier.padTarget(padKey, corner = null, app = app, pad = 10.dp, bring = false, onClick = onClick),
-            shape = shape,
-            elevation = if (lit) (12 + 6 * pulse).dp else 7.dp,
-            spot = if (moving) MoveCyan else Color(0xFF0A2A6A),
-            rim = if (moving) Brush.linearGradient(listOf(MoveCyan, MoveCyan)) else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.95f), Color.White.copy(alpha = 0.35f))),
-            rimWidth = if (moving) 4.dp else 2.dp,
-        )
+        Box {
+            Sphere(
+                app, size,
+                // Registered on the sphere itself so the gamepad ring hugs it, not the label.
+                modifier = Modifier.padTarget(padKey, corner = null, app = app, pad = 10.dp, bring = false, onClick = onClick),
+                shape = shape,
+                elevation = if (lit) (12 + 6 * pulse).dp else 7.dp,
+                spot = if (moving) MoveCyan else Color(0xFF0A2A6A),
+                rim = if (moving) Brush.linearGradient(listOf(MoveCyan, MoveCyan)) else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.95f), Color.White.copy(alpha = 0.35f))),
+                rimWidth = if (moving) 4.dp else 2.dp,
+            )
+            if (editing) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .offset(x = (-2).dp, y = (-2).dp)
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFE53935))
+                        .border(2.dp, Color.White, CircleShape)
+                        .clickable(onClick = onRemove),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("\u2715", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
         if (showLabel) {
             Text(
                 app.label,

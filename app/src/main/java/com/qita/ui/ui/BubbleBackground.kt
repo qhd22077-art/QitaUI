@@ -44,6 +44,8 @@ fun BubbleBackground(
     wallpaper: ImageBitmap? = null,
     particleCount: Int = 28,
     dim: Float = 0f,
+    /** Current home page (fractional while swiping); the swooshes drift with it. Read while drawing. */
+    scroll: () -> Float = { 0f },
 ) {
     val topColor by animateColorAsState(top, tween(600), label = "top")
     val midColor by animateColorAsState(mid, tween(600), label = "mid")
@@ -52,7 +54,7 @@ fun BubbleBackground(
         if (wallpaper != null) {
             Image(wallpaper, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         } else {
-            Swooshes(topColor, midColor, bottomColor)
+            Swooshes(topColor, midColor, bottomColor, scroll)
         }
         if (dim > 0f) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dim)))
         if (particles) Particles(particleCount)
@@ -60,7 +62,7 @@ fun BubbleBackground(
 }
 
 @Composable
-private fun Swooshes(top: Color, mid: Color, bottom: Color) {
+private fun Swooshes(top: Color, mid: Color, bottom: Color, scroll: () -> Float) {
     val phase by rememberInfiniteTransition(label = "swoosh").animateFloat(
         0f, (2 * PI).toFloat(),
         infiniteRepeatable(tween(22_000, easing = LinearEasing), RepeatMode.Restart),
@@ -72,9 +74,11 @@ private fun Swooshes(top: Color, mid: Color, bottom: Color) {
         drawRect(
             Brush.verticalGradient(listOf(Color.Transparent, Color.White.copy(alpha = 0.35f)), startY = size.height * 0.62f, endY = size.height),
         )
-        swoosh(0.74f, 0.040f, 0.16f, 0.55f, phase)
-        swoosh(0.83f, 0.050f, 0.20f, 0.28f, phase * 0.7f + 1.5f)
-        swoosh(0.63f, 0.035f, 0.10f, 0.16f, phase * 1.2f + 3f)
+        // Each band drifts a different distance as the page changes, which gives a sense of depth.
+        val page = scroll()
+        swoosh(0.74f - page * 0.030f, 0.040f, 0.16f, 0.55f, phase)
+        swoosh(0.83f - page * 0.050f, 0.050f, 0.20f, 0.28f, phase * 0.7f + 1.5f)
+        swoosh(0.63f - page * 0.020f, 0.035f, 0.10f, 0.16f, phase * 1.2f + 3f)
     }
 }
 
