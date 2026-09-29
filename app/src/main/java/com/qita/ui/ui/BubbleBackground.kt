@@ -8,6 +8,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -34,6 +35,8 @@ fun BubbleBackground(
     bottom: Color = Color(0xFF4FB6F0),
     particles: Boolean = true,
     wallpaper: ImageBitmap? = null,
+    particleCount: Int = 28,
+    dim: Float = 0f,
 ) {
     Box(modifier.fillMaxSize()) {
         if (wallpaper != null) {
@@ -41,15 +44,16 @@ fun BubbleBackground(
         } else {
             Canvas(Modifier.fillMaxSize()) { drawRect(Brush.verticalGradient(listOf(top, bottom))) }
         }
-        if (particles) Particles()
+        if (dim > 0f) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dim)))
+        if (particles) Particles(particleCount)
     }
 }
 
 @Composable
-private fun Particles() {
-    val list = remember {
+private fun Particles(count: Int) {
+    val list = remember(count) {
         val rnd = Random(7)
-        List(28) {
+        List(count) {
             Particle(rnd.nextFloat(), rnd.nextFloat(), 0.008f + rnd.nextFloat() * 0.03f, 0.3f + rnd.nextFloat(), rnd.nextFloat() * 0.03f, 0.08f + rnd.nextFloat() * 0.2f)
         }
     }

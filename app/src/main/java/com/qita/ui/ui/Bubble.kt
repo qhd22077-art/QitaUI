@@ -27,6 +27,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -50,6 +51,8 @@ fun Bubble(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     hidden: Boolean = false,
+    shape: Shape = CircleShape,
+    showLabel: Boolean = true,
     onDragStart: (Offset) -> Unit = {},
     onDrag: (Offset) -> Unit = {},
     onDragEnd: () -> Unit = {},
@@ -84,14 +87,14 @@ fun Bubble(
         Box(
             Modifier
                 .size(size)
-                .clip(CircleShape)
+                .clip(shape)
                 .background(Brush.verticalGradient(listOf(Color.White, Color(0xFFD5EBFA))))
-                .border(2.dp, Color.White.copy(alpha = 0.8f), CircleShape),
+                .border(2.dp, Color.White.copy(alpha = 0.8f), shape),
             contentAlignment = Alignment.Center,
         ) {
             Image(
                 app.icon, app.label,
-                Modifier.size(size * 0.66f).clip(CircleShape),
+                Modifier.size(size * 0.66f).clip(shape),
             )
             // Gloss highlight on the upper half.
             Box(
@@ -99,11 +102,11 @@ fun Bubble(
                     .align(Alignment.TopCenter)
                     .padding(top = size * 0.04f)
                     .size(size * 0.8f, size * 0.4f)
-                    .clip(CircleShape)
+                    .clip(shape)
                     .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.55f), Color.Transparent))),
             )
         }
-        Text(
+        if (showLabel) Text(
             app.label,
             Modifier.padding(top = 6.dp),
             color = Color.White, fontSize = 12.sp, maxLines = 1,

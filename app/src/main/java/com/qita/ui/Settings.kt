@@ -22,6 +22,13 @@ val THEMES = listOf(
     Theme("Midnight", Color(0xFF0A0F2C), Color(0xFF2A3A7A)),
 )
 
+/** Bubble rows per page. The page size is the sum of a layout's rows. */
+val LAYOUTS = listOf(
+    "Staggered" to listOf(4, 3, 3),
+    "Grid" to listOf(4, 4, 4),
+    "Wide" to listOf(5, 5),
+)
+
 data class Settings(
     val themeIndex: Int = 0,
     val particles: Boolean = true,
@@ -29,6 +36,13 @@ data class Settings(
     val use24h: Boolean = false,
     val showBattery: Boolean = true,
     val sortNewest: Boolean = false,
+    val layoutIndex: Int = 0,
+    val roundedBubbles: Boolean = false,
+    val showLabels: Boolean = true,
+    val showDots: Boolean = true,
+    val particleCount: Int = 28,
+    val dim: Float = 0f,
+    val haptics: Boolean = true,
 ) {
     val theme: Theme get() = THEMES[themeIndex.coerceIn(THEMES.indices)]
 }
@@ -45,6 +59,13 @@ class SettingsStore(private val context: Context) {
         use24h = prefs.getBoolean("use24h", false),
         showBattery = prefs.getBoolean("showBattery", true),
         sortNewest = prefs.getBoolean("sortNewest", false),
+        layoutIndex = prefs.getInt("layout", 0),
+        roundedBubbles = prefs.getBoolean("rounded", false),
+        showLabels = prefs.getBoolean("labels", true),
+        showDots = prefs.getBoolean("dots", true),
+        particleCount = prefs.getInt("particleCount", 28),
+        dim = prefs.getFloat("dim", 0f),
+        haptics = prefs.getBoolean("haptics", true),
     )
 
     fun save(s: Settings) {
@@ -55,6 +76,13 @@ class SettingsStore(private val context: Context) {
             .putBoolean("use24h", s.use24h)
             .putBoolean("showBattery", s.showBattery)
             .putBoolean("sortNewest", s.sortNewest)
+            .putInt("layout", s.layoutIndex)
+            .putBoolean("rounded", s.roundedBubbles)
+            .putBoolean("labels", s.showLabels)
+            .putBoolean("dots", s.showDots)
+            .putInt("particleCount", s.particleCount)
+            .putFloat("dim", s.dim)
+            .putBoolean("haptics", s.haptics)
             .apply()
     }
 
@@ -63,6 +91,12 @@ class SettingsStore(private val context: Context) {
 
     fun saveOrder(order: List<String>) {
         prefs.edit().putString("order", order.joinToString("\n")).apply()
+    }
+
+    fun loadHidden(): Set<String> = prefs.getStringSet("hidden", emptySet()).orEmpty().toSet()
+
+    fun saveHidden(hidden: Set<String>) {
+        prefs.edit().putStringSet("hidden", hidden).apply()
     }
 
     fun loadWallpaper(): ImageBitmap? =
