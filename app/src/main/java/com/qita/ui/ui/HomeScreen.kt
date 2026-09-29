@@ -478,7 +478,7 @@ fun HomeScreen(homePresses: Int = 0) {
                 hiddenPackage = dragApp?.packageName,
                 movingPackage = Controller.movingPackage,
                 modifier = Modifier.weight(1f).padding(bottom = hintPad.coerceAtLeast(0.dp)),
-                editAmt = editAmt,
+                editAmt = { editAmt },
                 onLongPressAt = { p ->
                     if (!editMode && dragApp == null && rects.values.none { it.contains(p) }) {
                         editMode = true
@@ -810,7 +810,7 @@ private fun BubblePager(
     onSelect: (LaunchableApp) -> Unit,
     onOpenDesktop: () -> Unit,
     onOpenRecent: () -> Unit,
-    editAmt: Float,
+    editAmt: () -> Float,
     onLongPressAt: (Offset) -> Unit,
     editing: Boolean,
     onRemove: (LaunchableApp) -> Unit,
@@ -865,7 +865,7 @@ private fun BubblePager(
             pagerState,
             Modifier.fillMaxSize().padScroller { pagerState.animateScrollBy(it) },
             // The page edit view zooms out: the pages shrink inside a margin, so the frame and neighbours show.
-            contentPadding = PaddingValues(horizontal = (44.dp * editAmt).coerceAtLeast(0.dp), vertical = (22.dp * editAmt).coerceAtLeast(0.dp)),
+            contentPadding = PaddingValues(horizontal = (44.dp * editAmt()).coerceAtLeast(0.dp), vertical = (22.dp * editAmt()).coerceAtLeast(0.dp)),
             beyondViewportPageCount = pages.size,
         ) { index ->
             val pageApps = pages.getOrElse(index) { emptyList() }
@@ -884,14 +884,14 @@ private fun BubblePager(
                 // The sphere is a quarter of the page height, like the real home screen.
                 val bubble = (minOf(maxHeight * 0.25f, maxWidth * 0.14f) * scale).coerceAtLeast(40.dp)
                 val column = bubble + 56.dp
-                if (editAmt > 0.01f) {
+                if (editAmt() > 0.01f) {
                     // The translucent frame around the page being edited.
                     val frame = RoundedCornerShape(6.dp)
                     Box(
                         Modifier
                             .fillMaxSize()
                             .padding(2.dp)
-                            .graphicsLayer { alpha = editAmt }
+                            .graphicsLayer { alpha = editAmt() }
                             .background(Color.White.copy(alpha = 0.16f), frame)
                             .border(1.dp, Color.White.copy(alpha = 0.5f), frame),
                     )

@@ -40,6 +40,19 @@ class MainActivity : ComponentActivity() {
     private var sawDpadKey = false
     private var injecting = false
 
+    /** Asks for the display's fastest mode at the current resolution, so 90/120 Hz screens are used fully. */
+    @Suppress("DEPRECATION")
+    private fun requestTopRefreshRate() {
+        runCatching {
+            val display = windowManager.defaultDisplay
+            val current = display.mode
+            val best = display.supportedModes
+                .filter { it.physicalWidth == current.physicalWidth && it.physicalHeight == current.physicalHeight }
+                .maxByOrNull { it.refreshRate }
+            if (best != null) window.attributes = window.attributes.apply { preferredDisplayModeId = best.modeId }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         CrashReporter.install(this)
         super.onCreate(savedInstanceState)
@@ -48,6 +61,7 @@ class MainActivity : ComponentActivity() {
             hide(WindowInsetsCompat.Type.systemBars())
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
+        requestTopRefreshRate()
         setContent { HomeScreen(homePresses) }
     }
 

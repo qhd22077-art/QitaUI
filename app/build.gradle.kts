@@ -18,7 +18,10 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // Compose is much smoother without debug overhead. Signed with the debug key so it installs like the debug build.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {
@@ -49,4 +52,6 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
+    // Installs the baseline profile that ships with the Compose libraries, which speeds up first run.
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
 }

@@ -22,14 +22,14 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.10.2"
-      - name: Build debug APK
-        run: gradle :app:assembleDebug --no-daemon --stacktrace
+      - name: Build release APK
+        run: gradle :app:assembleRelease --no-daemon --stacktrace
       - uses: actions/upload-artifact@v4
         with:
-          name: QitaUI-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: QitaUI-apk
+          path: app/build/outputs/apk/release/app-release.apk
       - name: Name the APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk QitaUI-debug.apk
+        run: cp app/build/outputs/apk/release/app-release.apk QitaUI.apk
       - name: Publish release
         if: github.ref == 'refs/heads/claude/ps-vita-android-software-w7vqu2' || github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
@@ -37,12 +37,12 @@ jobs:
           tag_name: build-${{ github.run_number }}
           name: QitaUI build ${{ github.run_number }}
           body: |
-            Debug build of QitaUI from commit ${{ github.sha }}.
-            Download `QitaUI-debug.apk` below and install it on your Android device.
+            Build of QitaUI from commit ${{ github.sha }}.
+            Download `QitaUI.apk` below and install it on your Android device.
           prerelease: true
           make_latest: false
           target_commitish: ${{ github.sha }}
-          files: QitaUI-debug.apk
+          files: QitaUI.apk
 
   lint:
     runs-on: ubuntu-latest
