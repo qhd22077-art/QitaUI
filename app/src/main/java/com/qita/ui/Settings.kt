@@ -3,6 +3,8 @@ package com.qita.ui
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.net.Uri
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -26,6 +28,7 @@ data class Settings(
     val bubbleScale: Float = 1f,
     val use24h: Boolean = false,
     val showBattery: Boolean = true,
+    val sortNewest: Boolean = false,
 ) {
     val theme: Theme get() = THEMES[themeIndex.coerceIn(THEMES.indices)]
 }
@@ -41,6 +44,7 @@ class SettingsStore(private val context: Context) {
         bubbleScale = prefs.getFloat("bubbleScale", 1f),
         use24h = prefs.getBoolean("use24h", false),
         showBattery = prefs.getBoolean("showBattery", true),
+        sortNewest = prefs.getBoolean("sortNewest", false),
     )
 
     fun save(s: Settings) {
@@ -50,6 +54,7 @@ class SettingsStore(private val context: Context) {
             .putFloat("bubbleScale", s.bubbleScale)
             .putBoolean("use24h", s.use24h)
             .putBoolean("showBattery", s.showBattery)
+            .putBoolean("sortNewest", s.sortNewest)
             .apply()
     }
 
@@ -66,8 +71,20 @@ class SettingsStore(private val context: Context) {
         val bmp = resolver.openInputStream(uri)?.use {
             BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
         } ?: return null
-        wallpaperFile.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it) }
-        bmp.asImageBitmap()
+        // Camera photos are often stored rotated with an EXIF tag; apply it so the wallpaper is upright.
+        val orientation = resolver.openInputStream(uri)?.use {
+            ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+        } ?: ExifInterface.ORIENTATION_NORMAL
+        val degrees = when (orientation) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+            ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+            ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+            else -> 0f
+        }
+        val upright = if (degrees == 0f) bmp else
+            Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, Matrix().apply { postRotate(degrees) }, true)
+        wallpaperFile.outputStream().use { upright.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+        upright.asImageBitmap()
     }.getOrNull()
 
     fun clearWallpaper() {

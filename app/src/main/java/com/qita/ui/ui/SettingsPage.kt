@@ -4,6 +4,8 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -51,7 +53,7 @@ fun SettingsPage(
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) onWallpaper(uri)
     }
-    Box(Modifier.fillMaxSize().clickable(enabled = false) {}) {
+    Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }) {
         BubbleBackground(top = settings.theme.top, bottom = settings.theme.bottom, particles = settings.particles, wallpaper = wallpaper)
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.25f)))
         Column(Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 48.dp, vertical = 16.dp)) {
@@ -96,14 +98,16 @@ fun SettingsPage(
                     ToggleRow("Floating particles", settings.particles) { onChange(settings.copy(particles = it)) }
                     ToggleRow("24-hour clock", settings.use24h) { onChange(settings.copy(use24h = it)) }
                     ToggleRow("Show battery level", settings.showBattery) { onChange(settings.copy(showBattery = it)) }
+                    ToggleRow("Sort newest apps first", settings.sortNewest) { onChange(settings.copy(sortNewest = it)) }
                     Text("Bubble size", color = Color.White, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
                     Slider(
                         value = settings.bubbleScale,
                         onValueChange = { onChange(settings.copy(bubbleScale = it)) },
-                        valueRange = 0.7f..1.2f,
+                        valueRange = 0.7f..1.1f,
                         modifier = Modifier.width(320.dp),
                     )
                 }
+                Pill("Reset settings") { onChange(Settings()) }
                 Text(
                     "Tip: long-press a bubble for App info and Uninstall.",
                     color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp, modifier = Modifier.padding(bottom = 16.dp),

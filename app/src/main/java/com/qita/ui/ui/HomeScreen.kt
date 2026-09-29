@@ -8,6 +8,12 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.qita.ui.SettingsStore
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -56,21 +62,25 @@ private val PAGE_SIZE = ROW_SIZES.sum()
 
 /** Vita-style home: swipeable pages of bubbles; tap one to open its full-screen LiveArea page. */
 @Composable
-fun HomeScreen() {
+fun HomeScreen(homePresses: Int = 0) {
     val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
     val store = remember { SettingsStore(context) }
     var settings by remember { mutableStateOf(store.load()) }
     var wallpaper by remember { mutableStateOf(store.loadWallpaper()) }
     var apps by remember { mutableStateOf<List<LaunchableApp>>(emptyList()) }
+    var reload by remember { mutableStateOf(0) }
     var selected by remember { mutableStateOf<LaunchableApp?>(null) }
+    var lastSelected by remember { mutableStateOf<LaunchableApp?>(null) }
     var menuFor by remember { mutableStateOf<LaunchableApp?>(null) }
     var showSettings by remember { mutableStateOf(false) }
 
-    // Load the app list, and reload whenever an app is installed, removed or updated.
+    // Loading icons is slow with many apps, so do it off the main thread.
+    LaunchedEffect(reload) { apps = withContext(Dispatchers.Default) { AppRepository.load(context) } }
+    // Reload whenever an app is installed, removed or updated.
     DisposableEffect(Unit) {
-        apps = AppRepository.load(context)
         val receiver = object : BroadcastReceiver() {
-            override fun onReceive(c: Context, i: Intent) { apps = AppRepository.load(context) }
+            override fun onReceive(c: Context, i: Intent) { reload++ }
         }
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_ADDED)
@@ -78,8 +88,23 @@ fun HomeScreen() {
             addAction(Intent.ACTION_PACKAGE_CHANGED)
             addDataScheme("package")
         }
-        context.registerReceiver(receiver, filter)
+        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_EXPORTED)
         onDispose { context.unregisterReceiver(receiver) }
+    }
+    LaunchedEffect(selected) { if (selected != null) lastSelected = selected }
+
+    val shown = remember(apps, settings.sortNewest) {
+        if (settings.sortNewest) apps.sortedByDescending { it.installTime } else apps
+    }
+    val pageCount = maxOf(1, (shown.size + PAGE_SIZE - 1) / PAGE_SIZE)
+    val pagerState = rememberPagerState { pageCount }
+
+    // Pressing Home while the launcher is open closes everything and returns to the first page.
+    LaunchedEffect(homePresses) {
+        if (homePresses > 0) {
+            selected = null; showSettings = false; menuFor = null
+            pagerState.animateScrollToPage(0)
+        }
     }
 
     BackHandler(enabled = showSettings) { showSettings = false }
@@ -89,14 +114,21 @@ fun HomeScreen() {
         BubbleBackground(top = settings.theme.top, bottom = settings.theme.bottom, particles = settings.particles, wallpaper = wallpaper)
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             StatusBar(settings.use24h, settings.showBattery, onSettings = { showSettings = true })
-            BubblePager(apps, settings.bubbleScale, Modifier.weight(1f), onSelect = { selected = it }, onLongPress = { menuFor = it })
+            BubblePager(
+                shown, pagerState, settings.bubbleScale, Modifier.weight(1f),
+                onSelect = { selected = it },
+                onLongPress = { haptics.performHapticFeedback(HapticFeedbackType.LongPress); menuFor = it },
+            )
         }
         AnimatedVisibility(
             visible = selected != null,
             enter = fadeIn() + scaleIn(initialScale = 0.6f),
             exit = fadeOut() + scaleOut(targetScale = 0.6f),
         ) {
-            selected?.let { LiveAreaPage(it, settings.theme, settings.particles, wallpaper, onClose = { selected = null }) }
+            // Fall back to the last app so the exit animation still has content to fade out.
+            (selected ?: lastSelected)?.let {
+                LiveAreaPage(it, settings.theme, settings.particles, wallpaper, onClose = { selected = null })
+            }
         }
         AnimatedVisibility(visible = showSettings, enter = fadeIn(), exit = fadeOut()) {
             SettingsPage(
@@ -130,7 +162,14 @@ fun HomeScreen() {
 }
 
 @Composable
-private fun BubblePager(apps: List<LaunchableApp>, scale: Float, modifier: Modifier, onSelect: (LaunchableApp) -> Unit, onLongPress: (LaunchableApp) -> Unit) {
+private fun BubblePager(
+    apps: List<LaunchableApp>,
+    pagerState: PagerState,
+    scale: Float,
+    modifier: Modifier,
+    onSelect: (LaunchableApp) -> Unit,
+    onLongPress: (LaunchableApp) -> Unit,
+) {
     val pages = apps.chunked(PAGE_SIZE)
     if (pages.isEmpty()) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -138,19 +177,21 @@ private fun BubblePager(apps: List<LaunchableApp>, scale: Float, modifier: Modif
         }
         return
     }
-    val pagerState = rememberPagerState { pages.size }
     Row(modifier.fillMaxSize()) {
         // Page dots run down the left edge, like the Vita.
         PageDots(pages.size, pagerState.currentPage, Modifier.padding(start = 16.dp).align(Alignment.CenterVertically))
         VerticalPagerPlaceholder()
         HorizontalPager(pagerState, Modifier.weight(1f)) { index ->
+            val pageApps = pages.getOrElse(index) { emptyList() }
             BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
-                val bubble = minOf(maxWidth / (ROW_SIZES[0] + 0.5f), maxHeight / (ROW_SIZES.size + 0.9f)) * scale
+                // Largest bubble whose row of four cells (bubble + 44dp) and three rows (bubble + 36dp) still fit.
+                val fit = minOf(maxWidth / ROW_SIZES[0] - 44.dp, maxHeight / ROW_SIZES.size - 36.dp)
+                val bubble = (fit * 0.9f * scale).coerceAtLeast(40.dp)
                 val cell = bubble + 20.dp
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceEvenly) {
                     var offset = 0
-                    ROW_SIZES.forEachIndexed { r, count ->
-                        val row = pages[index].drop(offset).take(count)
+                    ROW_SIZES.forEach { count ->
+                        val row = pageApps.drop(offset).take(count)
                         offset += count
                         // Rows with fewer bubbles are centred, which produces the staggered look.
                         Row(Modifier.fillMaxWidth().height(cell + 16.dp), horizontalArrangement = Arrangement.Center) {

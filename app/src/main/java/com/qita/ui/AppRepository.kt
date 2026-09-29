@@ -17,6 +17,8 @@ data class LaunchableApp(
     val label: String,
     val packageName: String,
     val icon: ImageBitmap,
+    val installTime: Long = 0L,
+    val version: String = "",
 )
 
 object AppRepository {
@@ -26,10 +28,13 @@ object AppRepository {
         return pm.queryIntentActivities(query, 0)
             .filter { it.activityInfo.packageName != context.packageName }
             .map {
+                val info = runCatching { pm.getPackageInfo(it.activityInfo.packageName, 0) }.getOrNull()
                 LaunchableApp(
                     label = it.loadLabel(pm).toString(),
                     packageName = it.activityInfo.packageName,
                     icon = it.loadIcon(pm).toBitmap(128).asImageBitmap(),
+                    installTime = info?.firstInstallTime ?: 0L,
+                    version = info?.versionName.orEmpty(),
                 )
             }
             .distinctBy { it.packageName }

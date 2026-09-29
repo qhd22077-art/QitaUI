@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,6 +52,8 @@ import com.qita.ui.LaunchableApp
 import com.qita.ui.Theme
 import androidx.compose.ui.graphics.ImageBitmap
 import kotlinx.coroutines.launch
+import java.text.DateFormat
+import java.util.Date
 
 /**
  * Full-screen LiveArea page for an app. Drag down from the top strip (or the folded
@@ -66,7 +69,8 @@ fun LiveAreaPage(app: LaunchableApp, theme: Theme, particles: Boolean, wallpaper
     val baseFold = with(density) { 56.dp.toPx() }
     // Extra px the corner has been peeled beyond its resting size.
     val peel = remember { Animatable(0f) }
-    Box(Modifier.fillMaxSize()) {
+    // The detectTapGestures on the root stops taps from reaching the home screen underneath.
+    Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }) {
       Box(
         Modifier
             .fillMaxSize()
@@ -94,14 +98,19 @@ fun LiveAreaPage(app: LaunchableApp, theme: Theme, particles: Boolean, wallpaper
                     color = Color(0xFF0B3D91), fontSize = 18.sp, fontWeight = FontWeight.Bold,
                 )
             }
-            // Right: horizontally scrolling "live cards" (placeholders for now).
+            // Right: horizontally scrolling info cards.
             Row(Modifier.weight(1f).fillMaxHeight().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                listOf("Recent", "About", "Info").forEach { title ->
+                val installed = if (app.installTime > 0) DateFormat.getDateInstance().format(Date(app.installTime)) else "Unknown"
+                listOf(
+                    "Details" to "Version: ${app.version.ifBlank { "Unknown" }}\nInstalled: $installed",
+                    "Package" to app.packageName,
+                    "Tips" to "Drag the folded corner toward the bottom-left to close the app, or drag down from the top edge to go back.",
+                ).forEach { (title, body) ->
                     Column(
                         Modifier.width(200.dp).fillMaxHeight(0.7f).background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(12.dp)).padding(16.dp),
                     ) {
                         Text(title, color = Color(0xFF0B3D91), fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        Text(app.packageName, Modifier.padding(top = 8.dp), color = Color.DarkGray, fontSize = 12.sp)
+                        Text(body, Modifier.padding(top = 8.dp), color = Color.DarkGray, fontSize = 12.sp)
                     }
                 }
             }
