@@ -25,7 +25,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -116,7 +116,8 @@ fun HomeScreen(homePresses: Int = 0) {
     var apps by remember { mutableStateOf<List<LaunchableApp>>(emptyList()) }
     var reload by remember { mutableStateOf(0) }
     var selected by remember { mutableStateOf<LaunchableApp?>(null) }
-    var lastSelected by remember { mutableStateOf<LaunchableApp?>(null) }
+    // Open LiveArea pages, most recent first (the Vita keeps up to six).
+    var openPages by remember { mutableStateOf<List<LaunchableApp>>(emptyList()) }
     var menuFor by remember { mutableStateOf<LaunchableApp?>(null) }
     var moveOriginal by remember { mutableStateOf<List<String>?>(null) }
     var crashTrace by remember { mutableStateOf(CrashReporter.read(context)) }
@@ -168,6 +169,18 @@ fun HomeScreen(homePresses: Int = 0) {
     fun closeApp(app: LaunchableApp) {
         AppRepository.close(context, app)
         toast = "Closed ${app.label}"
+    }
+    /** Opens (or brings to the front) an app's LiveArea page. */
+    fun openLiveArea(app: LaunchableApp) {
+        openPages = (listOf(app) + openPages.filter { it.packageName != app.packageName }).take(6)
+        selected = app
+    }
+    /** Peeled away: the app is closed and its page removed; the neighbouring page (or home) takes over. */
+    fun closePage(app: LaunchableApp) {
+        closeApp(app)
+        val index = openPages.indexOfFirst { it.packageName == app.packageName }
+        openPages = openPages.filter { it.packageName != app.packageName }
+        selected = if (openPages.isEmpty()) null else openPages[index.coerceIn(0, openPages.size - 1)]
     }
 
     // --- Controller move mode: pick a bubble up and carry it with the D-pad. ---
@@ -263,7 +276,6 @@ fun HomeScreen(homePresses: Int = 0) {
             store.saveKnown(known + apps.map { it.packageName })
         }
     }
-    LaunchedEffect(selected) { if (selected != null) lastSelected = selected }
     LaunchedEffect(toast) {
         val t = toast
         if (t != null) { lastToast = t; delay(1900); toast = null }
@@ -283,8 +295,14 @@ fun HomeScreen(homePresses: Int = 0) {
     // rememberUpdatedState, so the long-lived collector below always sees current state and functions.
     val commandHandler = rememberUpdatedState<(Command) -> Unit> { cmd ->
         when (cmd) {
-            is Command.Page ->
-                if (!anyOverlay) scope.launch { pagerState.animateScrollToPage((pagerState.currentPage + cmd.delta).coerceIn(0, pageCount - 1)) }
+            is Command.Page -> when {
+                selected != null && !showDesktop && !showSearch && !showSettings && !menuOpen && !showTutorial -> {
+                    val index = openPages.indexOfFirst { it.packageName == selected?.packageName } + cmd.delta
+                    if (index < 0) selected = null else openPages.getOrNull(index)?.let { selected = it }
+                }
+                !anyOverlay -> scope.launch { pagerState.animateScrollToPage((pagerState.currentPage + cmd.delta).coerceIn(0, pageCount - 1)) }
+                else -> {}
+            }
             Command.Desktop -> if (!menuOpen && !showTutorial) { showSettings = false; showSearch = false; selected = null; showDesktop = !showDesktop }
             Command.Search -> if (!menuOpen && !showTutorial) { showDesktop = false; showSettings = false; selected = null; showSearch = !showSearch }
             Command.Settings -> if (!menuOpen && !showTutorial) showSettings = !showSettings
@@ -387,8 +405,9 @@ fun HomeScreen(homePresses: Int = 0) {
                 hiddenPackage = dragApp?.packageName,
                 movingPackage = Controller.movingPackage,
                 modifier = Modifier.weight(1f).padding(bottom = hintPad.coerceAtLeast(0.dp)),
-                onSelect = { selected = it },
+                onSelect = { openLiveArea(it) },
                 onOpenDesktop = { showDesktop = true },
+                onOpenRecent = { openPages.firstOrNull()?.let { selected = it } },
                 onDragStart = { app, local ->
                     dragApp = app
                     dragTravel = 0f
@@ -427,20 +446,21 @@ fun HomeScreen(homePresses: Int = 0) {
         }
         AnimatedVisibility(
             visible = selected != null,
-            enter = fadeIn(tween(220)) + scaleIn(initialScale = 0.82f, animationSpec = spring(dampingRatio = 0.75f, stiffness = 380f)),
-            exit = fadeOut(tween(160)) + scaleOut(targetScale = 0.9f, animationSpec = tween(200)),
+            enter = fadeIn(tween(220)) + scaleIn(initialScale = 0.9f, animationSpec = spring(dampingRatio = 0.8f, stiffness = 380f)),
+            exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.94f, animationSpec = tween(200)),
         ) {
-            // Fall back to the last app so the exit animation still has content to fade out.
-            (selected ?: lastSelected)?.let { app ->
-                CompositionLocalProvider(LocalPadLayer provides 1) {
-                    LiveAreaPage(
-                        app, settings, wallpaper,
-                        launches = counts[app.packageName] ?: 0,
-                        onLaunch = { launchApp(app) },
-                        onCloseApp = { closeApp(app) },
-                        onClose = { selected = null },
-                    )
-                }
+            CompositionLocalProvider(LocalPadLayer provides 1) {
+                LiveAreaHost(
+                    pages = openPages,
+                    current = openPages.indexOfFirst { it.packageName == selected?.packageName },
+                    settings = settings,
+                    counts = counts,
+                    // -1 means the pager came to rest on the home screen.
+                    onSettle = { index -> if (index < 0) selected = null else openPages.getOrNull(index)?.let { selected = it } },
+                    onLaunch = { launchApp(it) },
+                    onClosePage = { closePage(it) },
+                    onInfo = { AppRepository.showInfo(context, it) },
+                )
             }
         }
         AnimatedVisibility(
@@ -472,7 +492,7 @@ fun HomeScreen(homePresses: Int = 0) {
             CompositionLocalProvider(LocalPadLayer provides 2) {
                 SearchOverlay(
                     apps = apps, settings = settings, wallpaper = wallpaper,
-                    onPick = { showSearch = false; selected = it },
+                    onPick = { showSearch = false; openLiveArea(it) },
                     onClose = { showSearch = false },
                 )
             }
@@ -583,7 +603,7 @@ fun HomeScreen(homePresses: Int = 0) {
             showSettings -> listOf("D-pad" to "Move / adjust", "A" to "Toggle", "B" to "Done")
             showSearch -> listOf("D-pad" to "Move", "A" to "Open", "B" to "Close")
             showDesktop -> listOf("A" to "Launch", "X" to "Options", "Y" to "Add / remove", "L1" to "Folder", "L2" to "Close", "B" to "Back")
-            selected != null -> listOf("A" to "Start", "X" to "Options", "B" to "Back")
+            selected != null -> listOf("A" to "Start", "X" to "Options", "L1" to "Prev", "R1" to "Next", "B" to "Home")
             else -> listOf("A" to "Open", "X" to "Options", "Y" to "Move", "L1" to "Prev", "R1" to "Next", "L2" to "Desktop", "R2" to "Search", "START" to "Settings")
         }
         AnimatedVisibility(
@@ -625,6 +645,7 @@ private fun BubblePager(
     modifier: Modifier,
     onSelect: (LaunchableApp) -> Unit,
     onOpenDesktop: () -> Unit,
+    onOpenRecent: () -> Unit,
     onDragStart: (LaunchableApp, Offset) -> Unit,
     onDrag: (Offset) -> Unit,
     onDragEnd: () -> Unit,
@@ -650,7 +671,21 @@ private fun BubblePager(
         }
         return
     }
-    Box(modifier.fillMaxSize()) {
+    Box(
+        modifier
+            .fillMaxSize()
+            // Swiping sideways on the home screen reaches the open LiveArea pages, as on the Vita.
+            .pointerInput(Unit) {
+                var total = 0f
+                val threshold = 80.dp.toPx()
+                detectHorizontalDragGestures(
+                    onDragStart = { total = 0f },
+                    onHorizontalDrag = { _, dx -> total += dx },
+                    onDragEnd = { if (total < -threshold || total > threshold) onOpenRecent() },
+                    onDragCancel = { total = 0f },
+                )
+            },
+    ) {
         // Pages scroll vertically, like the Vita. Every page stays composed so a bubble being dragged
         // is not disposed when its page scrolls away.
         VerticalPager(

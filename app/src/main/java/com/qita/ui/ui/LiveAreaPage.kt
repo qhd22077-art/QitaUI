@@ -4,14 +4,12 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -20,9 +18,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,25 +29,29 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
@@ -60,139 +62,134 @@ import com.qita.ui.Settings
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
+import kotlin.math.absoluteValue
 
 /**
- * The app's LiveArea as a floating rounded card over the dimmed home screen. Tap outside the
- * card (or press B) to close it, drag down from its top strip to slide it away, or drag its
- * folded top-right corner toward the bottom-left to peel it away and close the app.
+ * The open LiveArea pages laid out side by side, like the real Vita: swipe left or right to move
+ * between them. The page before the first one is the home screen (transparent), so swiping back
+ * past it returns home.
+ */
+@Composable
+fun LiveAreaHost(
+    pages: List<LaunchableApp>,
+    current: Int,
+    settings: Settings,
+    counts: Map<String, Int>,
+    onSettle: (Int) -> Unit,
+    onLaunch: (LaunchableApp) -> Unit,
+    onClosePage: (LaunchableApp) -> Unit,
+    onInfo: (LaunchableApp) -> Unit,
+) {
+    val settle by rememberUpdatedState(onSettle)
+    val pagerState = rememberPagerState(initialPage = (current + 1).coerceIn(0, pages.size)) { pages.size + 1 }
+    // Report where the pager comes to rest: -1 is the home screen, 0.. are the open pages.
+    LaunchedEffect(pagerState) { snapshotFlow { pagerState.settledPage }.collect { settle(it - 1) } }
+    // Opening or closing a page from elsewhere moves the pager to it.
+    LaunchedEffect(current, pages.size) {
+        val target = (current + 1).coerceIn(0, pages.size)
+        if (pagerState.currentPage != target) pagerState.animateScrollToPage(target)
+    }
+    HorizontalPager(
+        pagerState,
+        Modifier.fillMaxSize(),
+        key = { i -> if (i == 0) "home" else pages.getOrNull(i - 1)?.packageName ?: i },
+    ) { page ->
+        val app = pages.getOrNull(page - 1)
+        if (app == null) {
+            Box(Modifier.fillMaxSize())
+        } else {
+            Box(
+                Modifier.fillMaxSize().graphicsLayer {
+                    val distance = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction).absoluteValue.coerceIn(0f, 1f)
+                    val s = 1f - 0.06f * distance
+                    scaleX = s
+                    scaleY = s
+                },
+            ) {
+                LiveAreaPage(
+                    app, settings,
+                    launches = counts[app.packageName] ?: 0,
+                    onLaunch = { onLaunch(app) },
+                    onCloseApp = { onClosePage(app) },
+                    onInfo = { onInfo(app) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * One app's LiveArea: a full-screen sheet under the information bar, coloured from the app's icon,
+ * with a translucent panel holding the big launch gate and information banners. Drag the curled
+ * top-right corner toward the bottom-left to peel the sheet away and close the app.
  */
 @Composable
 fun LiveAreaPage(
     app: LaunchableApp,
     settings: Settings,
-    wallpaper: ImageBitmap?,
     launches: Int,
     onLaunch: () -> Unit,
     onCloseApp: () -> Unit,
-    onClose: () -> Unit,
+    onInfo: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
-    val dismissY = remember { Animatable(0f) }
     // Extra px the corner has been peeled beyond its resting size.
     val peel = remember { Animatable(0f) }
-    var cardWidth by remember { mutableStateOf(1) }
+    var pageWidth by remember { mutableStateOf(1) }
     val baseFold = with(density) { 56.dp.toPx() }
-    val cornerRadius = with(density) { 24.dp.toPx() }
+    val tint = app.tint
 
-    // Scrim: tapping outside the card closes it and also stops taps reaching the home screen.
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.5f))
-            .pointerInput(Unit) { detectTapGestures(onTap = { onClose() }) },
-    ) {
-        Box(
-            Modifier
-                .align(Alignment.Center)
-                .fillMaxWidth(0.74f)
-                .fillMaxHeight(0.86f)
-                .onSizeChanged { cardWidth = it.width }
-                // Swallow taps on the card so they don't fall through to the scrim.
-                .pointerInput(Unit) { detectTapGestures { } },
-        ) {
+    Column(Modifier.fillMaxSize().statusBarsPadding()) {
+        StatusBar(settings.use24h, settings.showBattery)
+        Box(Modifier.weight(1f).fillMaxWidth().onSizeChanged { pageWidth = it.width }) {
             Box(
                 Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        translationY = dismissY.value
-                        shape = PeelShape(baseFold + peel.value, cornerRadius)
+                        shape = PeelShape(baseFold + peel.value)
                         clip = true
-                        alpha = if (size.height > 0f) 1f - (dismissY.value / size.height).coerceIn(0f, 1f) * 0.6f else 1f
                     },
             ) {
+                // Each app gets its own sky, tinted from its icon.
                 BubbleBackground(
-                    top = settings.theme.top, mid = settings.theme.mid, bottom = settings.theme.bottom, particles = settings.particles,
-                    wallpaper = wallpaper, particleCount = settings.particleCount, dim = settings.dim,
+                    top = lerp(tint, Color.Black, 0.55f),
+                    mid = lerp(tint, Color.Black, 0.12f),
+                    bottom = lerp(tint, Color.White, 0.60f),
+                    particles = settings.particles,
+                    particleCount = settings.particleCount,
                 )
-                Row(Modifier.fillMaxSize().padding(start = 32.dp, top = 56.dp, end = 24.dp, bottom = 24.dp)) {
-                    // Left: icon, title and the Start button.
-                    Column(Modifier.width(190.dp).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                        Image(
-                            app.icon, app.label,
-                            Modifier.size(88.dp).shadow(10.dp, CircleShape).background(Color.White, CircleShape).padding(13.dp),
-                        )
-                        Text(app.label, Modifier.padding(top = 12.dp), color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        Text(
-                            "Start",
-                            Modifier
-                                .padding(top = 24.dp)
-                                .padClickable("card:start", corner = null, onClick = onLaunch)
-                                .background(Color.White, RoundedCornerShape(50))
-                                .padding(horizontal = 44.dp, vertical = 12.dp),
-                            color = Color(0xFF0B3D91), fontSize = 18.sp, fontWeight = FontWeight.Bold,
-                        )
-                        // Controller-friendly alternative to the corner peel.
-                        Text(
-                            "Close app",
-                            Modifier
-                                .padding(top = 10.dp)
-                                .padClickable("card:close", corner = null) { onCloseApp(); onClose() }
-                                .background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(50))
-                                .padding(horizontal = 28.dp, vertical = 8.dp),
-                            color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                    // Right: horizontally scrolling info cards.
-                    Row(
-                        Modifier.weight(1f).fillMaxHeight().horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically,
-                    ) {
+                // The translucent panel that frames the page, like the one on the lock screen.
+                Row(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 26.dp, vertical = 14.dp)
+                        .background(Color.White.copy(alpha = 0.07f), RoundedCornerShape(16.dp))
+                        .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                        .padding(20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(20.dp),
+                ) {
+                    Gate(app, onLaunch, Modifier.weight(0.95f).fillMaxHeight())
+                    Column(Modifier.weight(1.05f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         val installed = if (app.installTime > 0) DateFormat.getDateInstance().format(Date(app.installTime)) else "Unknown"
-                        listOf(
-                            "Details" to "Version: ${app.version.ifBlank { "Unknown" }}\nInstalled: $installed\nOpened from here: $launches time${if (launches == 1) "" else "s"}",
-                            "Package" to app.packageName,
-                            "Tips" to "Drag the folded corner toward the bottom-left to close the app, or tap outside the card (B on a controller) to go back.",
-                        ).forEach { (title, body) ->
-                            Column(
-                                Modifier.width(190.dp).fillMaxHeight(0.7f).shadow(6.dp, RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.92f), RoundedCornerShape(12.dp)).padding(16.dp),
-                            ) {
-                                Text(title, color = Color(0xFF0B3D91), fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                                Text(body, Modifier.padding(top = 8.dp), color = Color.DarkGray, fontSize = 12.sp)
-                            }
+                        Banner("Details") {
+                            Line("Version ${app.version.ifBlank { "unknown" }}")
+                            Line("Installed $installed")
+                            Line("Opened from here $launches time${if (launches == 1) "" else "s"}")
                         }
+                        Banner("Package") { Line(app.packageName, mono = true) }
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            ActionPill("card:info:${app.packageName}", "App info", onInfo)
+                            ActionPill("card:close:${app.packageName}", "Close app", onCloseApp)
+                        }
+                        Line("Drag the curled corner to close the app.", dim = true)
                     }
                 }
             }
 
-            PeelBack(baseFold + peel.value)
+            PeelBack(baseFold + peel.value, tint)
 
-            // Top-edge grab zone (outside the translated layer so drag deltas stay stable): drag down to dismiss.
-            Box(
-                Modifier
-                    .padding(end = 72.dp)
-                    .fillMaxWidth()
-                    .height(72.dp)
-                    .pointerInput(Unit) {
-                        detectVerticalDragGestures(
-                            onVerticalDrag = { change, delta ->
-                                change.consume()
-                                scope.launch { dismissY.snapTo((dismissY.value + delta).coerceAtLeast(0f)) }
-                            },
-                            onDragEnd = {
-                                scope.launch {
-                                    if (dismissY.value > size.height * 3f) onClose()
-                                    else dismissY.animateTo(0f, spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMedium))
-                                }
-                            },
-                            onDragCancel = { scope.launch { dismissY.animateTo(0f) } },
-                        )
-                    },
-            ) {
-                Box(Modifier.align(Alignment.Center).padding(top = 8.dp).size(48.dp, 4.dp).alpha(0.6f).background(Color.White, CircleShape))
-            }
-
-            // Corner grab zone: drag diagonally toward the bottom-left to peel the card away.
+            // Corner grab zone: drag diagonally toward the bottom-left to peel the page away.
             Box(
                 Modifier
                     .align(Alignment.TopEnd)
@@ -207,11 +204,10 @@ fun LiveAreaPage(
                             },
                             onDragEnd = {
                                 scope.launch {
-                                    if (peel.value > cardWidth * 0.3f) {
-                                        // Peeled far enough: finish the peel, then close the app and the card.
-                                        peel.animateTo(cardWidth * 2f)
+                                    if (peel.value > pageWidth * 0.3f) {
+                                        // Peeled far enough: finish the peel, then close the app and the page.
+                                        peel.animateTo(pageWidth * 2f)
                                         onCloseApp()
-                                        onClose()
                                     } else {
                                         peel.animateTo(0f, spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessMedium))
                                     }
@@ -225,12 +221,87 @@ fun LiveAreaPage(
     }
 }
 
-/** Rounded card shape with the top-right corner triangle (legs of [fold] px) removed, so what is behind shows through. */
-private class PeelShape(private val fold: Float, private val radius: Float) : Shape {
-    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
-        val page = Path().apply {
-            addRoundRect(RoundRect(0f, 0f, size.width, size.height, CornerRadius(radius, radius)))
+/** The big launch gate: the app's sphere and name over a translucent card, with Start along the bottom. */
+@Composable
+private fun Gate(app: LaunchableApp, onLaunch: () -> Unit, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(22.dp)
+    Box(
+        modifier
+            .padClickable("card:start:${app.packageName}", corner = 22.dp, onClick = onLaunch)
+            .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.30f), Color.White.copy(alpha = 0.10f))), shape)
+            .border(1.5.dp, Color.White.copy(alpha = 0.55f), shape),
+    ) {
+        BoxWithConstraints(Modifier.fillMaxSize().padding(bottom = 46.dp)) {
+            val sphere = minOf(maxHeight * 0.66f, maxWidth * 0.62f)
+            Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                Sphere(app, sphere, elevation = 12.dp)
+                Text(
+                    app.label,
+                    Modifier.padding(top = 10.dp),
+                    color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+                    style = TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.5f), Offset(0f, 2f), 5f)),
+                )
+            }
         }
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(46.dp)
+                .background(
+                    Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.10f), Color.Black.copy(alpha = 0.38f))),
+                    RoundedCornerShape(bottomStart = 22.dp, bottomEnd = 22.dp),
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("Start", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Medium)
+        }
+    }
+}
+
+@Composable
+private fun Banner(title: String, content: @Composable () -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(Color.White.copy(alpha = 0.13f), shape)
+            .border(1.dp, Color.White.copy(alpha = 0.30f), shape)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Text(title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        content()
+    }
+}
+
+@Composable
+private fun Line(text: String, mono: Boolean = false, dim: Boolean = false) {
+    Text(
+        text,
+        color = Color.White.copy(alpha = if (dim) 0.65f else 0.92f),
+        fontSize = if (mono) 11.sp else 13.sp,
+        fontFamily = if (mono) FontFamily.Monospace else FontFamily.Default,
+    )
+}
+
+@Composable
+private fun ActionPill(key: String, label: String, onClick: () -> Unit) {
+    Text(
+        label,
+        Modifier
+            .padClickable(key, corner = null, onClick = onClick)
+            .background(Color.White.copy(alpha = 0.22f), RoundedCornerShape(50))
+            .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(50))
+            .padding(horizontal = 22.dp, vertical = 9.dp),
+        color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+    )
+}
+
+/** The page with its top-right corner triangle (legs of [fold] px) removed, so what is behind shows through. */
+private class PeelShape(private val fold: Float) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        val page = Path().apply { addRoundRect(RoundRect(0f, 0f, size.width, size.height, CornerRadius(0f, 0f))) }
         val corner = Path().apply {
             moveTo(size.width - fold, 0f); lineTo(size.width, 0f); lineTo(size.width, fold); close()
         }
@@ -238,14 +309,26 @@ private class PeelShape(private val fold: Float, private val radius: Float) : Sh
     }
 }
 
-/** The back of the peeled corner: the removed triangle reflected across the fold line. */
+/** The curled-back flap: the removed corner reflected across the fold line, shaded like paper. */
 @Composable
-private fun PeelBack(fold: Float) {
+private fun PeelBack(fold: Float, tint: Color) {
     Canvas(Modifier.fillMaxSize()) {
-        val back = Path().apply {
-            moveTo(size.width - fold, 0f); lineTo(size.width, fold); lineTo(size.width - fold, fold); close()
+        val w = size.width
+        val flap = Path().apply {
+            moveTo(w - fold, 0f); lineTo(w, fold); lineTo(w - fold, fold); close()
         }
-        drawPath(back, Color.White.copy(alpha = 0.92f))
-        drawLine(Color.Black.copy(alpha = 0.18f), Offset(size.width - fold, 0f), Offset(size.width, fold), strokeWidth = 2f)
+        drawPath(
+            flap,
+            Brush.linearGradient(
+                listOf(lerp(tint, Color.White, 0.70f), lerp(tint, Color.Black, 0.35f)),
+                Offset(w - fold, 0f), Offset(w, fold),
+            ),
+        )
+        drawLine(Color.White.copy(alpha = 0.6f), Offset(w - fold, 0f), Offset(w, fold), strokeWidth = 2f)
+        val curl = Path().apply {
+            moveTo(w - fold * 0.86f, fold * 0.14f)
+            quadraticBezierTo(w - fold * 0.5f, fold * 0.5f, w - fold * 0.14f, fold * 0.86f)
+        }
+        drawPath(curl, Color.White.copy(alpha = 0.35f), style = Stroke(width = 2f))
     }
 }
