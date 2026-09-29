@@ -30,7 +30,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private data class Status(val battery: Int, val charging: Boolean, val wifi: Boolean)
+internal data class Status(val battery: Int, val charging: Boolean, val wifi: Boolean)
 
 /** Top strip: clock on the left; Wi-Fi, battery and the settings gear on the right. */
 @Composable
@@ -67,7 +67,7 @@ fun StatusBar(use24h: Boolean, showBattery: Boolean, onDesktop: () -> Unit, onSe
     }
 }
 
-private fun readStatus(context: Context): Status {
+internal fun readStatus(context: Context): Status {
     val i = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
     val level = i?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
     val scale = i?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100

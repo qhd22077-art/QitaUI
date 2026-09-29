@@ -4,7 +4,7 @@ A PlayStation Vita-style home screen (launcher) for Android, built with Kotlin a
 
 - Blue gradient background with drifting particles
 - Home shows only the apps you add, as swipeable pages of bubbles (staggered rows), page dots down the left edge
-- Desktop (🖥 in the top strip): a Linux-style file-manager window listing every app on the device, with folders (games, media, social, system...), a filter box and a shell-style prompt; tap an app to launch it, "+ home" to add it to the home screen, plus shortcuts to Android and Wi-Fi settings
+- Desktop (🖥 in the top strip): an Ubuntu/GNOME-style desktop over every app on the device — aubergine wallpaper, black top bar with Activities and a clock, a left dock with your home apps and a Show Applications grid, and a dark "Applications" window with folders, search and a terminal prompt. Tap an app to launch it, "+ Add to home" to put it on the home screen (and dock), plus shortcuts to Android and Wi-Fi settings
 - Tap a bubble to open its full-screen LiveArea page: icon, title, **Start** button and swipeable cards
 - Drag the folded top-right corner diagonally to peel the page away: past a threshold it closes the page and the app's background processes. Dragging down from the top edge also dismisses the page.
 - Status strip: clock, Wi-Fi, battery (with charging bolt) and a settings gear

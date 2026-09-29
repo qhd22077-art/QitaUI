@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.provider.Settings as AndroidSettings
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -24,52 +26,70 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.qita.ui.LaunchableApp
 import com.qita.ui.Settings
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+// Ubuntu / GNOME (Yaru) palette.
+private val Aubergine = Color(0xFF2C001E)
+private val Plum = Color(0xFF5E2750)
+private val Orange = Color(0xFFE95420)
+private val TopBarBg = Color(0xFF000000)
+private val DockBg = Color(0xCC1A1A1A)
+private val WinBody = Color(0xFF2B2B2B)
+private val WinHeader = Color(0xFF3C3C3C)
+private val Sidebar = Color(0xFF323232)
+private val Text1 = Color(0xFFEEEEEE)
+private val Muted = Color(0xFFAEA79F)
 private val Mono = FontFamily.Monospace
-private val Panel = Color(0xFF16161E)
-private val Window = Color(0xF01E1E2E)
-private val Accent = Color(0xFF8AE234)
-private val Muted = Color(0xFF9A9AB0)
 
 /** Folders in the sidebar, named like paths in a Linux file manager. */
 private enum class Place(val label: String, val path: String) {
-    ALL("All Apps", "/apps"),
-    HOME("On Home", "/home"),
-    NEW("Recently Installed", "/recent"),
-    GAMES("Games", "/apps/games"),
-    MEDIA("Media", "/apps/media"),
-    SOCIAL("Social", "/apps/social"),
-    WORK("Productivity", "/apps/work"),
-    SYSTEM("System", "/system"),
-    OTHER("Other", "/apps/other"),
+    ALL("All Apps", "apps"),
+    HOME("On Home", "home"),
+    NEW("Recently Installed", "recent"),
+    GAMES("Games", "apps/games"),
+    MEDIA("Media", "apps/media"),
+    SOCIAL("Social", "apps/social"),
+    WORK("Productivity", "apps/work"),
+    SYSTEM("System", "system"),
+    OTHER("Other", "apps/other"),
 }
 
 private fun LaunchableApp.isIn(place: Place, onHome: Set<String>): Boolean = when (place) {
@@ -87,14 +107,16 @@ private fun LaunchableApp.isIn(place: Place, onHome: Set<String>): Boolean = whe
 }
 
 /**
- * A desktop-style view of every app on the device: top panel, a file-manager window with a
- * sidebar of "folders", a filterable list and a shell-style prompt. Tap an app to launch it
- * directly, or use the "+ home" button to put it on the home screen.
+ * An Ubuntu-style desktop over every app on the device: black top bar with Activities and a
+ * clock, a left dock holding the home-screen apps plus a Show Applications button, and a dark
+ * "Applications" window (sidebar folders, filterable list, terminal prompt). Tap an app to
+ * launch it directly; "+ home" adds it to the home screen (and the dock).
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DesktopScreen(
     apps: List<LaunchableApp>,
+    homeApps: List<LaunchableApp>,
     onHome: Set<String>,
     settings: Settings,
     wallpaper: ImageBitmap?,
@@ -107,6 +129,7 @@ fun DesktopScreen(
     val context = LocalContext.current
     var place by remember { mutableStateOf(Place.ALL) }
     var query by remember { mutableStateOf("") }
+    var showGrid by remember { mutableStateOf(false) }
     val listed = remember(apps, onHome, place, query) {
         val base = apps.filter { it.isIn(place, onHome) }
         val ordered = if (place == Place.NEW) base.sortedByDescending { it.installTime }.take(20) else base
@@ -114,85 +137,184 @@ fun DesktopScreen(
         else ordered.filter { it.label.contains(query.trim(), true) || it.packageName.contains(query.trim(), true) }
     }
 
+    // Back closes the Show Applications grid first (registered after Home's handler, so it wins).
+    BackHandler(enabled = showGrid) { showGrid = false }
+
     Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }) {
-        BubbleBackground(
-            top = settings.theme.top, bottom = settings.theme.bottom, particles = settings.particles,
-            wallpaper = wallpaper, particleCount = settings.particleCount, dim = settings.dim,
-        )
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
+        // Ubuntu aubergine wallpaper, unless the user picked their own image.
+        if (wallpaper != null) {
+            BubbleBackground(wallpaper = wallpaper, particles = false, dim = settings.dim)
+        } else {
+            Canvas(Modifier.fillMaxSize()) {
+                drawRect(Brush.linearGradient(listOf(Aubergine, Plum, Color(0xFFAE3C3C)), Offset.Zero, Offset(size.width, size.height)))
+            }
+        }
         Column(Modifier.fillMaxSize()) {
-            TopPanel(settings.use24h, onClose)
-            Column(
-                Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 10.dp)
-                    .background(Window, RoundedCornerShape(10.dp)),
-            ) {
-                // Window title bar with the three traffic-light buttons.
-                Row(
-                    Modifier.fillMaxWidth().background(Color(0xFF2A2A3C), RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Box(Modifier.size(12.dp).background(Color(0xFFFF5F56), CircleShape).clickable(onClick = onClose))
-                    Box(Modifier.size(12.dp).background(Color(0xFFFFBD2E), CircleShape))
-                    Box(Modifier.size(12.dp).background(Color(0xFF27C93F), CircleShape))
-                    Text("Applications — ${place.path}", Modifier.padding(start = 8.dp), color = Color.White, fontFamily = Mono, fontSize = 13.sp)
-                }
-                Row(Modifier.weight(1f).fillMaxWidth()) {
-                    // Sidebar
-                    Column(Modifier.width(190.dp).fillMaxHeight().background(Color(0x33000000)).padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("PLACES", color = Muted, fontFamily = Mono, fontSize = 11.sp, modifier = Modifier.padding(start = 8.dp, top = 4.dp, bottom = 4.dp))
-                        Place.entries.forEach { p ->
-                            Text(
-                                p.label,
-                                Modifier
-                                    .fillMaxWidth()
-                                    .background(if (p == place) Color(0x55FFFFFF) else Color.Transparent, RoundedCornerShape(6.dp))
-                                    .clickable { place = p }
-                                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                                color = Color.White, fontSize = 13.sp,
-                            )
-                        }
-                        Spacer(Modifier.weight(1f))
-                        Text("SYSTEM", color = Muted, fontFamily = Mono, fontSize = 11.sp, modifier = Modifier.padding(start = 8.dp, bottom = 4.dp))
-                        SideAction("Android Settings") { open(context, AndroidSettings.ACTION_SETTINGS) }
-                        SideAction("Wi-Fi") { open(context, AndroidSettings.ACTION_WIFI_SETTINGS) }
-                        SideAction("Launcher Settings", onLauncherSettings)
-                    }
-                    // Main pane
-                    Column(Modifier.weight(1f).fillMaxHeight().padding(12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text("~${place.path}", color = Accent, fontFamily = Mono, fontSize = 13.sp)
-                            BasicTextField(
-                                value = query,
-                                onValueChange = { query = it },
-                                singleLine = true,
-                                textStyle = TextStyle(color = Color.White, fontFamily = Mono, fontSize = 14.sp),
-                                cursorBrush = SolidColor(Color.White),
-                                modifier = Modifier.weight(1f),
-                                decorationBox = { inner ->
-                                    Box(Modifier.background(Color(0xFF2A2A3C), RoundedCornerShape(6.dp)).padding(horizontal = 10.dp, vertical = 8.dp)) {
-                                        if (query.isEmpty()) Text("grep ...", color = Muted, fontFamily = Mono, fontSize = 14.sp)
-                                        inner()
-                                    }
-                                },
-                            )
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
-                            items(listed, key = { it.packageName }) { app ->
-                                AppRow(app, app.packageName in onHome, onLaunch, onToggleHome, onLongPress)
+            TopBar(settings.use24h, onActivities = { showGrid = !showGrid }, onSettings = onLauncherSettings, onClose = onClose)
+            Row(Modifier.weight(1f).fillMaxWidth()) {
+                Dock(homeApps, onLaunch, onLongPress, onShowApps = { showGrid = !showGrid })
+                Box(Modifier.weight(1f).fillMaxHeight().padding(12.dp)) {
+                    Column(Modifier.fillMaxSize().background(WinBody, RoundedCornerShape(10.dp))) {
+                        // Yaru-style header bar: title centred, window controls on the right.
+                        Row(
+                            Modifier.fillMaxWidth().background(WinHeader, RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp)).padding(horizontal = 12.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Spacer(Modifier.width(72.dp))
+                            Text("Applications", Modifier.weight(1f), color = Text1, fontWeight = FontWeight.Bold, fontSize = 14.sp, textAlign = TextAlign.Center)
+                            Row(Modifier.width(72.dp), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End)) {
+                                WindowButton("–", Color(0xFF555555)) {}
+                                WindowButton("□", Color(0xFF555555)) {}
+                                WindowButton("✕", Orange, onClose)
                             }
                         }
-                        // Shell-style prompt with a summary of the current folder.
-                        Text(
-                            "user@qita:~${place.path}$ ls | wc -l  # ${listed.size} apps, ${apps.count { it.packageName in onHome }} on home",
-                            Modifier.padding(top = 8.dp), color = Accent, fontFamily = Mono, fontSize = 12.sp,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        )
+                        Row(Modifier.weight(1f).fillMaxWidth()) {
+                            Column(Modifier.width(180.dp).fillMaxHeight().background(Sidebar).padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text("Places", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp, top = 4.dp, bottom = 4.dp))
+                                Place.entries.forEach { p ->
+                                    Text(
+                                        p.label,
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .background(if (p == place) Orange.copy(alpha = 0.35f) else Color.Transparent, RoundedCornerShape(6.dp))
+                                            .clickable { place = p }
+                                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                                        color = Text1, fontSize = 13.sp,
+                                    )
+                                }
+                                Spacer(Modifier.weight(1f))
+                                Text("System", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp, bottom = 4.dp))
+                                SideAction("Settings") { open(context, AndroidSettings.ACTION_SETTINGS) }
+                                SideAction("Wi-Fi") { open(context, AndroidSettings.ACTION_WIFI_SETTINGS) }
+                                SideAction("Launcher settings", onLauncherSettings)
+                            }
+                            Column(Modifier.weight(1f).fillMaxHeight().padding(12.dp)) {
+                                BasicTextField(
+                                    value = query,
+                                    onValueChange = { query = it },
+                                    singleLine = true,
+                                    textStyle = TextStyle(color = Text1, fontSize = 14.sp),
+                                    cursorBrush = SolidColor(Orange),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    decorationBox = { inner ->
+                                        Box(Modifier.fillMaxWidth().background(Color(0xFF3C3C3C), RoundedCornerShape(6.dp)).padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                            if (query.isEmpty()) Text("Search in ~/${place.path}", color = Muted, fontSize = 14.sp)
+                                            inner()
+                                        }
+                                    },
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+                                    items(listed, key = { it.packageName }) { app ->
+                                        AppRow(app, app.packageName in onHome, onLaunch, onToggleHome, onLongPress)
+                                    }
+                                }
+                                // Terminal-style prompt in Ubuntu's colours.
+                                Text(
+                                    buildAnnotatedString {
+                                        withStyle(SpanStyle(color = Color(0xFF8AE234), fontWeight = FontWeight.Bold)) { append("user@qita") }
+                                        withStyle(SpanStyle(color = Text1)) { append(":") }
+                                        withStyle(SpanStyle(color = Color(0xFF729FCF), fontWeight = FontWeight.Bold)) { append("~/${place.path}") }
+                                        withStyle(SpanStyle(color = Text1)) { append("$ ls | wc -l   # ${listed.size} apps, ${apps.count { it.packageName in onHome }} on home") }
+                                    },
+                                    Modifier.padding(top = 8.dp), fontFamily = Mono, fontSize = 12.sp,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
                     }
+                }
+            }
+        }
+        if (showGrid) {
+            AppGrid(apps, settings, onLaunch = { showGrid = false; onLaunch(it) }, onLongPress, onClose = { showGrid = false })
+        }
+    }
+}
+
+/** GNOME-style "Show Applications" overlay: search field on top, grid of app icons. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun AppGrid(
+    apps: List<LaunchableApp>,
+    settings: Settings,
+    onLaunch: (LaunchableApp) -> Unit,
+    onLongPress: (LaunchableApp) -> Unit,
+    onClose: () -> Unit,
+) {
+    var query by remember { mutableStateOf("") }
+    val results = remember(apps, query) {
+        if (query.isBlank()) apps else apps.filter { it.label.contains(query.trim(), true) }
+    }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Aubergine.copy(alpha = 0.94f))
+            .pointerInput(Unit) { detectTapGestures(onTap = { onClose() }) },
+    ) {
+        Column(Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 56.dp, vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            BasicTextField(
+                value = query,
+                onValueChange = { query = it },
+                singleLine = true,
+                textStyle = TextStyle(color = Text1, fontSize = 16.sp),
+                cursorBrush = SolidColor(Orange),
+                modifier = Modifier.width(360.dp),
+                decorationBox = { inner ->
+                    Box(Modifier.fillMaxWidth().background(Color(0x33FFFFFF), RoundedCornerShape(50)).padding(horizontal = 20.dp, vertical = 10.dp)) {
+                        if (query.isEmpty()) Text("Type to search", color = Muted, fontSize = 16.sp)
+                        inner()
+                    }
+                },
+            )
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(96.dp),
+                modifier = Modifier.padding(top = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                gridItems(results, key = { it.packageName }) { app ->
+                    Column(
+                        Modifier.combinedClickable(onClick = { onLaunch(app) }, onLongClick = { onLongPress(app) }).padding(4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Image(app.icon, app.label, Modifier.size(56.dp))
+                        Text(app.label, Modifier.padding(top = 4.dp), color = Text1, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Left dock like Ubuntu's: favourite apps on top, Show Applications (3x3 dots) at the bottom. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun Dock(
+    homeApps: List<LaunchableApp>,
+    onLaunch: (LaunchableApp) -> Unit,
+    onLongPress: (LaunchableApp) -> Unit,
+    onShowApps: () -> Unit,
+) {
+    Column(
+        Modifier.width(64.dp).fillMaxHeight().padding(start = 6.dp, top = 6.dp, bottom = 6.dp).background(DockBg, RoundedCornerShape(14.dp)),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        LazyColumn(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(homeApps, key = { it.packageName }) { app ->
+                Image(
+                    app.icon, app.label,
+                    Modifier.padding(top = 6.dp).size(44.dp).combinedClickable(onClick = { onLaunch(app) }, onLongClick = { onLongPress(app) }).padding(3.dp),
+                )
+            }
+        }
+        // Show Applications button: a 3x3 grid of dots.
+        Column(
+            Modifier.padding(10.dp).clickable(onClick = onShowApps).padding(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            repeat(3) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    repeat(3) { Box(Modifier.size(6.dp).background(Color.White, CircleShape)) }
                 }
             }
         }
@@ -218,20 +340,27 @@ private fun AppRow(
     ) {
         Image(app.icon, app.label, Modifier.size(34.dp))
         Column(Modifier.weight(1f)) {
-            Text(app.label, color = Color.White, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(app.label, color = Text1, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
                 "${app.packageName}  ${app.version}",
                 color = Muted, fontFamily = Mono, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
         Text(
-            if (onHome) "✓ on home" else "+ home",
+            if (onHome) "✓ On home" else "+ Add to home",
             Modifier
-                .background(if (onHome) Color(0x5527C93F) else Color(0x33FFFFFF), RoundedCornerShape(50))
+                .background(if (onHome) Orange.copy(alpha = 0.55f) else Color(0x33FFFFFF), RoundedCornerShape(50))
                 .clickable { onToggleHome(app) }
                 .padding(horizontal = 12.dp, vertical = 5.dp),
-            color = Color.White, fontFamily = Mono, fontSize = 12.sp,
+            color = Color.White, fontSize = 12.sp,
         )
+    }
+}
+
+@Composable
+private fun WindowButton(symbol: String, bg: Color, onClick: () -> Unit) {
+    Box(Modifier.size(22.dp).background(bg, CircleShape).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+        Text(symbol, color = Color.White, fontSize = 11.sp)
     }
 }
 
@@ -240,26 +369,40 @@ private fun SideAction(label: String, onClick: () -> Unit) {
     Text(
         label,
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 8.dp, vertical = 6.dp),
-        color = Color(0xFF7FDBFF), fontSize = 13.sp,
+        color = Color(0xFFF4A582), fontSize = 13.sp,
     )
 }
 
-/** Thin dark bar at the top, like a desktop panel: menu name, clock, close. */
+/** Black GNOME top bar: Activities on the left, date and time centred, status and power on the right. */
 @Composable
-private fun TopPanel(use24h: Boolean, onClose: () -> Unit) {
-    val fmt = if (use24h) "EEE MMM d  HH:mm" else "EEE MMM d  h:mm a"
+private fun TopBar(use24h: Boolean, onActivities: () -> Unit, onSettings: () -> Unit, onClose: () -> Unit) {
+    val context = LocalContext.current
+    var now by remember { mutableStateOf(Date()) }
+    var status by remember { mutableStateOf(readStatus(context)) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = Date()
+            status = readStatus(context)
+            delay(15_000)
+        }
+    }
+    val fmt = if (use24h) "MMM d  HH:mm" else "MMM d  h:mm a"
     Row(
-        Modifier.fillMaxWidth().background(Panel).statusBarsPadding().padding(horizontal = 16.dp, vertical = 6.dp),
+        Modifier.fillMaxWidth().background(TopBarBg).statusBarsPadding().padding(horizontal = 12.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text("Applications", color = Color.White, fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.weight(1f))
-        Text(SimpleDateFormat(fmt, Locale.getDefault()).format(Date()), color = Color.White, fontFamily = Mono, fontSize = 13.sp)
         Text(
-            "✕ close",
-            Modifier.weight(1f).clickable(onClick = onClose),
-            color = Color.White, fontFamily = Mono, fontSize = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.End,
+            "Activities",
+            Modifier.clickable(onClick = onActivities).padding(horizontal = 10.dp, vertical = 4.dp),
+            color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold,
         )
+        Text(SimpleDateFormat(fmt, Locale.getDefault()).format(now), Modifier.weight(1f), color = Color.White, fontSize = 13.sp, textAlign = TextAlign.Center)
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (status.wifi) Text("Wi-Fi", color = Color.White, fontSize = 12.sp)
+            Text((if (status.charging) "⚡" else "") + "${status.battery}%", color = Color.White, fontSize = 12.sp)
+            Text("⚙", Modifier.clickable(onClick = onSettings).padding(horizontal = 4.dp), color = Color.White, fontSize = 16.sp)
+            Text("✕", Modifier.clickable(onClick = onClose).padding(horizontal = 4.dp), color = Color.White, fontSize = 14.sp)
+        }
     }
 }
 

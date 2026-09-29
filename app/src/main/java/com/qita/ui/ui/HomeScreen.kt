@@ -242,6 +242,7 @@ fun HomeScreen(homePresses: Int = 0) {
         AnimatedVisibility(visible = showDesktop, enter = fadeIn(), exit = fadeOut()) {
             DesktopScreen(
                 apps = apps,
+                homeApps = shown,
                 onHome = homeSet,
                 settings = settings,
                 wallpaper = wallpaper,
