@@ -1,14 +1,9 @@
 package com.qita.ui.ui
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -16,7 +11,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -25,7 +19,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,20 +37,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.qita.ui.Settings
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 /**
  * The Vita lock screen: faceted wallpaper, a translucent framed panel, a huge thin clock with the
- * date above it, and a curled corner. Peel the corner away (or tap it, or press the confirm
- * button) to reveal the home screen. This is in-app only: Android does not let a launcher
- * replace the phone's real lock screen, so it is visual and not a security lock.
+ * date above it, and a curled corner. Peel the corner away (or tap it, or double-tap anywhere, or
+ * press the confirm button) to reveal the home screen. This is in-app only: Android does not let a
+ * launcher replace the phone's real lock screen, so it is visual and not a security lock.
  */
 @Composable
 fun LockScreen(settings: Settings, onUnlock: () -> Unit) {
-    val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val peel = remember { Animatable(0f) }
     var pageWidth by remember { mutableStateOf(1) }
@@ -69,14 +60,14 @@ fun LockScreen(settings: Settings, onUnlock: () -> Unit) {
             delay(5_000)
         }
     }
-    fun finish() {
-        scope.launch {
-            peel.animateTo(pageWidth * 2f, tween(340))
-            onUnlock()
-        }
-    }
 
-    Column(Modifier.fillMaxSize().statusBarsPadding()) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            // Nothing underneath should be touchable while locked; double-tapping is a fallback unlock.
+            .pointerInput(Unit) { detectTapGestures(onDoubleTap = { onUnlock() }) }
+            .statusBarsPadding(),
+    ) {
         StatusBar(settings.use24h, settings.showBattery, showHome = false)
         Box(Modifier.weight(1f).fillMaxWidth().onSizeChanged { pageWidth = it.width }) {
             Box(
@@ -117,30 +108,17 @@ fun LockScreen(settings: Settings, onUnlock: () -> Unit) {
 
             PeelBack(baseFold + peel.value, settings.theme.mid)
 
-            // Corner: drag it diagonally to peel, or tap it (or press the confirm button) to unlock.
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .size(72.dp)
-                    .padTarget("lock:peel", corner = null, pad = 4.dp, bring = false, onClick = { finish() })
-                    .clickable { finish() }
-                    .pointerInput(Unit) {
-                        detectDragGestures(
-                            onDrag = { change, drag ->
-                                change.consume()
-                                val along = (-drag.x + drag.y) / 1.4142f
-                                scope.launch { peel.snapTo((peel.value + along).coerceAtLeast(0f)) }
-                            },
-                            onDragEnd = {
-                                if (peel.value > pageWidth * 0.25f) finish()
-                                else scope.launch { peel.animateTo(0f, spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessMedium)) }
-                            },
-                            onDragCancel = { scope.launch { peel.animateTo(0f) } },
-                        )
-                    },
+            // Above everything else in the page, so nothing can cover it.
+            PeelCorner(
+                peel = peel,
+                pageWidth = pageWidth,
+                padKey = "lock:peel",
+                hint = true,
+                repeatHint = true,
+                tapToPeel = true,
+                onPeeled = onUnlock,
+                modifier = Modifier.align(Alignment.TopEnd),
             )
-            // Swallow stray taps so nothing underneath is touched while locked.
-            Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } })
         }
     }
 }

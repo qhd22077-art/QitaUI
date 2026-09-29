@@ -6,7 +6,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -140,7 +140,7 @@ fun LiveAreaPage(
     val baseFold = with(density) { 56.dp.toPx() }
     val tint = app.tint
 
-    Column(Modifier.fillMaxSize().statusBarsPadding()) {
+    Column(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }.statusBarsPadding()) {
         StatusBar(settings.use24h, settings.showBattery)
         Box(Modifier.weight(1f).fillMaxWidth().onSizeChanged { pageWidth = it.width }) {
             Box(
@@ -188,34 +188,15 @@ fun LiveAreaPage(
             }
 
             PeelBack(baseFold + peel.value, tint)
-
-            // Corner grab zone: drag diagonally toward the bottom-left to peel the page away.
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .size(72.dp)
-                    .pointerInput(Unit) {
-                        detectDragGestures(
-                            onDrag = { change, drag ->
-                                change.consume()
-                                // Project the drag onto the diagonal from the top-right corner.
-                                val along = (-drag.x + drag.y) / 1.4142f
-                                scope.launch { peel.snapTo((peel.value + along).coerceAtLeast(0f)) }
-                            },
-                            onDragEnd = {
-                                scope.launch {
-                                    if (peel.value > pageWidth * 0.3f) {
-                                        // Peeled far enough: finish the peel, then close the app and the page.
-                                        peel.animateTo(pageWidth * 2f)
-                                        onCloseApp()
-                                    } else {
-                                        peel.animateTo(0f, spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessMedium))
-                                    }
-                                }
-                            },
-                            onDragCancel = { scope.launch { peel.animateTo(0f) } },
-                        )
-                    },
+            PeelCorner(
+                peel = peel,
+                pageWidth = pageWidth,
+                padKey = "card:peel:${app.packageName}",
+                hint = true,
+                repeatHint = false,
+                tapToPeel = false,
+                onPeeled = onCloseApp,
+                modifier = Modifier.align(Alignment.TopEnd),
             )
         }
     }
@@ -296,39 +277,4 @@ private fun ActionPill(key: String, label: String, onClick: () -> Unit) {
             .padding(horizontal = 22.dp, vertical = 9.dp),
         color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
     )
-}
-
-/** The page with its top-right corner triangle (legs of [fold] px) removed, so what is behind shows through. */
-internal class PeelShape(private val fold: Float) : Shape {
-    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
-        val page = Path().apply { addRoundRect(RoundRect(0f, 0f, size.width, size.height, CornerRadius(0f, 0f))) }
-        val corner = Path().apply {
-            moveTo(size.width - fold, 0f); lineTo(size.width, 0f); lineTo(size.width, fold); close()
-        }
-        return Outline.Generic(Path.combine(PathOperation.Difference, page, corner))
-    }
-}
-
-/** The curled-back flap: the removed corner reflected across the fold line, shaded like paper. */
-@Composable
-internal fun PeelBack(fold: Float, tint: Color) {
-    Canvas(Modifier.fillMaxSize()) {
-        val w = size.width
-        val flap = Path().apply {
-            moveTo(w - fold, 0f); lineTo(w, fold); lineTo(w - fold, fold); close()
-        }
-        drawPath(
-            flap,
-            Brush.linearGradient(
-                listOf(lerp(tint, Color.White, 0.70f), lerp(tint, Color.Black, 0.35f)),
-                Offset(w - fold, 0f), Offset(w, fold),
-            ),
-        )
-        drawLine(Color.White.copy(alpha = 0.6f), Offset(w - fold, 0f), Offset(w, fold), strokeWidth = 2f)
-        val curl = Path().apply {
-            moveTo(w - fold * 0.86f, fold * 0.14f)
-            quadraticBezierTo(w - fold * 0.5f, fold * 0.5f, w - fold * 0.14f, fold * 0.86f)
-        }
-        drawPath(curl, Color.White.copy(alpha = 0.35f), style = Stroke(width = 2f))
-    }
 }
