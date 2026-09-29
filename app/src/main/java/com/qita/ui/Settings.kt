@@ -46,6 +46,9 @@ data class Settings(
     val cursorMode: Boolean = false,
     val cursorSpeed: Float = 1f,
     val psLabels: Boolean = true,
+    val swapAB: Boolean = false,
+    val autoAdd: Boolean = false,
+    val debugInput: Boolean = false,
 ) {
     val theme: Theme get() = THEMES[themeIndex.coerceIn(THEMES.indices)]
 }
@@ -72,6 +75,9 @@ class SettingsStore(private val context: Context) {
         cursorMode = prefs.getBoolean("cursorMode", false),
         cursorSpeed = prefs.getFloat("cursorSpeed", 1f),
         psLabels = prefs.getBoolean("psLabels", true),
+        swapAB = prefs.getBoolean("swapAB", false),
+        autoAdd = prefs.getBoolean("autoAdd", false),
+        debugInput = prefs.getBoolean("debugInput", false),
     )
 
     fun save(s: Settings) {
@@ -92,6 +98,9 @@ class SettingsStore(private val context: Context) {
             .putBoolean("cursorMode", s.cursorMode)
             .putFloat("cursorSpeed", s.cursorSpeed)
             .putBoolean("psLabels", s.psLabels)
+            .putBoolean("swapAB", s.swapAB)
+            .putBoolean("autoAdd", s.autoAdd)
+            .putBoolean("debugInput", s.debugInput)
             .apply()
     }
 
@@ -101,6 +110,19 @@ class SettingsStore(private val context: Context) {
 
     fun saveHome(home: List<String>) {
         prefs.edit().putString("home", home.joinToString("\n")).apply()
+    }
+
+    fun tutorialSeen(): Boolean = prefs.getBoolean("tutorialSeen", false)
+
+    fun setTutorialSeen() {
+        prefs.edit().putBoolean("tutorialSeen", true).apply()
+    }
+
+    /** Packages the launcher has already seen, so newly installed apps can be detected. */
+    fun loadKnown(): Set<String> = prefs.getStringSet("known", emptySet()).orEmpty().toSet()
+
+    fun saveKnown(known: Set<String>) {
+        prefs.edit().putStringSet("known", known).apply()
     }
 
     fun recordLaunch(packageName: String) {

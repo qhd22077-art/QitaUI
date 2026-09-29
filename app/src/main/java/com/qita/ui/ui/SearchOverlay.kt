@@ -1,6 +1,7 @@
 package com.qita.ui.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,7 +15,9 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
@@ -37,8 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.shape.CircleShape
+import com.qita.ui.Controller
 import com.qita.ui.LaunchableApp
 import com.qita.ui.Settings
 
@@ -54,7 +56,11 @@ fun SearchOverlay(
     var query by remember { mutableStateOf("") }
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
-    LaunchedEffect(Unit) { focus.requestFocus(); keyboard?.show() }
+    val gridState = rememberLazyGridState()
+    // Touch users get the keyboard straight away; gamepad users browse the results instead.
+    LaunchedEffect(Unit) {
+        if (!Controller.padActive) { focus.requestFocus(); keyboard?.show() }
+    }
     val results = remember(query, apps) {
         if (query.isBlank()) apps else apps.filter { it.label.contains(query.trim(), ignoreCase = true) }
     }
@@ -77,7 +83,10 @@ fun SearchOverlay(
                 )
                 Text(
                     "Close",
-                    Modifier.focusRing(RoundedCornerShape(50)).background(Color.White, RoundedCornerShape(50)).clickable(onClick = onClose).padding(horizontal = 24.dp, vertical = 10.dp),
+                    Modifier
+                        .padClickable("search:close", corner = null, onClick = onClose)
+                        .background(Color.White, RoundedCornerShape(50))
+                        .padding(horizontal = 24.dp, vertical = 10.dp),
                     color = Color(0xFF0B3D91), fontWeight = FontWeight.Bold, fontSize = 16.sp,
                 )
             }
@@ -86,13 +95,15 @@ fun SearchOverlay(
             }
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(96.dp),
-                modifier = Modifier.padding(top = 12.dp),
+                state = gridState,
+                modifier = Modifier.padding(top = 12.dp).padScroller { gridState.animateScrollBy(it) },
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(results, key = { it.packageName }) { app ->
                     Bubble(
                         app, 64.dp,
                         onClick = { onPick(app) },
+                        padKey = "search:${app.packageName}",
                         shape = if (settings.roundedBubbles) RoundedCornerShape(28) else CircleShape,
                     )
                 }

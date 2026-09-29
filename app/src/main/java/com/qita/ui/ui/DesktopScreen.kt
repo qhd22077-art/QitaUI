@@ -9,8 +9,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -31,13 +31,18 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,10 +51,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -151,7 +152,8 @@ fun DesktopScreen(
     var winVisible by remember { mutableStateOf(true) }
     var maximized by remember { mutableStateOf(false) }
     var winOffset by remember { mutableStateOf(Offset.Zero) }
-    val firstFocus = remember { FocusRequester() }
+    val listState = rememberLazyListState()
+    val sidebarScroll = rememberScrollState()
 
     val listed = remember(apps, onHome, counts, place, query, sortNewest) {
         val base = apps.filter { it.isIn(place, onHome, counts) }
@@ -177,11 +179,6 @@ fun DesktopScreen(
             }
         }
     }
-    // Gamepad users start with the highlight on the folder list.
-    LaunchedEffect(Unit) {
-        delay(300)
-        if (Controller.padActive) runCatching { firstFocus.requestFocus() }
-    }
 
     Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }) {
         // Ubuntu aubergine wallpaper, unless the user picked their own image.
@@ -194,15 +191,15 @@ fun DesktopScreen(
         }
         // Desktop icons down the right-hand side, like Ubuntu's Home folder and friends.
         Column(
-            Modifier.align(Alignment.TopEnd).padding(top = 48.dp, end = 18.dp).focusProperties { canFocus = !showGrid && !showQuick },
+            Modifier.align(Alignment.TopEnd).padding(top = 48.dp, end = 18.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            DesktopIcon("⌂", "Home", Orange) { place = Place.HOME; winVisible = true; maximized = false }
-            DesktopIcon("☰", "Apps", Color(0xFF77216F)) { showGrid = true }
-            DesktopIcon("⚙", "Settings", Color(0xFF5E5E5E)) { onLauncherSettings() }
+            DesktopIcon("dicon:home", "⌂", "Home", Orange) { place = Place.HOME; winVisible = true; maximized = false }
+            DesktopIcon("dicon:apps", "☰", "Apps", Color(0xFF77216F)) { showGrid = true }
+            DesktopIcon("dicon:settings", "⚙", "Settings", Color(0xFF5E5E5E)) { onLauncherSettings() }
         }
-        Column(Modifier.fillMaxSize().focusProperties { canFocus = !showGrid && !showQuick }) {
+        Column(Modifier.fillMaxSize()) {
             TopBar(
                 settings.use24h,
                 onActivities = { showQuick = false; showGrid = !showGrid },
@@ -231,33 +228,39 @@ fun DesktopScreen(
                                     .padding(horizontal = 12.dp, vertical = 7.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Spacer(Modifier.width(88.dp))
+                                Spacer(Modifier.width(92.dp))
                                 Text("Applications", Modifier.weight(1f), color = Text1, fontWeight = FontWeight.Bold, fontSize = 14.sp, textAlign = TextAlign.Center)
-                                Row(Modifier.width(88.dp), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End)) {
-                                    WindowButton("–", Color(0xFF555555)) { winVisible = false }
-                                    WindowButton(if (maximized) "❐" else "□", Color(0xFF555555)) { maximized = !maximized; winOffset = Offset.Zero }
-                                    WindowButton("✕", Orange, onClose)
+                                Row(Modifier.width(92.dp), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End)) {
+                                    WindowButton("win:min", "–", Color(0xFF555555)) { winVisible = false }
+                                    WindowButton("win:max", if (maximized) "❐" else "□", Color(0xFF555555)) { maximized = !maximized; winOffset = Offset.Zero }
+                                    WindowButton("win:close", "✕", Orange, onClose)
                                 }
                             }
                             Row(Modifier.weight(1f).fillMaxWidth()) {
-                                Column(Modifier.width(180.dp).fillMaxHeight().background(Sidebar).padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Column(
+                                    Modifier
+                                        .width(184.dp)
+                                        .fillMaxHeight()
+                                        .background(Sidebar)
+                                        .padScroller { sidebarScroll.animateScrollBy(it) }
+                                        .verticalScroll(sidebarScroll)
+                                        .padding(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                                ) {
                                     Text("Places", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp, top = 4.dp, bottom = 4.dp))
                                     Place.entries.forEach { p ->
                                         Text(
                                             p.label,
                                             Modifier
                                                 .fillMaxWidth()
-                                                .then(if (p == Place.ALL) Modifier.focusRequester(firstFocus) else Modifier)
-                                                .focusRing(RoundedCornerShape(6.dp))
+                                                .padClickable("place:${p.name}", corner = 6.dp) { place = p }
                                                 .background(if (p == place) Orange.copy(alpha = 0.35f) else Color.Transparent, RoundedCornerShape(6.dp))
-                                                .clickable { place = p }
                                                 .padding(horizontal = 8.dp, vertical = 6.dp),
                                             color = Text1, fontSize = 13.sp,
                                             fontWeight = if (p == place) FontWeight.Bold else FontWeight.Normal,
                                         )
                                     }
-                                    Spacer(Modifier.weight(1f))
-                                    Text("System", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp, bottom = 4.dp))
+                                    Text("System", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp, top = 10.dp, bottom = 4.dp))
                                     SideAction("Settings") { open(context, AndroidSettings.ACTION_SETTINGS) }
                                     SideAction("Wi-Fi") { open(context, AndroidSettings.ACTION_WIFI_SETTINGS) }
                                     SideAction("Launcher settings", onLauncherSettings)
@@ -278,13 +281,20 @@ fun DesktopScreen(
                                                 }
                                             },
                                         )
-                                        SortChip("A–Z", !sortNewest) { sortNewest = false }
-                                        SortChip("Newest", sortNewest) { sortNewest = true }
+                                        SortChip("sort:az", "A–Z", !sortNewest) { sortNewest = false }
+                                        SortChip("sort:new", "Newest", sortNewest) { sortNewest = true }
                                     }
                                     Spacer(Modifier.height(8.dp))
-                                    LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+                                    LazyColumn(
+                                        Modifier.weight(1f).fillMaxWidth().padScroller { listState.animateScrollBy(it) },
+                                        state = listState,
+                                    ) {
                                         items(listed, key = { it.packageName }) { app ->
-                                            AppRow(app, app.packageName in onHome, counts[app.packageName] ?: 0, onLaunch, onToggleHome, onLongPress)
+                                            AppRow(
+                                                app, app.packageName in onHome, counts[app.packageName] ?: 0,
+                                                onLaunch, onToggleHome, onLongPress,
+                                                Modifier.animateItem(),
+                                            )
                                         }
                                     }
                                     // Terminal-style prompt in Ubuntu's colours.
@@ -305,22 +315,25 @@ fun DesktopScreen(
                 }
             }
         }
-        if (showQuick) {
-            QuickPanel(
-                onDismiss = { showQuick = false },
-                items = listOf(
-                    "Wi-Fi" to { open(context, AndroidSettings.ACTION_WIFI_SETTINGS) },
-                    "Bluetooth" to { open(context, AndroidSettings.ACTION_BLUETOOTH_SETTINGS) },
-                    "Display" to { open(context, AndroidSettings.ACTION_DISPLAY_SETTINGS) },
-                    "Sound" to { open(context, AndroidSettings.ACTION_SOUND_SETTINGS) },
-                    "All settings" to { open(context, AndroidSettings.ACTION_SETTINGS) },
-                    "Launcher settings" to onLauncherSettings,
-                    "Close desktop" to onClose,
-                ),
-            )
-        }
-        if (showGrid) {
-            AppGrid(apps, onLaunch = { showGrid = false; onLaunch(it) }, onLongPress, onClose = { showGrid = false })
+        // Grid and quick menu sit one navigation layer above the desktop.
+        CompositionLocalProvider(LocalPadLayer provides 2) {
+            if (showQuick) {
+                QuickPanel(
+                    onDismiss = { showQuick = false },
+                    items = listOf(
+                        "Wi-Fi" to { open(context, AndroidSettings.ACTION_WIFI_SETTINGS) },
+                        "Bluetooth" to { open(context, AndroidSettings.ACTION_BLUETOOTH_SETTINGS) },
+                        "Display" to { open(context, AndroidSettings.ACTION_DISPLAY_SETTINGS) },
+                        "Sound" to { open(context, AndroidSettings.ACTION_SOUND_SETTINGS) },
+                        "All settings" to { open(context, AndroidSettings.ACTION_SETTINGS) },
+                        "Launcher settings" to onLauncherSettings,
+                        "Close desktop" to onClose,
+                    ),
+                )
+            }
+            if (showGrid) {
+                AppGrid(apps, onLaunch = { showGrid = false; onLaunch(it) }, onLongPress, onClose = { showGrid = false })
+            }
         }
     }
 }
@@ -338,11 +351,7 @@ private fun AppGrid(
     val results = remember(apps, query) {
         if (query.isBlank()) apps else apps.filter { it.label.contains(query.trim(), true) }
     }
-    val firstItem = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        delay(200)
-        if (Controller.padActive) runCatching { firstItem.requestFocus() }
-    }
+    val gridState = rememberLazyGridState()
     Box(
         Modifier
             .fillMaxSize()
@@ -366,15 +375,15 @@ private fun AppGrid(
             )
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(100.dp),
-                modifier = Modifier.padding(top = 16.dp),
+                state = gridState,
+                modifier = Modifier.padding(top = 16.dp).padScroller { gridState.animateScrollBy(it) },
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 gridItems(results, key = { it.packageName }) { app ->
                     Column(
                         Modifier
-                            .then(if (app.packageName == results.first().packageName) Modifier.focusRequester(firstItem) else Modifier)
-                            .focusOnRequest(app.packageName)
-                            .focusRing(RoundedCornerShape(12.dp), app)
+                            .animateItem()
+                            .padTarget("grid:${app.packageName}", corner = 12.dp, app = app) { onLaunch(app) }
                             .combinedClickable(onClick = { onLaunch(app) }, onLongClick = { onLongPress(app) })
                             .padding(6.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -391,8 +400,6 @@ private fun AppGrid(
 /** Drop-down from the top-right of the bar: quick access to Android's own settings screens. */
 @Composable
 private fun QuickPanel(onDismiss: () -> Unit, items: List<Pair<String, () -> Unit>>) {
-    val first = remember { FocusRequester() }
-    LaunchedEffect(Unit) { if (Controller.padActive) runCatching { first.requestFocus() } }
     Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures(onTap = { onDismiss() }) }) {
         Column(
             Modifier
@@ -410,9 +417,7 @@ private fun QuickPanel(onDismiss: () -> Unit, items: List<Pair<String, () -> Uni
                     label,
                     Modifier
                         .fillMaxWidth()
-                        .then(if (i == 0) Modifier.focusRequester(first) else Modifier)
-                        .focusRing(RoundedCornerShape(8.dp))
-                        .clickable { onDismiss(); action() }
+                        .padClickable("quick:$i", corner = 8.dp) { onDismiss(); action() }
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     color = Text1, fontSize = 14.sp,
                 )
@@ -441,19 +446,19 @@ private fun Dock(
             .background(DockBg, RoundedCornerShape(14.dp)),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        DockItem("Applications", null, onWindow) {
+        DockItem("dock:window", "Applications", null, onWindow) {
             Box(Modifier.size(38.dp).background(Orange, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
                 Text("☰", color = Color.White, fontSize = 18.sp)
             }
         }
         LazyColumn(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
             items(homeApps, key = { it.packageName }) { app ->
-                DockItem(app.label, app, { onLaunch(app) }, { onLongPress(app) }) {
+                DockItem("dock:${app.packageName}", app.label, app, { onLaunch(app) }, { onLongPress(app) }) {
                     Image(app.icon, app.label, Modifier.size(40.dp))
                 }
             }
         }
-        DockItem("Show Applications", null, onShowApps) {
+        DockItem("dock:grid", "Show Applications", null, onShowApps) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 repeat(3) {
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -469,30 +474,29 @@ private fun Dock(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DockItem(
+    key: String,
     label: String,
     app: LaunchableApp?,
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
-    var focused by remember { mutableStateOf(false) }
+    val lit = padHighlighted(key)
     Box(Modifier.padding(vertical = 4.dp)) {
         Box(
             Modifier
                 .size(48.dp)
-                .then(if (app != null) Modifier.focusOnRequest(app.packageName) else Modifier)
-                .focusRing(RoundedCornerShape(12.dp), app)
-                .onFocusChanged { focused = it.hasFocus }
+                .padTarget(key, corner = 12.dp, app = app, onClick = onClick)
                 .combinedClickable(onClick = onClick, onLongClick = onLongClick)
                 .padding(4.dp),
             contentAlignment = Alignment.Center,
         ) { content() }
-        if (focused) {
+        if (lit) {
             Text(
                 label,
                 Modifier
                     .align(Alignment.CenterStart)
-                    .offset(x = 58.dp)
+                    .offset(x = 62.dp)
                     .wrapContentWidth(Alignment.Start, unbounded = true)
                     .background(Color(0xE6000000), RoundedCornerShape(6.dp))
                     .padding(horizontal = 10.dp, vertical = 5.dp),
@@ -503,12 +507,11 @@ private fun DockItem(
 }
 
 @Composable
-private fun DesktopIcon(symbol: String, label: String, color: Color, onClick: () -> Unit) {
+private fun DesktopIcon(key: String, symbol: String, label: String, color: Color, onClick: () -> Unit) {
     Column(
         Modifier
             .width(76.dp)
-            .focusRing(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
+            .padClickable(key, corner = 12.dp, onClick = onClick)
             .padding(6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -528,12 +531,12 @@ private fun AppRow(
     onLaunch: (LaunchableApp) -> Unit,
     onToggleHome: (LaunchableApp) -> Unit,
     onLongPress: (LaunchableApp) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
-            .focusOnRequest(app.packageName)
-            .focusRing(RoundedCornerShape(8.dp), app)
+            .padTarget("row:${app.packageName}", corner = 8.dp, app = app) { onLaunch(app) }
             .combinedClickable(onClick = { onLaunch(app) }, onLongClick = { onLongPress(app) })
             .padding(horizontal = 6.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -550,9 +553,8 @@ private fun AppRow(
         Text(
             if (onHome) "✓ On home" else "+ Add to home",
             Modifier
-                .focusRing(RoundedCornerShape(50), app)
+                .padClickable("rowadd:${app.packageName}", corner = null, app = app) { onToggleHome(app) }
                 .background(if (onHome) Orange.copy(alpha = 0.55f) else Color(0x33FFFFFF), RoundedCornerShape(50))
-                .clickable { onToggleHome(app) }
                 .padding(horizontal = 12.dp, vertical = 5.dp),
             color = Color.White, fontSize = 12.sp,
         )
@@ -560,9 +562,9 @@ private fun AppRow(
 }
 
 @Composable
-private fun WindowButton(symbol: String, bg: Color, onClick: () -> Unit) {
+private fun WindowButton(key: String, symbol: String, bg: Color, onClick: () -> Unit) {
     Box(
-        Modifier.size(24.dp).focusRing(CircleShape).background(bg, CircleShape).clickable(onClick = onClick),
+        Modifier.size(24.dp).padClickable(key, corner = null, pad = 4.dp, onClick = onClick).background(bg, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         Text(symbol, color = Color.White, fontSize = 12.sp)
@@ -570,13 +572,12 @@ private fun WindowButton(symbol: String, bg: Color, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SortChip(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun SortChip(key: String, label: String, selected: Boolean, onClick: () -> Unit) {
     Text(
         label,
         Modifier
-            .focusRing(RoundedCornerShape(50))
+            .padClickable(key, corner = null, onClick = onClick)
             .background(if (selected) Orange else Color(0x33FFFFFF), RoundedCornerShape(50))
-            .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 6.dp),
         color = Color.White, fontSize = 12.sp,
     )
@@ -586,7 +587,7 @@ private fun SortChip(label: String, selected: Boolean, onClick: () -> Unit) {
 private fun SideAction(label: String, onClick: () -> Unit) {
     Text(
         label,
-        Modifier.fillMaxWidth().focusRing(RoundedCornerShape(6.dp)).clickable(onClick = onClick).padding(horizontal = 8.dp, vertical = 6.dp),
+        Modifier.fillMaxWidth().padClickable("side:$label", corner = 6.dp, onClick = onClick).padding(horizontal = 8.dp, vertical = 6.dp),
         color = Color(0xFFF4A582), fontSize = 13.sp,
     )
 }
@@ -611,13 +612,13 @@ private fun TopBar(use24h: Boolean, onActivities: () -> Unit, onQuick: () -> Uni
     ) {
         Text(
             "Activities",
-            Modifier.focusRing(RoundedCornerShape(50)).clickable(onClick = onActivities).padding(horizontal = 12.dp, vertical = 4.dp),
+            Modifier.padClickable("top:activities", corner = null, onClick = onActivities).padding(horizontal = 12.dp, vertical = 4.dp),
             color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold,
         )
         Text(SimpleDateFormat(fmt, Locale.getDefault()).format(now), Modifier.weight(1f), color = Color.White, fontSize = 13.sp, textAlign = TextAlign.Center)
         // Status area: opens the quick settings drop-down, as on Ubuntu.
         Row(
-            Modifier.focusRing(RoundedCornerShape(50)).clickable(onClick = onQuick).padding(horizontal = 10.dp, vertical = 4.dp),
+            Modifier.padClickable("top:quick", corner = null, onClick = onQuick).padding(horizontal = 10.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically,
         ) {
             if (status.wifi) Text("Wi-Fi", color = Color.White, fontSize = 12.sp)
@@ -626,7 +627,7 @@ private fun TopBar(use24h: Boolean, onActivities: () -> Unit, onQuick: () -> Uni
         }
         Text(
             "✕",
-            Modifier.focusRing(CircleShape).clickable(onClick = onClose).padding(horizontal = 10.dp, vertical = 4.dp),
+            Modifier.padClickable("top:close", corner = null, onClick = onClose).padding(horizontal = 10.dp, vertical = 4.dp),
             color = Color.White, fontSize = 14.sp,
         )
     }

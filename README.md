@@ -24,11 +24,11 @@ This is an original UI inspired by the Vita's look; it uses no Sony assets.
 
 ## Controller
 
-Built for handhelds with a gamepad. The item under the gamepad highlight gets a thick pulsing yellow ring (bubbles also grow and light up their name), and a bar at the bottom shows the buttons that work on the current screen. Button symbols can be PlayStation (default) or A/B/X/Y in Settings.
+Built for handhelds with a gamepad. Navigation is handled by the launcher itself (not Android's focus system): every button registers with it, the D-pad moves a highlight to the nearest button in that direction, and A presses the highlighted one. The highlight is a thick pulsing yellow ring that glides between items, the item grows, and a bar at the bottom shows the buttons that work on the current screen. Symbols can be PlayStation (default) or A/B/X/Y, and Nintendo-style A/B swapping is in Settings. Settings > Controller also shows the last raw input, which helps if a pad maps buttons unusually.
 
 | Button | Action |
 | --- | --- |
-| A | Select / open (click in cursor mode; hold to drag or long-press) |
+| A | Press the highlighted item (click in cursor mode; hold to drag or long-press) |
 | B | Back (cancels move mode) |
 | X | Options menu for the highlighted app |
 | Y | Home: pick the highlighted bubble up to move it. Desktop: add/remove it from home |
@@ -37,11 +37,11 @@ Built for handhelds with a gamepad. The item under the gamepad highlight gets a 
 | L1 / R1 | Previous / next page (desktop: previous / next folder) |
 | L2 / R2 | Toggle desktop / search |
 | L3 / R3 | Recenter cursor / toggle precision (slow) cursor |
-| D-pad, left stick | Move the highlight (or the pointer in cursor mode); in move mode carries the bubble |
+| D-pad, left stick | Move the highlight; in cursor mode the stick moves the pointer and the D-pad nudges it; in move mode the D-pad carries the bubble |
 | Right stick | Left/right changes page; scrolls in cursor mode |
 
-Cursor mode (Settings > Controller, or Select) shows an on-screen pointer that works on every screen, including drag-to-rearrange and the corner peel. Triggers and D-pad are read both as buttons and as analog axes, so most pads work.
+Cursor mode (Settings > Controller, or Select) shows an on-screen pointer that works on every screen, including drag-to-rearrange and the corner peel. It grows and shows a ring over buttons, squashes when you click, ripples, and fades when idle.
 
-## Also on the home screen
+## Also
 
-Swipe up for the desktop, swipe down for search. The desktop has a draggable, minimisable window, desktop icons, a quick-settings drop-down (Wi-Fi, Bluetooth, display, sound), a Frequently Used folder and sorting.
+Swipe up for the desktop, swipe down for search. The desktop has a draggable, minimisable window, desktop icons, a quick-settings drop-down (Wi-Fi, Bluetooth, display, sound), a Frequently Used folder and sorting. A first-run tutorial explains the basics (Settings > Show tutorial to see it again), and Settings can auto-add newly installed apps to the home screen.

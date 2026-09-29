@@ -16,6 +16,8 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.qita.ui.ui.HomeScreen
+import com.qita.ui.ui.PadNav
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -26,10 +28,12 @@ class MainActivity : ComponentActivity() {
     // Stick-as-D-pad, hat and trigger edge detection.
     private var navDirection = 0
     private var navLastFire = 0L
+    private var lastNav = 0L
     private var hatDirection = 0
     private var l2Down = false
     private var r2Down = false
     private var rightStickDir = 0
+    private var lastMotionLog = 0L
     // Some pads report triggers/D-pad as both keys and axes; once keys are seen, ignore the axes.
     private var sawL2Key = false
     private var sawR2Key = false
@@ -57,21 +61,35 @@ class MainActivity : ComponentActivity() {
         return super.dispatchTouchEvent(ev)
     }
 
+    /** Nintendo-layout pads report the right-hand face button as A; swap so the labels match. */
+    private fun remap(code: Int): Int = if (!Controller.swapAB) code else when (code) {
+        KeyEvent.KEYCODE_BUTTON_A -> KeyEvent.KEYCODE_BUTTON_B
+        KeyEvent.KEYCODE_BUTTON_B -> KeyEvent.KEYCODE_BUTTON_A
+        KeyEvent.KEYCODE_BUTTON_X -> KeyEvent.KEYCODE_BUTTON_Y
+        KeyEvent.KEYCODE_BUTTON_Y -> KeyEvent.KEYCODE_BUTTON_X
+        else -> code
+    }
+
     /**
      * Gamepad buttons (see the README table):
      *  A select/click, B back, X options for the highlighted app, Y move (home) or add/remove (desktop),
      *  Start settings, Select cursor mode, L1/R1 page, L2 desktop, R2 search, L3 recenter cursor, R3 precision.
-     * While carrying a bubble (move mode) the D-pad moves it and A/B/Y drop or cancel.
+     * The D-pad drives PadNav's highlight. While carrying a bubble (move mode) it moves the bubble instead.
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        val code = event.keyCode
+        val raw = event.keyCode
+        val code = remap(raw)
         val down = event.action == KeyEvent.ACTION_DOWN
         val first = down && event.repeatCount == 0
         val isDpad = code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT ||
             code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN
-        if (!injecting && (KeyEvent.isGamepadButton(code) || isDpad)) {
+        if (!injecting && (KeyEvent.isGamepadButton(raw) || isDpad)) {
             Controller.padActive = true
             if (isDpad) sawDpadKey = true
+            if (first || !down) {
+                Controller.lastInput = "${KeyEvent.keyCodeToString(raw)} ${if (down) "down" else "up"}" +
+                    if (code != raw) " -> ${KeyEvent.keyCodeToString(code)}" else ""
+            }
         }
 
         // Move mode: the D-pad carries the bubble.
@@ -88,7 +106,7 @@ class MainActivity : ComponentActivity() {
                 return true
             }
             when (code) {
-                KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_Y, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_Y, KeyEvent.KEYCODE_DPAD_CENTER -> {
                     if (first) Controller.commands.tryEmit(Command.MoveEnd(true))
                     return true
                 }
@@ -97,6 +115,25 @@ class MainActivity : ComponentActivity() {
                     return true
                 }
             }
+        }
+
+        if (isDpad) {
+            val dx = when (code) { KeyEvent.KEYCODE_DPAD_LEFT -> -1; KeyEvent.KEYCODE_DPAD_RIGHT -> 1; else -> 0 }
+            val dy = when (code) { KeyEvent.KEYCODE_DPAD_UP -> -1; KeyEvent.KEYCODE_DPAD_DOWN -> 1; else -> 0 }
+            if (Controller.cursorMode) {
+                // In cursor mode the D-pad nudges the pointer for fine positioning.
+                if (down) {
+                    val step = 14f * resources.displayMetrics.density
+                    Controller.nudge(dx * step, dy * step)
+                }
+            } else if (down) {
+                val now = SystemClock.uptimeMillis()
+                if (event.repeatCount == 0 || now - lastNav > 110) {
+                    lastNav = now
+                    PadNav.navigate(dx, dy)
+                }
+            }
+            return true
         }
 
         when (code) {
@@ -125,18 +162,14 @@ class MainActivity : ComponentActivity() {
                 if (event.action == KeyEvent.ACTION_UP) onBackPressedDispatcher.onBackPressed()
                 return true
             }
-            KeyEvent.KEYCODE_BUTTON_A -> {
-                if (Controller.cursorMode) {
+            KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER -> {
+                if (code == KeyEvent.KEYCODE_BUTTON_A && Controller.cursorMode) {
+                    // In cursor mode A is a touch at the pointer (held = drag / long-press).
                     Controller.aHeld = down
                     return true
                 }
-                // Compose treats D-pad centre as "click" on the highlighted item.
-                return super.dispatchKeyEvent(
-                    KeyEvent(
-                        event.downTime, event.eventTime, event.action, KeyEvent.KEYCODE_DPAD_CENTER,
-                        event.repeatCount, event.metaState, event.deviceId, event.scanCode, event.flags, event.source,
-                    ),
-                )
+                if (first) PadNav.activate()
+                return true
             }
         }
         return super.dispatchKeyEvent(event)
@@ -150,7 +183,16 @@ class MainActivity : ComponentActivity() {
             // Controllers report the right stick as Z/RZ or RX/RY; take whichever is deflected.
             val rx = strongest(ev.getAxisValue(MotionEvent.AXIS_Z), ev.getAxisValue(MotionEvent.AXIS_RX))
             val ry = strongest(ev.getAxisValue(MotionEvent.AXIS_RZ), ev.getAxisValue(MotionEvent.AXIS_RY))
-            if (abs(x) > 0.3f || abs(y) > 0.3f || abs(rx) > 0.3f || abs(ry) > 0.3f) Controller.padActive = true
+            val lt = max(ev.getAxisValue(MotionEvent.AXIS_LTRIGGER), ev.getAxisValue(MotionEvent.AXIS_BRAKE))
+            val rt = max(ev.getAxisValue(MotionEvent.AXIS_RTRIGGER), ev.getAxisValue(MotionEvent.AXIS_GAS))
+            if (abs(x) > 0.3f || abs(y) > 0.3f || abs(rx) > 0.3f || abs(ry) > 0.3f || lt > 0.3f || rt > 0.3f) {
+                Controller.padActive = true
+                val now = SystemClock.uptimeMillis()
+                if (now - lastMotionLog > 120) {
+                    lastMotionLog = now
+                    Controller.lastInput = String.format(Locale.US, "L(%.2f,%.2f) R(%.2f,%.2f) LT %.2f RT %.2f", x, y, rx, ry, lt, rt)
+                }
+            }
             Controller.stickX = x
             Controller.stickY = y
             Controller.scrollY = ry
@@ -160,8 +202,6 @@ class MainActivity : ComponentActivity() {
             }
 
             // Analog triggers, for pads that do not also send L2/R2 key events.
-            val lt = max(ev.getAxisValue(MotionEvent.AXIS_LTRIGGER), ev.getAxisValue(MotionEvent.AXIS_BRAKE))
-            val rt = max(ev.getAxisValue(MotionEvent.AXIS_RTRIGGER), ev.getAxisValue(MotionEvent.AXIS_GAS))
             if (!sawL2Key) {
                 val pressed = lt > 0.75f
                 if (pressed && !l2Down) Controller.commands.tryEmit(Command.Desktop)

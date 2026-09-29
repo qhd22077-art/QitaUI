@@ -1,10 +1,11 @@
 package com.qita.ui.ui
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -26,9 +27,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
@@ -50,15 +49,12 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.qita.ui.AppRepository
-import com.qita.ui.Controller
 import com.qita.ui.LaunchableApp
 import com.qita.ui.Settings
 import kotlinx.coroutines.launch
@@ -67,28 +63,22 @@ import java.util.Date
 
 /**
  * The app's LiveArea as a floating rounded card over the dimmed home screen. Tap outside the
- * card to close it, drag down from its top strip to slide it away, or drag its folded top-right
- * corner toward the bottom-left to peel it away and close the app.
+ * card (or press B) to close it, drag down from its top strip to slide it away, or drag its
+ * folded top-right corner toward the bottom-left to peel it away and close the app.
  */
 @Composable
 fun LiveAreaPage(
     app: LaunchableApp,
     settings: Settings,
     wallpaper: ImageBitmap?,
+    launches: Int,
     onLaunch: () -> Unit,
     onCloseApp: () -> Unit,
     onClose: () -> Unit,
 ) {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val dismissY = remember { Animatable(0f) }
-    // Gamepad users start with the highlight on Start.
-    val startFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        delay(350)
-        if (Controller.padActive) runCatching { startFocus.requestFocus() }
-    }
     // Extra px the corner has been peeled beyond its resting size.
     val peel = remember { Animatable(0f) }
     var cardWidth by remember { mutableStateOf(1) }
@@ -128,16 +118,17 @@ fun LiveAreaPage(
                 Row(Modifier.fillMaxSize().padding(start = 32.dp, top = 56.dp, end = 24.dp, bottom = 24.dp)) {
                     // Left: icon, title and the Start button.
                     Column(Modifier.width(190.dp).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                        Image(app.icon, app.label, Modifier.size(88.dp).background(Color.White, CircleShape).padding(13.dp))
+                        Image(
+                            app.icon, app.label,
+                            Modifier.size(88.dp).shadow(10.dp, CircleShape).background(Color.White, CircleShape).padding(13.dp),
+                        )
                         Text(app.label, Modifier.padding(top = 12.dp), color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                         Text(
                             "Start",
                             Modifier
                                 .padding(top = 24.dp)
-                                .focusRequester(startFocus)
-                                .focusRing(RoundedCornerShape(50))
+                                .padClickable("card:start", corner = null, onClick = onLaunch)
                                 .background(Color.White, RoundedCornerShape(50))
-                                .clickable { onLaunch() }
                                 .padding(horizontal = 44.dp, vertical = 12.dp),
                             color = Color(0xFF0B3D91), fontSize = 18.sp, fontWeight = FontWeight.Bold,
                         )
@@ -146,9 +137,8 @@ fun LiveAreaPage(
                             "Close app",
                             Modifier
                                 .padding(top = 10.dp)
-                                .focusRing(RoundedCornerShape(50))
+                                .padClickable("card:close", corner = null) { onCloseApp(); onClose() }
                                 .background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(50))
-                                .clickable { onCloseApp(); onClose() }
                                 .padding(horizontal = 28.dp, vertical = 8.dp),
                             color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                         )
@@ -160,12 +150,12 @@ fun LiveAreaPage(
                     ) {
                         val installed = if (app.installTime > 0) DateFormat.getDateInstance().format(Date(app.installTime)) else "Unknown"
                         listOf(
-                            "Details" to "Version: ${app.version.ifBlank { "Unknown" }}\nInstalled: $installed",
+                            "Details" to "Version: ${app.version.ifBlank { "Unknown" }}\nInstalled: $installed\nOpened from here: $launches time${if (launches == 1) "" else "s"}",
                             "Package" to app.packageName,
                             "Tips" to "Drag the folded corner toward the bottom-left to close the app, or tap outside the card (B on a controller) to go back.",
                         ).forEach { (title, body) ->
                             Column(
-                                Modifier.width(190.dp).fillMaxHeight(0.7f).background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(12.dp)).padding(16.dp),
+                                Modifier.width(190.dp).fillMaxHeight(0.7f).shadow(6.dp, RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.92f), RoundedCornerShape(12.dp)).padding(16.dp),
                             ) {
                                 Text(title, color = Color(0xFF0B3D91), fontWeight = FontWeight.Bold, fontSize = 16.sp)
                                 Text(body, Modifier.padding(top = 8.dp), color = Color.DarkGray, fontSize = 12.sp)
@@ -191,7 +181,8 @@ fun LiveAreaPage(
                             },
                             onDragEnd = {
                                 scope.launch {
-                                    if (dismissY.value > size.height * 3f) onClose() else dismissY.animateTo(0f)
+                                    if (dismissY.value > size.height * 3f) onClose()
+                                    else dismissY.animateTo(0f, spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMedium))
                                 }
                             },
                             onDragCancel = { scope.launch { dismissY.animateTo(0f) } },
@@ -222,7 +213,7 @@ fun LiveAreaPage(
                                         onCloseApp()
                                         onClose()
                                     } else {
-                                        peel.animateTo(0f)
+                                        peel.animateTo(0f, spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessMedium))
                                     }
                                 }
                             },
