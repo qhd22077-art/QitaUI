@@ -52,6 +52,8 @@ class PadTarget(val key: Any) {
     /** Corner radius of the highlight ring; null means fully rounded (circle or pill). */
     var corner: Dp? = 10.dp
     var pad: Dp = 5.dp
+    /** False for items that show their own selection look (such as the Settings rows). */
+    var ring = true
     var app: LaunchableApp? = null
     var onClick: () -> Unit = {}
     /** Left/right adjusts instead of moving (sliders). */
@@ -78,6 +80,8 @@ object PadNav {
         private set
     var currentPad by mutableStateOf(5.dp)
         private set
+    var currentRing by mutableStateOf(true)
+        private set
 
     /** The item under the on-screen cursor (cursor mode). */
     var hover by mutableStateOf<Any?>(null)
@@ -87,6 +91,8 @@ object PadNav {
     var hoverCorner by mutableStateOf<Dp?>(10.dp)
         private set
     var hoverPad by mutableStateOf(5.dp)
+        private set
+    var hoverRing by mutableStateOf(true)
         private set
 
     val targets = LinkedHashMap<Any, PadTarget>()
@@ -109,6 +115,7 @@ object PadNav {
         currentBounds = t.bounds
         currentCorner = t.corner
         currentPad = t.pad
+        currentRing = t.ring
         currentLayer = t.layer
         memory[t.layer] = t.key
         missingSince = 0L
@@ -213,9 +220,14 @@ object PadNav {
             hoverBounds = t.bounds
             hoverCorner = t.corner
             hoverPad = t.pad
+            hoverRing = t.ring
         }
     }
 }
+
+/** True while the on-screen cursor is over [key]. */
+@Composable
+fun padHovered(key: Any?): Boolean = key != null && Controller.cursorMode && PadNav.hover == key
 
 /** True while the gamepad highlight is on [key]. */
 @Composable
@@ -233,6 +245,7 @@ fun Modifier.padTarget(
     app: LaunchableApp? = null,
     pad: Dp = 5.dp,
     bring: Boolean = true,
+    ring: Boolean = true,
     onAdjust: ((Int) -> Unit)? = null,
     onClick: () -> Unit = {},
 ): Modifier = composed {
@@ -245,6 +258,7 @@ fun Modifier.padTarget(
         target.corner = corner
         target.app = app
         target.pad = pad
+        target.ring = ring
         target.onClick = onClick
         target.onAdjust = onAdjust
         DisposableEffect(target) {
@@ -269,10 +283,11 @@ fun Modifier.padClickable(
     corner: Dp? = 10.dp,
     app: LaunchableApp? = null,
     pad: Dp = 5.dp,
+    ring: Boolean = true,
     onAdjust: ((Int) -> Unit)? = null,
     onClick: () -> Unit,
 ): Modifier = this
-    .padTarget(key = key, corner = corner, app = app, pad = pad, onAdjust = onAdjust, onClick = onClick)
+    .padTarget(key = key, corner = corner, app = app, pad = pad, ring = ring, onAdjust = onAdjust, onClick = onClick)
     .clickable(onClick = onClick)
 
 /** Lets the gamepad scroll this list when the highlight reaches its edge. Place it before the scroll modifier. */
@@ -295,8 +310,8 @@ fun Modifier.padScroller(scrollBy: suspend (Float) -> Unit): Modifier = composed
 @Composable
 fun PadRing() {
     val padShown = Controller.padActive && !Controller.cursorMode && Controller.movingPackage == null &&
-        PadNav.current != null && PadNav.currentBounds != Rect.Zero
-    val hoverShown = !padShown && Controller.cursorMode && PadNav.hover != null && PadNav.hoverBounds != Rect.Zero
+        PadNav.current != null && PadNav.currentBounds != Rect.Zero && PadNav.currentRing
+    val hoverShown = !padShown && Controller.cursorMode && PadNav.hover != null && PadNav.hoverBounds != Rect.Zero && PadNav.hoverRing
     val visible = padShown || hoverShown
     val target = if (hoverShown) PadNav.hoverBounds else PadNav.currentBounds
     val corner = if (hoverShown) PadNav.hoverCorner else PadNav.currentCorner
