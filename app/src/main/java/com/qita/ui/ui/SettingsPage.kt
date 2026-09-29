@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -113,7 +114,7 @@ fun SettingsPage(
                 Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 8.dp),
                 color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center,
             )
-            Box(Modifier.fillMaxWidth().padding(horizontal = 60.dp).size(width = 0.dp, height = 1.dp).background(Color.White.copy(alpha = 0.5f)))
+            Box(Modifier.fillMaxWidth().padding(horizontal = 60.dp).height(1.dp).background(Color.White.copy(alpha = 0.5f)))
             AnimatedContent(
                 targetState = page,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
