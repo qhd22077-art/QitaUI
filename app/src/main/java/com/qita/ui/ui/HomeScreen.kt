@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -41,10 +42,11 @@ import androidx.compose.ui.unit.sp
 import com.qita.ui.AppRepository
 import com.qita.ui.LaunchableApp
 
-private const val COLUMNS = 4
-private const val ROWS = 2
+/** Vita home pages hold 10 bubbles, laid out in staggered rows of 4, 3 and 3. */
+private val ROW_SIZES = listOf(4, 3, 3)
+private val PAGE_SIZE = ROW_SIZES.sum()
 
-/** Vita-style home: swipeable pages of bubbles over animated waves; tap one for its LiveArea card. */
+/** Vita-style home: swipeable pages of bubbles; tap one to open its full-screen LiveArea page. */
 @Composable
 fun HomeScreen() {
     val context = LocalContext.current
@@ -55,24 +57,24 @@ fun HomeScreen() {
     BackHandler(enabled = selected != null) { selected = null }
 
     Box(Modifier.fillMaxSize()) {
-        WaveBackground()
+        BubbleBackground()
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             StatusBar()
             BubblePager(apps, Modifier.weight(1f)) { selected = it }
         }
         AnimatedVisibility(
             visible = selected != null,
-            enter = fadeIn() + scaleIn(initialScale = 0.9f),
-            exit = fadeOut() + scaleOut(targetScale = 0.9f),
+            enter = fadeIn() + scaleIn(initialScale = 0.6f),
+            exit = fadeOut() + scaleOut(targetScale = 0.6f),
         ) {
-            selected?.let { LiveAreaCard(it, onClose = { selected = null }) }
+            selected?.let { LiveAreaPage(it, onClose = { selected = null }) }
         }
     }
 }
 
 @Composable
 private fun BubblePager(apps: List<LaunchableApp>, modifier: Modifier, onSelect: (LaunchableApp) -> Unit) {
-    val pages = apps.chunked(COLUMNS * ROWS)
+    val pages = apps.chunked(PAGE_SIZE)
     if (pages.isEmpty()) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("No apps found", color = Color.White, fontSize = 18.sp)
@@ -80,67 +82,43 @@ private fun BubblePager(apps: List<LaunchableApp>, modifier: Modifier, onSelect:
         return
     }
     val pagerState = rememberPagerState { pages.size }
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+    Row(modifier.fillMaxSize()) {
+        // Page dots run down the left edge, like the Vita.
+        PageDots(pages.size, pagerState.currentPage, Modifier.padding(start = 16.dp).align(Alignment.CenterVertically))
+        VerticalPagerPlaceholder()
         HorizontalPager(pagerState, Modifier.weight(1f)) { index ->
-            BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 32.dp)) {
-                val bubble = minOf(maxWidth / (COLUMNS + 1), maxHeight / (ROWS + 1.2f))
+            BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
+                val bubble = minOf(maxWidth / (ROW_SIZES[0] + 0.5f), maxHeight / (ROW_SIZES.size + 0.9f))
+                val cell = bubble + 20.dp
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceEvenly) {
-                    pages[index].chunked(COLUMNS).forEach { row ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    var offset = 0
+                    ROW_SIZES.forEachIndexed { r, count ->
+                        val row = pages[index].drop(offset).take(count)
+                        offset += count
+                        // Rows with fewer bubbles are centred, which produces the staggered look.
+                        Row(Modifier.fillMaxWidth().height(cell + 16.dp), horizontalArrangement = Arrangement.Center) {
                             row.forEach { app ->
-                                Bubble(app, bubble, onClick = { onSelect(app) }, modifier = Modifier.size(bubble + 8.dp, bubble + 32.dp))
+                                Bubble(app, bubble, onClick = { onSelect(app) }, modifier = Modifier.padding(horizontal = 12.dp).width(cell))
                             }
-                            // Keep short rows aligned with full ones.
-                            repeat(COLUMNS - row.size) { Spacer(Modifier.size(bubble + 8.dp, 1.dp)) }
                         }
                     }
                 }
             }
         }
-        PageDots(pages.size, pagerState.currentPage)
     }
 }
 
 @Composable
-private fun PageDots(count: Int, current: Int) {
-    Row(Modifier.padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+private fun VerticalPagerPlaceholder() = Spacer(Modifier.width(4.dp))
+
+@Composable
+private fun PageDots(count: Int, current: Int, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         repeat(count) { i ->
             Box(
-                Modifier.size(if (i == current) 10.dp else 8.dp).background(
+                Modifier.size(if (i == current) 10.dp else 7.dp).background(
                     Color.White.copy(alpha = if (i == current) 1f else 0.5f), CircleShape,
                 ),
-            )
-        }
-    }
-}
-
-/** Simplified LiveArea: a large card with the app name and a "Start" button. */
-@Composable
-private fun LiveAreaCard(app: LaunchableApp, onClose: () -> Unit) {
-    val context = LocalContext.current
-    Box(
-        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)).clickable(onClick = onClose),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            Modifier
-                .fillMaxWidth(0.55f)
-                .background(Color.White, RoundedCornerShape(20.dp))
-                .clickable(enabled = false) {}
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            androidx.compose.foundation.Image(app.icon, app.label, Modifier.size(72.dp))
-            Spacer(Modifier.height(12.dp))
-            Text(app.label, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0B3D91))
-            Spacer(Modifier.height(16.dp))
-            Text(
-                "Start",
-                Modifier
-                    .background(Color(0xFF1B6FD0), RoundedCornerShape(50))
-                    .clickable { AppRepository.launch(context, app); onClose() }
-                    .padding(horizontal = 40.dp, vertical = 10.dp),
-                color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
             )
         }
     }
