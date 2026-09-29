@@ -41,6 +41,7 @@ class MainActivity : ComponentActivity() {
     private var injecting = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        CrashReporter.install(this)
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {

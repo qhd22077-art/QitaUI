@@ -1,6 +1,8 @@
 package com.qita.ui.ui
 
 import android.content.BroadcastReceiver
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -76,6 +78,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.qita.ui.AppRepository
 import com.qita.ui.Command
+import com.qita.ui.CrashReporter
 import com.qita.ui.Controller
 import com.qita.ui.CursorLayer
 import com.qita.ui.LAYOUTS
@@ -113,6 +116,7 @@ fun HomeScreen(homePresses: Int = 0) {
     var lastSelected by remember { mutableStateOf<LaunchableApp?>(null) }
     var menuFor by remember { mutableStateOf<LaunchableApp?>(null) }
     var moveOriginal by remember { mutableStateOf<List<String>?>(null) }
+    var crashTrace by remember { mutableStateOf(CrashReporter.read(context)) }
 
     // Push the saved controller settings into the shared state before the first frame.
     remember(store) {
@@ -142,7 +146,7 @@ fun HomeScreen(homePresses: Int = 0) {
     val pagerState = rememberPagerState { pageCount }
 
     val menuOpen = menuFor != null
-    val anyOverlay = showDesktop || showSettings || showSearch || showTutorial || selected != null || menuOpen
+    val anyOverlay = showDesktop || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null
 
     fun addToHome(app: LaunchableApp) {
         if (app.packageName !in home) { home = home + app.packageName; store.saveHome(home) }
@@ -332,7 +336,8 @@ fun HomeScreen(homePresses: Int = 0) {
         }
     }
 
-    BackHandler(enabled = menuOpen) { menuFor = null }
+    BackHandler(enabled = crashTrace != null) { CrashReporter.clear(context); crashTrace = null }
+    BackHandler(enabled = menuOpen && crashTrace == null) { menuFor = null }
     BackHandler(enabled = showTutorial && !menuOpen) { showTutorial = false; store.setTutorialSeen() }
     BackHandler(enabled = showSettings && !menuOpen && !showTutorial) { showSettings = false }
     BackHandler(enabled = showSearch && !showSettings && !menuOpen && !showTutorial) { showSearch = false }
@@ -342,7 +347,8 @@ fun HomeScreen(homePresses: Int = 0) {
     // Depth: the home screen recedes a little while something is open on top of it.
     val depth by animateFloatAsState(if (anyOverlay) 1f else 0f, spring(dampingRatio = 0.9f, stiffness = 300f), label = "depth")
     // Leave room for the button hints while the gamepad is in use.
-    val hintPad by animateDpAsState(if (Controller.padActive) 46.dp else 0.dp, spring(dampingRatio = 0.9f, stiffness = 400f), label = "hintPad")
+    // A tween, never a spring: springs overshoot and padding must never go negative.
+    val hintPad by animateDpAsState(if (Controller.padActive) 46.dp else 0.dp, tween(220), label = "hintPad")
 
     Box(Modifier.fillMaxSize().onSizeChanged { rootWidth = it.width; PadNav.viewport = Rect(0f, 0f, it.width.toFloat(), it.height.toFloat()) }) {
         BubbleBackground(
@@ -372,7 +378,7 @@ fun HomeScreen(homePresses: Int = 0) {
                 settings = settings,
                 hiddenPackage = dragApp?.packageName,
                 movingPackage = Controller.movingPackage,
-                modifier = Modifier.weight(1f).padding(bottom = hintPad),
+                modifier = Modifier.weight(1f).padding(bottom = hintPad.coerceAtLeast(0.dp)),
                 onSelect = { selected = it },
                 onOpenDesktop = { showDesktop = true },
                 onSwipeUp = { showDesktop = true },
@@ -513,6 +519,20 @@ fun HomeScreen(homePresses: Int = 0) {
         ) {
             CompositionLocalProvider(LocalPadLayer provides 5) {
                 Onboarding(settings.psLabels, onDone = { showTutorial = false; store.setTutorialSeen() })
+            }
+        }
+
+        AnimatedVisibility(visible = crashTrace != null, enter = fadeIn(tween(200)), exit = fadeOut(tween(150))) {
+            CompositionLocalProvider(LocalPadLayer provides 6) {
+                CrashReport(
+                    trace = crashTrace.orEmpty(),
+                    onCopy = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("QitaUI crash", crashTrace.orEmpty()))
+                        toast = "Copied"
+                    },
+                    onDismiss = { CrashReporter.clear(context); crashTrace = null },
+                )
             }
         }
 
