@@ -1,6 +1,9 @@
 package com.qita.ui.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -13,39 +16,46 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.qita.ui.Controller
 import com.qita.ui.LaunchableApp
+import kotlinx.coroutines.delay
 
 /**
- * Glossy circular app icon with its label underneath.
+ * Glossy app bubble with its label underneath.
  *
  * Tap opens the app's page. Long-press then drag reports drag callbacks (offsets are local to
- * the bubble); the parent decides what a long-press without movement means.
+ * the bubble); the parent decides what a long-press without movement means. When the gamepad
+ * highlight is on it the bubble grows, gets a thick pulsing yellow ring and its name lights up.
+ * [moving] marks the bubble being carried in controller move mode (cyan ring, lifted).
  */
 @Composable
 fun Bubble(
@@ -56,6 +66,8 @@ fun Bubble(
     hidden: Boolean = false,
     shape: Shape = CircleShape,
     showLabel: Boolean = true,
+    moving: Boolean = false,
+    enterDelay: Int = 0,
     onDragStart: (Offset) -> Unit = {},
     onDrag: (Offset) -> Unit = {},
     onDragEnd: () -> Unit = {},
@@ -65,7 +77,23 @@ fun Bubble(
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     var focused by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (pressed) 0.92f else if (focused) 1.1f else 1f, label = "press")
+    val highlighted = focused || moving
+    val pulse = rememberPulse(highlighted)
+    val ringColor = if (moving) MoveCyan else FocusYellow
+
+    // Springy grow/shrink for press, highlight and lift.
+    val scale by animateFloatAsState(
+        if (moving) 1.22f else if (pressed) 0.92f else if (focused) 1.15f else 1f,
+        spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMedium),
+        label = "scale",
+    )
+    // Entrance: bubbles pop in one after another.
+    val appear = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        delay(enterDelay.toLong())
+        appear.animateTo(1f, spring(dampingRatio = 0.65f, stiffness = 300f))
+    }
+
     val start by rememberUpdatedState(onDragStart)
     val drag by rememberUpdatedState(onDrag)
     val end by rememberUpdatedState(onDragEnd)
@@ -73,9 +101,18 @@ fun Bubble(
     Column(
         modifier
             .onGloballyPositioned { onPositioned(it.boundsInRoot()) }
-            .alpha(if (hidden) 0f else 1f)
-            .scale(scale)
-            .onFocusChanged { focused = it.isFocused }
+            .graphicsLayer {
+                val s = scale * (0.6f + 0.4f * appear.value)
+                scaleX = s
+                scaleY = s
+                alpha = (if (hidden) 0f else 1f) * appear.value.coerceIn(0f, 1f)
+            }
+            .focusOnRequest(app.packageName)
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) Controller.focusedApp = app
+                else if (Controller.focusedApp?.packageName == app.packageName) Controller.focusedApp = null
+            }
             .clickable(interaction, indication = null, onClick = onClick)
             // After clickable in the chain so it sees events first and consumes the final "up" of a
             // long-press drag, which stops the clickable from also firing a tap.
@@ -92,9 +129,10 @@ fun Bubble(
         Box(
             Modifier
                 .size(size)
+                .drawBehind { if (highlighted) focusGlow(shape, ringColor, pulse) }
                 .clip(shape)
                 .background(Brush.verticalGradient(listOf(Color.White, Color(0xFFD5EBFA))))
-                .border(if (focused) 4.dp else 2.dp, if (focused) Color(0xFFFFD54F) else Color.White.copy(alpha = 0.8f), shape),
+                .border(if (highlighted) 5.dp else 2.dp, if (highlighted) ringColor else Color.White.copy(alpha = 0.8f), shape),
             contentAlignment = Alignment.Center,
         ) {
             Image(
@@ -111,11 +149,19 @@ fun Bubble(
                     .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.55f), Color.Transparent))),
             )
         }
-        if (showLabel) Text(
-            app.label,
-            Modifier.padding(top = 6.dp),
-            color = Color.White, fontSize = 12.sp, maxLines = 1,
-            overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
-        )
+        if (showLabel) {
+            Text(
+                app.label,
+                Modifier
+                    .padding(top = 6.dp)
+                    .then(if (highlighted) Modifier.background(ringColor, RoundedCornerShape(50)).padding(horizontal = 8.dp, vertical = 1.dp) else Modifier),
+                color = if (highlighted) Color(0xFF1B1B1B) else Color.White,
+                fontSize = 12.sp,
+                fontWeight = if (highlighted) FontWeight.Bold else FontWeight.Normal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
+        }
     }
 }

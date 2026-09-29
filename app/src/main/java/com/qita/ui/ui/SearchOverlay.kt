@@ -77,7 +77,7 @@ fun SearchOverlay(
                 )
                 Text(
                     "Close",
-                    Modifier.background(Color.White, RoundedCornerShape(50)).clickable(onClick = onClose).padding(horizontal = 24.dp, vertical = 10.dp),
+                    Modifier.focusRing(RoundedCornerShape(50)).background(Color.White, RoundedCornerShape(50)).clickable(onClick = onClose).padding(horizontal = 24.dp, vertical = 10.dp),
                     color = Color(0xFF0B3D91), fontWeight = FontWeight.Bold, fontSize = 16.sp,
                 )
             }

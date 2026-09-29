@@ -25,6 +25,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +58,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.qita.ui.AppRepository
+import com.qita.ui.Controller
 import com.qita.ui.LaunchableApp
 import com.qita.ui.Settings
 import kotlinx.coroutines.launch
@@ -66,11 +71,24 @@ import java.util.Date
  * corner toward the bottom-left to peel it away and close the app.
  */
 @Composable
-fun LiveAreaPage(app: LaunchableApp, settings: Settings, wallpaper: ImageBitmap?, onClose: () -> Unit) {
+fun LiveAreaPage(
+    app: LaunchableApp,
+    settings: Settings,
+    wallpaper: ImageBitmap?,
+    onLaunch: () -> Unit,
+    onCloseApp: () -> Unit,
+    onClose: () -> Unit,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val dismissY = remember { Animatable(0f) }
+    // Gamepad users start with the highlight on Start.
+    val startFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        delay(350)
+        if (Controller.padActive) runCatching { startFocus.requestFocus() }
+    }
     // Extra px the corner has been peeled beyond its resting size.
     val peel = remember { Animatable(0f) }
     var cardWidth by remember { mutableStateOf(1) }
@@ -116,8 +134,10 @@ fun LiveAreaPage(app: LaunchableApp, settings: Settings, wallpaper: ImageBitmap?
                             "Start",
                             Modifier
                                 .padding(top = 24.dp)
+                                .focusRequester(startFocus)
+                                .focusRing(RoundedCornerShape(50))
                                 .background(Color.White, RoundedCornerShape(50))
-                                .clickable { AppRepository.launch(context, app) }
+                                .clickable { onLaunch() }
                                 .padding(horizontal = 44.dp, vertical = 12.dp),
                             color = Color(0xFF0B3D91), fontSize = 18.sp, fontWeight = FontWeight.Bold,
                         )
@@ -126,8 +146,9 @@ fun LiveAreaPage(app: LaunchableApp, settings: Settings, wallpaper: ImageBitmap?
                             "Close app",
                             Modifier
                                 .padding(top = 10.dp)
+                                .focusRing(RoundedCornerShape(50))
                                 .background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(50))
-                                .clickable { AppRepository.close(context, app); onClose() }
+                                .clickable { onCloseApp(); onClose() }
                                 .padding(horizontal = 28.dp, vertical = 8.dp),
                             color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                         )
@@ -141,7 +162,7 @@ fun LiveAreaPage(app: LaunchableApp, settings: Settings, wallpaper: ImageBitmap?
                         listOf(
                             "Details" to "Version: ${app.version.ifBlank { "Unknown" }}\nInstalled: $installed",
                             "Package" to app.packageName,
-                            "Tips" to "Drag the folded corner toward the bottom-left to close the app, or tap outside the card to go back.",
+                            "Tips" to "Drag the folded corner toward the bottom-left to close the app, or tap outside the card (B on a controller) to go back.",
                         ).forEach { (title, body) ->
                             Column(
                                 Modifier.width(190.dp).fillMaxHeight(0.7f).background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(12.dp)).padding(16.dp),
@@ -198,7 +219,7 @@ fun LiveAreaPage(app: LaunchableApp, settings: Settings, wallpaper: ImageBitmap?
                                     if (peel.value > cardWidth * 0.3f) {
                                         // Peeled far enough: finish the peel, then close the app and the card.
                                         peel.animateTo(cardWidth * 2f)
-                                        AppRepository.close(context, app)
+                                        onCloseApp()
                                         onClose()
                                     } else {
                                         peel.animateTo(0f)

@@ -7,6 +7,7 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -60,9 +61,9 @@ fun StatusBar(use24h: Boolean, showBattery: Boolean, onDesktop: () -> Unit, onSe
                     color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
                 )
             }
-            Text("\uD83D\uDDA5", Modifier.clickable(onClick = onDesktop).padding(horizontal = 6.dp), color = Color.White, fontSize = 18.sp)
-            Text("\uD83D\uDD0D", Modifier.clickable(onClick = onSearch).padding(horizontal = 6.dp), color = Color.White, fontSize = 18.sp)
-            Text("\u2699", Modifier.clickable(onClick = onSettings).padding(horizontal = 6.dp), color = Color.White, fontSize = 22.sp)
+            Text("\uD83D\uDDA5", Modifier.focusRing(CircleShape).clickable(onClick = onDesktop).padding(horizontal = 6.dp), color = Color.White, fontSize = 18.sp)
+            Text("\uD83D\uDD0D", Modifier.focusRing(CircleShape).clickable(onClick = onSearch).padding(horizontal = 6.dp), color = Color.White, fontSize = 18.sp)
+            Text("\u2699", Modifier.focusRing(CircleShape).clickable(onClick = onSettings).padding(horizontal = 6.dp), color = Color.White, fontSize = 22.sp)
         }
     }
 }

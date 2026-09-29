@@ -1,5 +1,6 @@
 package com.qita.ui.ui
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -38,11 +39,13 @@ fun BubbleBackground(
     particleCount: Int = 28,
     dim: Float = 0f,
 ) {
+    val topColor by animateColorAsState(top, tween(600), label = "top")
+    val bottomColor by animateColorAsState(bottom, tween(600), label = "bottom")
     Box(modifier.fillMaxSize()) {
         if (wallpaper != null) {
             Image(wallpaper, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         } else {
-            Canvas(Modifier.fillMaxSize()) { drawRect(Brush.verticalGradient(listOf(top, bottom))) }
+            Canvas(Modifier.fillMaxSize()) { drawRect(Brush.verticalGradient(listOf(topColor, bottomColor))) }
         }
         if (dim > 0f) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dim)))
         if (particles) Particles(particleCount)

@@ -28,6 +28,11 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -37,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.qita.ui.Settings
+import com.qita.ui.Controller
 import com.qita.ui.LAYOUTS
 import com.qita.ui.THEMES
 import kotlin.math.roundToInt
@@ -56,6 +62,12 @@ fun SettingsPage(
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) onWallpaper(uri)
     }
+    // Gamepad users start with the highlight on "Done".
+    val doneFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        delay(350)
+        if (Controller.padActive) runCatching { doneFocus.requestFocus() }
+    }
     Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }) {
         BubbleBackground(
             top = settings.theme.top, bottom = settings.theme.bottom, particles = settings.particles,
@@ -67,7 +79,7 @@ fun SettingsPage(
                 Text("Settings", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                 Text(
                     "Done",
-                    Modifier.background(Color.White, RoundedCornerShape(50)).clickable(onClick = onClose).padding(horizontal = 28.dp, vertical = 8.dp),
+                    Modifier.focusRequester(doneFocus).focusRing(RoundedCornerShape(50)).background(Color.White, RoundedCornerShape(50)).clickable(onClick = onClose).padding(horizontal = 28.dp, vertical = 8.dp),
                     color = Color(0xFF0B3D91), fontWeight = FontWeight.Bold, fontSize = 16.sp,
                 )
             }
@@ -84,6 +96,7 @@ fun SettingsPage(
                                 Box(
                                     Modifier
                                         .size(44.dp)
+                                        .focusRing(CircleShape)
                                         .background(Brush.verticalGradient(listOf(t.top, t.bottom)), CircleShape)
                                         .border(if (selected) 3.dp else 1.dp, Color.White.copy(alpha = if (selected) 1f else 0.5f), CircleShape)
                                         .clickable { onChange(settings.copy(themeIndex = i)) },
@@ -117,7 +130,7 @@ fun SettingsPage(
                         value = settings.bubbleScale,
                         onValueChange = { onChange(settings.copy(bubbleScale = it)) },
                         valueRange = 0.7f..1.1f,
-                        modifier = Modifier.width(320.dp),
+                        modifier = Modifier.width(320.dp).focusRing(RoundedCornerShape(12.dp)),
                     )
                 }
                 Card("Background") {
@@ -128,7 +141,7 @@ fun SettingsPage(
                             value = settings.particleCount.toFloat(),
                             onValueChange = { onChange(settings.copy(particleCount = it.roundToInt())) },
                             valueRange = 5f..60f,
-                            modifier = Modifier.width(320.dp),
+                            modifier = Modifier.width(320.dp).focusRing(RoundedCornerShape(12.dp)),
                         )
                     }
                     Text("Dim background", color = Color.White, fontSize = 14.sp)
@@ -136,7 +149,7 @@ fun SettingsPage(
                         value = settings.dim,
                         onValueChange = { onChange(settings.copy(dim = it)) },
                         valueRange = 0f..0.6f,
-                        modifier = Modifier.width(320.dp),
+                        modifier = Modifier.width(320.dp).focusRing(RoundedCornerShape(12.dp)),
                     )
                 }
                 Card("General") {
@@ -152,13 +165,16 @@ fun SettingsPage(
                         value = settings.cursorSpeed,
                         onValueChange = { onChange(settings.copy(cursorSpeed = it)) },
                         valueRange = 0.5f..2.5f,
-                        modifier = Modifier.width(320.dp),
+                        modifier = Modifier.width(320.dp).focusRing(RoundedCornerShape(12.dp)),
                     )
+                    ToggleRow("PlayStation button symbols (\u2715 \u25CB \u25A1 \u25B3)", settings.psLabels) { onChange(settings.copy(psLabels = it)) }
                     Text(
-                        "A select / click   B back   X desktop   Y search   Start settings\n" +
-                            "Select toggle cursor mode   L1/R1 change page\n" +
-                            "Cursor mode: left stick moves the pointer, A clicks (hold to drag or long-press), right stick scrolls.\n" +
-                            "Otherwise: D-pad or left stick moves the highlight.",
+                        "A select   B back   X options   Y move (home) or add/remove (desktop)\n" +
+                            "Start settings   Select cursor mode   L1/R1 page or folder\n" +
+                            "L2 desktop   R2 search   L3 recenter cursor   R3 precision cursor\n" +
+                            "Right stick left/right changes page.\n" +
+                            "Move mode: D-pad carries the bubble, A drops it, B cancels.\n" +
+                            "Cursor mode: left stick moves the pointer, A clicks (hold to drag), right stick scrolls.",
                         color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp,
                     )
                 }
@@ -190,9 +206,18 @@ private fun Card(title: String, content: @Composable () -> Unit) {
 
 @Composable
 private fun ToggleRow(label: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
-    Row(Modifier.width(360.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+    // The whole row is the focus target, so the gamepad highlight covers label and switch together.
+    Row(
+        Modifier
+            .width(400.dp)
+            .focusRing(RoundedCornerShape(10.dp))
+            .clickable { onChecked(!checked) }
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Text(label, color = Color.White, fontSize = 15.sp)
-        Switch(checked, onChecked)
+        Switch(checked, null)
     }
 }
 
@@ -200,7 +225,7 @@ private fun ToggleRow(label: String, checked: Boolean, onChecked: (Boolean) -> U
 private fun Pill(text: String, onClick: () -> Unit) {
     Text(
         text,
-        Modifier.background(Color.White, RoundedCornerShape(50)).clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 8.dp),
+        Modifier.focusRing(RoundedCornerShape(50)).background(Color.White, RoundedCornerShape(50)).clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 8.dp),
         color = Color(0xFF0B3D91), fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
     )
 }
@@ -210,6 +235,7 @@ private fun Chip(text: String, selected: Boolean, onClick: () -> Unit) {
     Text(
         text,
         Modifier
+            .focusRing(RoundedCornerShape(50))
             .background(if (selected) Color.White else Color.White.copy(alpha = 0.25f), RoundedCornerShape(50))
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 8.dp),

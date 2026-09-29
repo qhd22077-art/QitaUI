@@ -45,6 +45,7 @@ data class Settings(
     val haptics: Boolean = true,
     val cursorMode: Boolean = false,
     val cursorSpeed: Float = 1f,
+    val psLabels: Boolean = true,
 ) {
     val theme: Theme get() = THEMES[themeIndex.coerceIn(THEMES.indices)]
 }
@@ -70,6 +71,7 @@ class SettingsStore(private val context: Context) {
         haptics = prefs.getBoolean("haptics", true),
         cursorMode = prefs.getBoolean("cursorMode", false),
         cursorSpeed = prefs.getFloat("cursorSpeed", 1f),
+        psLabels = prefs.getBoolean("psLabels", true),
     )
 
     fun save(s: Settings) {
@@ -89,6 +91,7 @@ class SettingsStore(private val context: Context) {
             .putBoolean("haptics", s.haptics)
             .putBoolean("cursorMode", s.cursorMode)
             .putFloat("cursorSpeed", s.cursorSpeed)
+            .putBoolean("psLabels", s.psLabels)
             .apply()
     }
 
@@ -99,6 +102,16 @@ class SettingsStore(private val context: Context) {
     fun saveHome(home: List<String>) {
         prefs.edit().putString("home", home.joinToString("\n")).apply()
     }
+
+    fun recordLaunch(packageName: String) {
+        prefs.edit().putInt("launch_$packageName", prefs.getInt("launch_$packageName", 0) + 1).apply()
+    }
+
+    /** How many times each app was launched from this launcher. */
+    fun loadLaunchCounts(): Map<String, Int> =
+        prefs.all.filterKeys { it.startsWith("launch_") }
+            .mapKeys { it.key.removePrefix("launch_") }
+            .mapValues { (it.value as? Int) ?: 0 }
 
     fun loadWallpaper(): ImageBitmap? =
         if (wallpaperFile.exists()) BitmapFactory.decodeFile(wallpaperFile.path)?.asImageBitmap() else null

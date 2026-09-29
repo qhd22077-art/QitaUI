@@ -28,12 +28,18 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlin.math.abs
 import kotlin.math.sign
 
-/** Actions triggered by gamepad shortcut buttons; collected by the home screen. */
+/** Actions triggered by gamepad buttons; collected by the home screen (and the desktop for pages). */
 sealed interface Command {
     data class Page(val delta: Int) : Command
     data object Desktop : Command
     data object Search : Command
     data object Settings : Command
+    /** Context menu for the highlighted app. */
+    data object Options : Command
+    /** Move the highlighted bubble (home) or add/remove it from home (desktop). */
+    data object Toggle : Command
+    data class MoveStep(val dx: Int, val dy: Int) : Command
+    data class MoveEnd(val confirm: Boolean) : Command
 }
 
 /**
@@ -47,6 +53,17 @@ object Controller {
     var cursorMode by mutableStateOf(false)
     var cursor by mutableStateOf(Offset.Zero)
     var speed = 1f
+
+    /** True while the gamepad was the last input used; drives the button hints and auto-focus. */
+    var padActive by mutableStateOf(false)
+    /** L3 toggles slow, precise cursor movement. */
+    var precision by mutableStateOf(false)
+    /** The app whose bubble/row currently has the highlight. */
+    var focusedApp by mutableStateOf<LaunchableApp?>(null)
+    /** Package being carried in controller move mode, if any. */
+    var movingPackage by mutableStateOf<String?>(null)
+    /** Set to a package name to move the highlight onto that app's bubble/row. */
+    var focusPackage by mutableStateOf<String?>(null)
 
     @Volatile var stickX = 0f
     @Volatile var stickY = 0f
@@ -101,7 +118,6 @@ fun CursorLayer(modifier: Modifier = Modifier) {
 
     LaunchedEffect(enabled, size) {
         if (!enabled || size == IntSize.Zero) return@LaunchedEffect
-        if (Controller.cursor == Offset.Zero) Controller.cursor = Offset(size.width / 2f, size.height / 2f)
         val maxSpeed = with(density) { 520.dp.toPx() }
         var pressed = false
         var downTime = 0L
@@ -131,6 +147,8 @@ fun CursorLayer(modifier: Modifier = Modifier) {
         try {
             while (true) {
                 withFrameNanos { now ->
+                    // Offset.Zero means "recenter" (initial state, or L3).
+                    if (Controller.cursor == Offset.Zero) Controller.cursor = Offset(size.width / 2f, size.height / 2f)
                     val dt = if (last == 0L) 0f else ((now - last) / 1_000_000_000f).coerceAtMost(0.05f)
                     last = now
                     var moved = false
@@ -139,8 +157,8 @@ fun CursorLayer(modifier: Modifier = Modifier) {
                     if (sx != 0f || sy != 0f) {
                         val p = Controller.cursor
                         val next = Offset(
-                            (p.x + sx * maxSpeed * Controller.speed * dt).coerceIn(0f, size.width - 1f),
-                            (p.y + sy * maxSpeed * Controller.speed * dt).coerceIn(0f, size.height - 1f),
+                            (p.x + sx * maxSpeed * Controller.speed * (if (Controller.precision) 0.35f else 1f) * dt).coerceIn(0f, size.width - 1f),
+                            (p.y + sy * maxSpeed * Controller.speed * (if (Controller.precision) 0.35f else 1f) * dt).coerceIn(0f, size.height - 1f),
                         )
                         if (next != p) { Controller.cursor = next; moved = true }
                     }
