@@ -5,6 +5,9 @@ on:
     branches: ["**"]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -25,3 +28,18 @@ jobs:
         with:
           name: QitaUI-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+      - name: Name the APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk QitaUI-debug.apk
+      - name: Publish release
+        if: github.ref == 'refs/heads/claude/ps-vita-android-software-w7vqu2' || github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: QitaUI build ${{ github.run_number }}
+          body: |
+            Debug build of QitaUI from commit ${{ github.sha }}.
+            Download `QitaUI-debug.apk` below and install it on your Android device.
+          prerelease: true
+          make_latest: false
+          target_commitish: ${{ github.sha }}
+          files: QitaUI-debug.apk
