@@ -140,6 +140,7 @@ fun SettingsPage(
                     ToggleRow("Sort newest apps first", settings.sortNewest) { onChange(settings.copy(sortNewest = it)) }
                     ToggleRow("Vibrate on long-press and highlight", settings.haptics) { onChange(settings.copy(haptics = it)) }
                     ToggleRow("Add newly installed apps to home", settings.autoAdd) { onChange(settings.copy(autoAdd = it)) }
+                    ToggleRow("Lock screen when the launcher starts or the screen wakes", settings.lockScreen) { onChange(settings.copy(lockScreen = it)) }
                 }
                 Card("Controller") {
                     ToggleRow("Cursor mode", settings.cursorMode) { onChange(settings.copy(cursorMode = it)) }

@@ -111,6 +111,7 @@ fun HomeScreen(homePresses: Int = 0) {
     var showSettings by remember { mutableStateOf(false) }
     var showTutorial by remember { mutableStateOf(!store.tutorialSeen()) }
     var showQuickMenu by remember { mutableStateOf(false) }
+    var showLock by remember { mutableStateOf(settings.lockScreen) }
     var toast by remember { mutableStateOf<String?>(null) }
     var lastToast by remember { mutableStateOf("") }
     var apps by remember { mutableStateOf<List<LaunchableApp>>(emptyList()) }
@@ -151,7 +152,7 @@ fun HomeScreen(homePresses: Int = 0) {
     val pagerState = rememberPagerState { pageCount }
 
     val menuOpen = menuFor != null || showQuickMenu
-    val anyOverlay = showDesktop || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null
+    val anyOverlay = showLock || showDesktop || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null
 
     fun addToHome(app: LaunchableApp) {
         if (app.packageName !in home) { home = home + app.packageName; store.saveHome(home) }
@@ -261,6 +262,14 @@ fun HomeScreen(homePresses: Int = 0) {
         ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_EXPORTED)
         onDispose { context.unregisterReceiver(receiver) }
     }
+    // The lock screen comes back when the screen has been off.
+    DisposableEffect(Unit) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context, i: Intent) { if (settings.lockScreen) showLock = true }
+        }
+        ContextCompat.registerReceiver(context, receiver, IntentFilter(Intent.ACTION_SCREEN_OFF), ContextCompat.RECEIVER_NOT_EXPORTED)
+        onDispose { context.unregisterReceiver(receiver) }
+    }
     // Optionally add apps that were installed since the launcher last looked.
     LaunchedEffect(apps) {
         if (apps.isNotEmpty()) {
@@ -294,7 +303,7 @@ fun HomeScreen(homePresses: Int = 0) {
     // Gamepad buttons (see MainActivity). The handler is re-created every recomposition and read through
     // rememberUpdatedState, so the long-lived collector below always sees current state and functions.
     val commandHandler = rememberUpdatedState<(Command) -> Unit> { cmd ->
-        when (cmd) {
+        if (!showLock) when (cmd) {
             is Command.Page -> when {
                 selected != null && !showDesktop && !showSearch && !showSettings && !menuOpen && !showTutorial -> {
                     val index = openPages.indexOfFirst { it.packageName == selected?.packageName } + cmd.delta
@@ -365,13 +374,15 @@ fun HomeScreen(homePresses: Int = 0) {
         }
     }
 
-    BackHandler(enabled = crashTrace != null) { CrashReporter.clear(context); crashTrace = null }
+    BackHandler(enabled = crashTrace != null && !showLock) { CrashReporter.clear(context); crashTrace = null }
     BackHandler(enabled = menuOpen && crashTrace == null) { menuFor = null; showQuickMenu = false }
     BackHandler(enabled = showTutorial && !menuOpen) { showTutorial = false; store.setTutorialSeen() }
     BackHandler(enabled = showSettings && !menuOpen && !showTutorial) { showSettings = false }
     BackHandler(enabled = showSearch && !showSettings && !menuOpen && !showTutorial) { showSearch = false }
     BackHandler(enabled = showDesktop && !showSearch && !showSettings && !menuOpen && !showTutorial) { showDesktop = false }
     BackHandler(enabled = selected != null && !showDesktop && !showSearch && !showSettings && !menuOpen && !showTutorial) { selected = null }
+    // Registered last so it wins: while locked, Back does nothing.
+    BackHandler(enabled = showLock) { }
 
     // Depth: the home screen recedes a little while something is open on top of it.
     val depth by animateFloatAsState(if (anyOverlay) 1f else 0f, spring(dampingRatio = 0.9f, stiffness = 300f), label = "depth")
@@ -580,6 +591,12 @@ fun HomeScreen(homePresses: Int = 0) {
             }
         }
 
+        AnimatedVisibility(visible = showLock, enter = fadeIn(tween(250)), exit = fadeOut(tween(200))) {
+            CompositionLocalProvider(LocalPadLayer provides 7) {
+                LockScreen(settings, onUnlock = { showLock = false })
+            }
+        }
+
         // The gamepad highlight (or the cursor's hover ring) glides between items above everything.
         PadRing()
 
@@ -597,6 +614,7 @@ fun HomeScreen(homePresses: Int = 0) {
         }
         // Button hints for whatever is on screen, while the gamepad is in use.
         val hints = when {
+            showLock -> listOf("A" to "Unlock")
             showTutorial -> listOf("A" to "Got it")
             menuOpen -> listOf("D-pad" to "Move", "A" to "Choose", "B" to "Cancel")
             Controller.movingPackage != null -> listOf("D-pad" to "Move", "A" to "Drop", "B" to "Cancel")

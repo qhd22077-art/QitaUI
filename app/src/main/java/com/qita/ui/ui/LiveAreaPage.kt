@@ -299,7 +299,7 @@ private fun ActionPill(key: String, label: String, onClick: () -> Unit) {
 }
 
 /** The page with its top-right corner triangle (legs of [fold] px) removed, so what is behind shows through. */
-private class PeelShape(private val fold: Float) : Shape {
+internal class PeelShape(private val fold: Float) : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
         val page = Path().apply { addRoundRect(RoundRect(0f, 0f, size.width, size.height, CornerRadius(0f, 0f))) }
         val corner = Path().apply {
@@ -311,7 +311,7 @@ private class PeelShape(private val fold: Float) : Shape {
 
 /** The curled-back flap: the removed corner reflected across the fold line, shaded like paper. */
 @Composable
-private fun PeelBack(fold: Float, tint: Color) {
+internal fun PeelBack(fold: Float, tint: Color) {
     Canvas(Modifier.fillMaxSize()) {
         val w = size.width
         val flap = Path().apply {

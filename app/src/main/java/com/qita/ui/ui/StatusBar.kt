@@ -56,7 +56,7 @@ internal data class Status(val battery: Int, val charging: Boolean, val wifi: Bo
  * icon in the middle, and the time and a green battery on the right.
  */
 @Composable
-fun StatusBar(use24h: Boolean, showBattery: Boolean, modifier: Modifier = Modifier) {
+fun StatusBar(use24h: Boolean, showBattery: Boolean, modifier: Modifier = Modifier, showHome: Boolean = true) {
     val context = LocalContext.current
     var now by remember { mutableStateOf(Date()) }
     var status by remember { mutableStateOf(readStatus(context)) }
@@ -81,7 +81,7 @@ fun StatusBar(use24h: Boolean, showBattery: Boolean, modifier: Modifier = Modifi
             if (status.wifi) WifiIcon()
             if (status.bluetooth) BluetoothIcon()
         }
-        HomeIcon(Modifier.align(Alignment.Center))
+        if (showHome) HomeIcon(Modifier.align(Alignment.Center))
         Row(
             Modifier.align(Alignment.CenterEnd).padding(end = 78.dp),
             verticalAlignment = Alignment.CenterVertically,

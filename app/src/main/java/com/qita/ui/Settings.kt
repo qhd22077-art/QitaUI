@@ -85,6 +85,7 @@ data class Settings(
     val swapAB: Boolean = false,
     val autoAdd: Boolean = false,
     val debugInput: Boolean = false,
+    val lockScreen: Boolean = true,
 ) {
     val theme: Theme get() = THEMES[themeIndex.coerceIn(THEMES.indices)]
 }
@@ -114,6 +115,7 @@ class SettingsStore(private val context: Context) {
         swapAB = prefs.getBoolean("swapAB", false),
         autoAdd = prefs.getBoolean("autoAdd", false),
         debugInput = prefs.getBoolean("debugInput", false),
+        lockScreen = prefs.getBoolean("lockScreen", true),
     )
 
     fun save(s: Settings) {
@@ -137,6 +139,7 @@ class SettingsStore(private val context: Context) {
             .putBoolean("swapAB", s.swapAB)
             .putBoolean("autoAdd", s.autoAdd)
             .putBoolean("debugInput", s.debugInput)
+            .putBoolean("lockScreen", s.lockScreen)
             .apply()
     }
 
