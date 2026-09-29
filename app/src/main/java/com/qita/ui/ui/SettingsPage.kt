@@ -48,6 +48,7 @@ fun SettingsPage(
     onChange: (Settings) -> Unit,
     onWallpaper: (Uri) -> Unit,
     onClearWallpaper: () -> Unit,
+    onResetOrder: () -> Unit,
     onClose: () -> Unit,
 ) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -107,9 +108,12 @@ fun SettingsPage(
                         modifier = Modifier.width(320.dp),
                     )
                 }
-                Pill("Reset settings") { onChange(Settings()) }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Pill("Reset app order") { onResetOrder() }
+                    Pill("Reset settings") { onChange(Settings()) }
+                }
                 Text(
-                    "Tip: long-press a bubble for App info and Uninstall.",
+                    "Tip: long-press a bubble and drag to rearrange. Long-press without moving for App info and Uninstall.",
                     color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp, modifier = Modifier.padding(bottom = 16.dp),
                 )
             }

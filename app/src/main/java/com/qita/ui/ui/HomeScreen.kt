@@ -5,23 +5,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import androidx.activity.compose.BackHandler
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.foundation.pager.PagerState
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.core.content.ContextCompat
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import com.qita.ui.SettingsStore
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -31,16 +20,20 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,32 +41,63 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.qita.ui.AppRepository
 import com.qita.ui.LaunchableApp
+import com.qita.ui.SettingsStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 /** Vita home pages hold 10 bubbles, laid out in staggered rows of 4, 3 and 3. */
 private val ROW_SIZES = listOf(4, 3, 3)
 private val PAGE_SIZE = ROW_SIZES.sum()
 
+/** Puts apps in the saved [order]; apps not in it (new installs) keep their loaded order at the end. */
+private fun applyOrder(apps: List<LaunchableApp>, order: List<String>): List<LaunchableApp> {
+    if (order.isEmpty()) return apps
+    val byPackage = apps.associateBy { it.packageName }
+    val ordered = order.mapNotNull { byPackage[it] }
+    val known = ordered.map { it.packageName }.toSet()
+    return ordered + apps.filter { it.packageName !in known }
+}
+
 /** Vita-style home: swipeable pages of bubbles; tap one to open its full-screen LiveArea page. */
 @Composable
 fun HomeScreen(homePresses: Int = 0) {
     val context = LocalContext.current
+    val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
     val store = remember { SettingsStore(context) }
     var settings by remember { mutableStateOf(store.load()) }
     var wallpaper by remember { mutableStateOf(store.loadWallpaper()) }
+    var order by remember { mutableStateOf(store.loadOrder()) }
     var apps by remember { mutableStateOf<List<LaunchableApp>>(emptyList()) }
     var reload by remember { mutableStateOf(0) }
     var selected by remember { mutableStateOf<LaunchableApp?>(null) }
     var lastSelected by remember { mutableStateOf<LaunchableApp?>(null) }
     var menuFor by remember { mutableStateOf<LaunchableApp?>(null) }
     var showSettings by remember { mutableStateOf(false) }
+
+    // Drag-to-rearrange state. Positions are in root coordinates.
+    var dragApp by remember { mutableStateOf<LaunchableApp?>(null) }
+    var dragPos by remember { mutableStateOf(Offset.Zero) }
+    var dragTravel by remember { mutableStateOf(0f) }
+    var rootWidth by remember { mutableStateOf(0) }
+    val rects = remember { mutableMapOf<String, Rect>() }
 
     // Loading icons is slow with many apps, so do it off the main thread.
     LaunchedEffect(reload) { apps = withContext(Dispatchers.Default) { AppRepository.load(context) } }
@@ -93,31 +117,99 @@ fun HomeScreen(homePresses: Int = 0) {
     }
     LaunchedEffect(selected) { if (selected != null) lastSelected = selected }
 
-    val shown = remember(apps, settings.sortNewest) {
-        if (settings.sortNewest) apps.sortedByDescending { it.installTime } else apps
+    val shown = remember(apps, order, settings.sortNewest) {
+        if (settings.sortNewest) apps.sortedByDescending { it.installTime } else applyOrder(apps, order)
     }
     val pageCount = maxOf(1, (shown.size + PAGE_SIZE - 1) / PAGE_SIZE)
     val pagerState = rememberPagerState { pageCount }
 
+    // Hovering a dragged bubble near the left or right edge flips pages.
+    val edgePx = with(density) { 56.dp.toPx() }
+    val edge = if (dragApp == null) 0 else when {
+        dragPos.x < edgePx -> -1
+        dragPos.x > rootWidth - edgePx -> 1
+        else -> 0
+    }
+    LaunchedEffect(edge) {
+        if (edge != 0) {
+            while (true) {
+                delay(700)
+                pagerState.animateScrollToPage((pagerState.currentPage + edge).coerceIn(0, pageCount - 1))
+            }
+        }
+    }
+
     // Pressing Home while the launcher is open closes everything and returns to the first page.
     LaunchedEffect(homePresses) {
         if (homePresses > 0) {
-            selected = null; showSettings = false; menuFor = null
+            selected = null; showSettings = false; menuFor = null; dragApp = null
             pagerState.animateScrollToPage(0)
+        }
+    }
+
+    fun drop(app: LaunchableApp) {
+        val list = shown
+        val from = list.indexOfFirst { it.packageName == app.packageName }
+        if (from < 0) return
+        // Dropped on a bubble: take its place. Dropped on empty space: go to the end of the visible page.
+        val target = list.firstOrNull { it.packageName != app.packageName && rects[it.packageName]?.contains(dragPos) == true }
+        val to = if (target != null) list.indexOf(target)
+        else minOf(pagerState.currentPage * PAGE_SIZE + PAGE_SIZE, list.size) - 1
+        if (to == from) return
+        val moved = list.toMutableList()
+        val item = moved.removeAt(from)
+        moved.add(to.coerceIn(0, moved.size), item)
+        order = moved.map { it.packageName }
+        store.saveOrder(order)
+        // A manual order replaces the "newest first" sort.
+        if (settings.sortNewest) {
+            settings = settings.copy(sortNewest = false)
+            store.save(settings)
         }
     }
 
     BackHandler(enabled = showSettings) { showSettings = false }
     BackHandler(enabled = !showSettings && selected != null) { selected = null }
 
-    Box(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize().onSizeChanged { rootWidth = it.width }) {
         BubbleBackground(top = settings.theme.top, bottom = settings.theme.bottom, particles = settings.particles, wallpaper = wallpaper)
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             StatusBar(settings.use24h, settings.showBattery, onSettings = { showSettings = true })
             BubblePager(
-                shown, pagerState, settings.bubbleScale, Modifier.weight(1f),
+                apps = shown,
+                pagerState = pagerState,
+                scale = settings.bubbleScale,
+                hiddenPackage = dragApp?.packageName,
+                modifier = Modifier.weight(1f),
                 onSelect = { selected = it },
-                onLongPress = { haptics.performHapticFeedback(HapticFeedbackType.LongPress); menuFor = it },
+                onDragStart = { app, local ->
+                    dragApp = app
+                    dragTravel = 0f
+                    dragPos = (rects[app.packageName]?.topLeft ?: Offset.Zero) + local
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                },
+                onDrag = { delta -> dragPos += delta; dragTravel += delta.getDistance() },
+                onDragEnd = {
+                    dragApp?.let { app ->
+                        // No real movement means a plain long-press: show the app menu instead of rearranging.
+                        if (dragTravel < 24f) menuFor = app else drop(app)
+                    }
+                    dragApp = null
+                },
+                onDragCancel = { dragApp = null },
+                onPositioned = { pkg, rect -> rects[pkg] = rect },
+                onDisposed = { pkg -> rects.remove(pkg) },
+            )
+        }
+        // The bubble being dragged, following the finger.
+        dragApp?.let { app ->
+            val half = with(density) { 44.dp.toPx() }
+            Bubble(
+                app, 88.dp, onClick = {},
+                modifier = Modifier
+                    .width(108.dp)
+                    .offset { IntOffset((dragPos.x - with(density) { 54.dp.toPx() }).roundToInt(), (dragPos.y - half).roundToInt()) }
+                    .alpha(0.9f),
             )
         }
         AnimatedVisibility(
@@ -138,6 +230,7 @@ fun HomeScreen(homePresses: Int = 0) {
                 onChange = { settings = it; store.save(it) },
                 onWallpaper = { uri -> store.saveWallpaper(uri)?.let { wallpaper = it } },
                 onClearWallpaper = { store.clearWallpaper(); wallpaper = null },
+                onResetOrder = { order = emptyList(); store.saveOrder(order) },
                 onClose = { showSettings = false },
             )
         }
@@ -166,9 +259,15 @@ private fun BubblePager(
     apps: List<LaunchableApp>,
     pagerState: PagerState,
     scale: Float,
+    hiddenPackage: String?,
     modifier: Modifier,
     onSelect: (LaunchableApp) -> Unit,
-    onLongPress: (LaunchableApp) -> Unit,
+    onDragStart: (LaunchableApp, Offset) -> Unit,
+    onDrag: (Offset) -> Unit,
+    onDragEnd: () -> Unit,
+    onDragCancel: () -> Unit,
+    onPositioned: (String, Rect) -> Unit,
+    onDisposed: (String) -> Unit,
 ) {
     val pages = apps.chunked(PAGE_SIZE)
     if (pages.isEmpty()) {
@@ -180,8 +279,9 @@ private fun BubblePager(
     Row(modifier.fillMaxSize()) {
         // Page dots run down the left edge, like the Vita.
         PageDots(pages.size, pagerState.currentPage, Modifier.padding(start = 16.dp).align(Alignment.CenterVertically))
-        VerticalPagerPlaceholder()
-        HorizontalPager(pagerState, Modifier.weight(1f)) { index ->
+        Spacer(Modifier.width(4.dp))
+        // Keep every page composed so a bubble being dragged is not disposed when the page flips away.
+        HorizontalPager(pagerState, Modifier.weight(1f), beyondViewportPageCount = pages.size) { index ->
             val pageApps = pages.getOrElse(index) { emptyList() }
             BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
                 // Largest bubble whose row of four cells (bubble + 44dp) and three rows (bubble + 36dp) still fit.
@@ -196,7 +296,18 @@ private fun BubblePager(
                         // Rows with fewer bubbles are centred, which produces the staggered look.
                         Row(Modifier.fillMaxWidth().height(cell + 16.dp), horizontalArrangement = Arrangement.Center) {
                             row.forEach { app ->
-                                Bubble(app, bubble, onClick = { onSelect(app) }, onLongClick = { onLongPress(app) }, modifier = Modifier.padding(horizontal = 12.dp).width(cell))
+                                DisposableEffect(app.packageName) { onDispose { onDisposed(app.packageName) } }
+                                Bubble(
+                                    app, bubble,
+                                    onClick = { onSelect(app) },
+                                    modifier = Modifier.padding(horizontal = 12.dp).width(cell),
+                                    hidden = app.packageName == hiddenPackage,
+                                    onDragStart = { onDragStart(app, it) },
+                                    onDrag = onDrag,
+                                    onDragEnd = onDragEnd,
+                                    onDragCancel = onDragCancel,
+                                    onPositioned = { onPositioned(app.packageName, it) },
+                                )
                             }
                         }
                     }
@@ -205,9 +316,6 @@ private fun BubblePager(
         }
     }
 }
-
-@Composable
-private fun VerticalPagerPlaceholder() = Spacer(Modifier.width(4.dp))
 
 @Composable
 private fun PageDots(count: Int, current: Int, modifier: Modifier = Modifier) {

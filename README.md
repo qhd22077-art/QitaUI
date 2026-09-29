@@ -8,7 +8,7 @@ A PlayStation Vita-style home screen (launcher) for Android, built with Kotlin a
 - Drag the folded top-right corner diagonally to peel the page away: past a threshold it closes the page and the app's background processes. Dragging down from the top edge also dismisses the page.
 - Status strip: clock, Wi-Fi, battery (with charging bolt) and a settings gear
 - Settings: themes, custom wallpaper, particles, bubble size, 24h clock, sort order
-- Long-press a bubble for App info / Uninstall; pressing Home returns to the first page
+- Long-press a bubble and drag to rearrange (drop on another bubble to take its place, hold at a screen edge to change page); long-press without moving for App info / Uninstall. Pressing Home returns to the first page
 - Landscape, immersive; registers as a HOME app so it can be set as your default launcher
 
 ## Build

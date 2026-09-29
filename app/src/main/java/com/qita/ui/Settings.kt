@@ -58,6 +58,13 @@ class SettingsStore(private val context: Context) {
             .apply()
     }
 
+    fun loadOrder(): List<String> =
+        prefs.getString("order", "").orEmpty().split('\n').filter { it.isNotBlank() }
+
+    fun saveOrder(order: List<String>) {
+        prefs.edit().putString("order", order.joinToString("\n")).apply()
+    }
+
     fun loadWallpaper(): ImageBitmap? =
         if (wallpaperFile.exists()) BitmapFactory.decodeFile(wallpaperFile.path)?.asImageBitmap() else null
 
