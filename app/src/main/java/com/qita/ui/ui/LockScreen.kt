@@ -53,6 +53,7 @@ fun LockScreen(settings: Settings, onUnlock: () -> Unit) {
     val peel = remember { Animatable(0f) }
     var pageWidth by remember { mutableStateOf(1) }
     val baseFold = with(density) { 56.dp.toPx() }
+    val radius = with(density) { 14.dp.toPx() }
     var now by remember { mutableStateOf(Date()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -69,21 +70,18 @@ fun LockScreen(settings: Settings, onUnlock: () -> Unit) {
             .statusBarsPadding(),
     ) {
         StatusBar(settings.use24h, settings.showBattery, showHome = false)
-        Box(Modifier.weight(1f).fillMaxWidth().onSizeChanged { pageWidth = it.width }) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        shape = PeelShape(baseFold + peel.value)
-                        clip = true
-                    },
-            ) {
-                Shards(settings.theme.top, settings.theme.mid)
-                // The translucent panel that frames the lock screen.
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            // The wallpaper stays put; only the framed panel peels away.
+            Shards(settings.theme.top, settings.theme.mid)
+            Box(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 14.dp)) {
                 BoxWithConstraints(
                     Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 20.dp, vertical = 14.dp)
+                        .onSizeChanged { pageWidth = it.width }
+                        .graphicsLayer {
+                            shape = PeelShape(baseFold + peel.value, radius)
+                            clip = true
+                        }
                         .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(14.dp))
                         .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(14.dp)),
                 ) {
@@ -104,21 +102,21 @@ fun LockScreen(settings: Settings, onUnlock: () -> Unit) {
                         )
                     }
                 }
+
+                PeelBack(baseFold + peel.value, settings.theme.mid, radius)
+
+                // Above everything else in the panel, so nothing can cover it.
+                PeelCorner(
+                    peel = peel,
+                    pageWidth = pageWidth,
+                    padKey = "lock:peel",
+                    hint = true,
+                    repeatHint = true,
+                    tapToPeel = true,
+                    onPeeled = onUnlock,
+                    modifier = Modifier.align(Alignment.TopEnd),
+                )
             }
-
-            PeelBack(baseFold + peel.value, settings.theme.mid)
-
-            // Above everything else in the page, so nothing can cover it.
-            PeelCorner(
-                peel = peel,
-                pageWidth = pageWidth,
-                padKey = "lock:peel",
-                hint = true,
-                repeatHint = true,
-                tapToPeel = true,
-                onPeeled = onUnlock,
-                modifier = Modifier.align(Alignment.TopEnd),
-            )
         }
     }
 }

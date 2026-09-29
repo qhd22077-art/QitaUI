@@ -21,6 +21,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
@@ -31,7 +32,10 @@ import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -41,52 +45,91 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** A page with its top-right corner triangle (legs of [fold] px) removed, so what is behind shows through. */
-internal class PeelShape(private val fold: Float) : Shape {
-    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
-        val page = Path().apply { addRoundRect(RoundRect(0f, 0f, size.width, size.height, CornerRadius(0f, 0f))) }
-        val corner = Path().apply {
-            moveTo(size.width - fold, 0f); lineTo(size.width, 0f); lineTo(size.width, fold); close()
-        }
-        return Outline.Generic(Path.combine(PathOperation.Difference, page, corner))
+/**
+ * The region removed from a page's top-right corner: from the point [fold] px left of the corner, along a
+ * fold that bows slightly into the page, to the point [fold] px below it. Curved rather than straight, so
+ * the peel reads as a curled sheet.
+ */
+private fun cutPath(w: Float, fold: Float): Path {
+    val bow = fold * 0.10f
+    return Path().apply {
+        moveTo(w - fold, 0f)
+        quadraticBezierTo(w - fold / 2f - bow, fold / 2f + bow, w, fold)
+        lineTo(w, 0f)
+        close()
     }
 }
 
-/** The curled-back flap: the removed corner reflected across the fold line, shaded like paper and casting a soft shadow. */
+/** A page (corners rounded by [radius] px) with its top-right corner peeled off, so what is behind shows through. */
+internal class PeelShape(private val fold: Float, private val radius: Float = 0f) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        val page = Path().apply { addRoundRect(RoundRect(0f, 0f, size.width, size.height, CornerRadius(radius, radius))) }
+        return Outline.Generic(Path.combine(PathOperation.Difference, page, cutPath(size.width, fold)))
+    }
+}
+
+/**
+ * The peeled corner: a dark reveal where the page used to be, and the curled-back flap (the removed corner
+ * folded over, with a rounded free tip) casting a soft shadow on the page. [radius] rounds the reveal to
+ * match a page with rounded corners.
+ */
 @Composable
-internal fun PeelBack(fold: Float, tint: Color) {
-    Canvas(Modifier.fillMaxSize()) {
+internal fun PeelBack(fold: Float, tint: Color, radius: Float = 0f) {
+    Canvas(Modifier.fillMaxSize().clipToBounds()) {
         val w = size.width
-        // Shadow the flap casts on the page, fading away from the fold.
-        val s = fold * 0.28f
-        val shadow = Path().apply {
-            moveTo(w - fold, 0f); lineTo(w, fold)
-            lineTo(w - s, fold + s); lineTo(w - fold - s, s)
+        val f = fold
+        val bow = f * 0.10f
+        val mid = Offset(w - f / 2f, f / 2f)
+
+        // Revealed corner: deep blue, darkest along the fold where the flap shades it.
+        val reveal = cutPath(w, f)
+        val paintReveal = {
+            drawPath(
+                reveal,
+                Brush.linearGradient(
+                    listOf(lerp(tint, Color.Black, 0.80f), lerp(tint, Color.Black, 0.55f)),
+                    Offset(mid.x - f * 0.25f, mid.y + f * 0.25f), Offset(w, 0f),
+                ),
+            )
+        }
+        if (radius > 0f) {
+            val round = Path().apply { addRoundRect(RoundRect(0f, 0f, size.width, size.height, CornerRadius(radius, radius))) }
+            clipPath(round) { paintReveal() }
+        } else paintReveal()
+
+        // The flap: the removed corner reflected across the fold, its free tip rounded off.
+        val tip = f * 0.34f
+        val flap = Path().apply {
+            moveTo(w - f, 0f)
+            quadraticBezierTo(w - f / 2f - bow, f / 2f + bow, w, f)
+            lineTo(w - f + tip, f)
+            quadraticBezierTo(w - f, f, w - f, f - tip)
             close()
         }
-        drawPath(
-            shadow,
-            Brush.linearGradient(
-                listOf(Color.Black.copy(alpha = 0.34f), Color.Transparent),
-                Offset(w - fold * 0.5f, fold * 0.5f), Offset(w - fold * 0.5f - s * 0.7f, fold * 0.5f + s * 0.7f),
-            ),
-        )
-        val flap = Path().apply {
-            moveTo(w - fold, 0f); lineTo(w, fold); lineTo(w - fold, fold); close()
+        // Soft shadow the flap casts on the page: a few offset copies, fading outward.
+        for (i in 3 downTo 1) {
+            translate(-f * 0.035f * i, f * 0.05f * i) { drawPath(flap, Color.Black.copy(alpha = 0.10f)) }
         }
         drawPath(
             flap,
             Brush.linearGradient(
-                listOf(lerp(tint, Color.White, 0.72f), lerp(tint, Color.Black, 0.38f)),
-                Offset(w - fold, 0f), Offset(w, fold),
+                listOf(Color.White.copy(alpha = 0.97f), lerp(tint, Color.White, 0.72f)),
+                Offset(mid.x, mid.y), Offset(w - f, f),
             ),
         )
-        drawLine(Color.White.copy(alpha = 0.65f), Offset(w - fold, 0f), Offset(w, fold), strokeWidth = 2f)
-        val curl = Path().apply {
-            moveTo(w - fold * 0.86f, fold * 0.14f)
-            quadraticBezierTo(w - fold * 0.5f, fold * 0.5f, w - fold * 0.14f, fold * 0.86f)
+        // Gloss along the fold, and a faint shine across the flap.
+        val foldLine = Path().apply {
+            moveTo(w - f, 0f)
+            quadraticBezierTo(w - f / 2f - bow, f / 2f + bow, w, f)
         }
-        drawPath(curl, Color.White.copy(alpha = 0.38f), style = Stroke(width = 2f))
+        drawPath(foldLine, Color.White, style = Stroke(width = 2.5f))
+        drawPath(
+            Path().apply {
+                moveTo(w - f * 0.80f, f * 0.16f)
+                quadraticBezierTo(w - f * 0.5f - bow, f * 0.5f + bow, w - f * 0.16f, f * 0.80f)
+            },
+            Color.White.copy(alpha = 0.55f), style = Stroke(width = f * 0.05f, cap = StrokeCap.Round),
+        )
     }
 }
 

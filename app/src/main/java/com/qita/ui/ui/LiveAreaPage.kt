@@ -171,18 +171,24 @@ fun LiveAreaPage(
                 ) {
                     Gate(app, onLaunch, Modifier.weight(0.95f).fillMaxHeight())
                     Column(Modifier.weight(1.05f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        val installed = if (app.installTime > 0) DateFormat.getDateInstance().format(Date(app.installTime)) else "Unknown"
-                        Banner("Details") {
-                            Line("Version ${app.version.ifBlank { "unknown" }}")
-                            Line("Installed $installed")
-                            Line("Opened from here $launches time${if (launches == 1) "" else "s"}")
+                        val action = app.action
+                        if (action != null) {
+                            Banner("About") { Line(action.blurb) }
+                            Line("Drag the curled corner to close this page.", dim = true)
+                        } else {
+                            val installed = if (app.installTime > 0) DateFormat.getDateInstance().format(Date(app.installTime)) else "Unknown"
+                            Banner("Details") {
+                                Line("Version ${app.version.ifBlank { "unknown" }}")
+                                Line("Installed $installed")
+                                Line("Opened from here $launches time${if (launches == 1) "" else "s"}")
+                            }
+                            Banner("Package") { Line(app.packageName, mono = true) }
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                ActionPill("card:info:${app.packageName}", "App info", onInfo)
+                                ActionPill("card:close:${app.packageName}", "Close app", onCloseApp)
+                            }
+                            Line("Drag the curled corner to close the app.", dim = true)
                         }
-                        Banner("Package") { Line(app.packageName, mono = true) }
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            ActionPill("card:info:${app.packageName}", "App info", onInfo)
-                            ActionPill("card:close:${app.packageName}", "Close app", onCloseApp)
-                        }
-                        Line("Drag the curled corner to close the app.", dim = true)
                     }
                 }
             }

@@ -25,6 +25,8 @@ data class LaunchableApp(
     val isSystem: Boolean = false,
     /** Average colour of the icon, used to colour its glossy sphere. */
     val tint: Color = Color(0xFF4A78D0),
+    /** Set for the built-in bubbles (Settings, Store, Desktop), which are not real Android apps. */
+    val action: SystemAction? = null,
 )
 
 object AppRepository {

@@ -143,9 +143,18 @@ class SettingsStore(private val context: Context) {
             .apply()
     }
 
-    /** Packages shown on the home screen, in display order. Empty until the user adds apps. */
-    fun loadHome(): List<String> =
-        prefs.getString("home", "").orEmpty().split('\n').filter { it.isNotBlank() }
+    /**
+     * Packages shown on the home screen, in display order. The built-in bubbles (Settings, Store,
+     * Desktop) are put in front once, so existing installs get them too.
+     */
+    fun loadHome(): List<String> {
+        val saved = prefs.getString("home", "").orEmpty().split('\n').filter { it.isNotBlank() }
+        if (prefs.getBoolean("systemSeeded", false)) return saved
+        val seeded = SYSTEM_IDS.filter { it !in saved } + saved
+        saveHome(seeded)
+        prefs.edit().putBoolean("systemSeeded", true).apply()
+        return seeded
+    }
 
     fun saveHome(home: List<String>) {
         prefs.edit().putString("home", home.joinToString("\n")).apply()

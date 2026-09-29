@@ -79,6 +79,7 @@ fun Bubble(
     showLabel: Boolean = true,
     moving: Boolean = false,
     editing: Boolean = false,
+    removable: Boolean = true,
     onRemove: () -> Unit = {},
     enterDelay: Int = 0,
     onDragStart: (Offset) -> Unit = {},
@@ -163,7 +164,7 @@ fun Bubble(
                 rim = if (moving) Brush.linearGradient(listOf(MoveCyan, MoveCyan)) else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.95f), Color.White.copy(alpha = 0.35f))),
                 rimWidth = if (moving) 4.dp else 2.dp,
             )
-            if (editing) {
+            if (editing && removable) {
                 Box(
                     Modifier
                         .align(Alignment.TopStart)

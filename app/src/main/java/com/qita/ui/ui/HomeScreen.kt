@@ -85,6 +85,9 @@ import com.qita.ui.Controller
 import com.qita.ui.CursorLayer
 import com.qita.ui.LAYOUTS
 import com.qita.ui.PageLayout
+import com.qita.ui.SYSTEM_APPS
+import com.qita.ui.SYSTEM_IDS
+import com.qita.ui.SystemAction
 import com.qita.ui.LaunchableApp
 import com.qita.ui.Settings
 import com.qita.ui.SettingsStore
@@ -146,9 +149,10 @@ fun HomeScreen(homePresses: Int = 0) {
     val pageSize = layout.size
     // Only apps the user has added appear on the home screen; the desktop lists everything.
     val shown = remember(apps, home, settings.sortNewest) {
-        val byPackage = apps.associateBy { it.packageName }
+        val byPackage = (apps + SYSTEM_APPS).associateBy { it.packageName }
         val list = home.mapNotNull { byPackage[it] }
-        if (settings.sortNewest) list.sortedByDescending { it.installTime } else list
+        // Newest first, with the built-in bubbles staying in front.
+        if (settings.sortNewest) list.sortedWith(compareByDescending<LaunchableApp> { it.action != null }.thenByDescending { it.installTime }) else list
     }
     val homeSet = remember(home) { home.toSet() }
     val pageCount = maxOf(1, (shown.size + pageSize - 1) / pageSize)
@@ -162,15 +166,24 @@ fun HomeScreen(homePresses: Int = 0) {
         toast = "Added ${app.label} to home"
     }
     fun removeFromHome(app: LaunchableApp) {
+        if (app.action != null) return
         home = home - app.packageName; store.saveHome(home)
         toast = "Removed ${app.label} from home"
     }
     fun launchApp(app: LaunchableApp) {
-        AppRepository.launch(context, app)
-        store.recordLaunch(app.packageName)
-        counts = store.loadLaunchCounts()
+        when (app.action) {
+            SystemAction.SETTINGS -> { selected = null; showSettings = true }
+            SystemAction.DESKTOP -> { selected = null; showDesktop = true }
+            SystemAction.STORE -> toast = "The Store is coming soon"
+            null -> {
+                AppRepository.launch(context, app)
+                store.recordLaunch(app.packageName)
+                counts = store.loadLaunchCounts()
+            }
+        }
     }
     fun closeApp(app: LaunchableApp) {
+        if (app.action != null) return
         AppRepository.close(context, app)
         toast = "Closed ${app.label}"
     }
@@ -496,7 +509,7 @@ fun HomeScreen(homePresses: Int = 0) {
                     onSettle = { index -> if (index < 0) selected = null else openPages.getOrNull(index)?.let { selected = it } },
                     onLaunch = { launchApp(it) },
                     onClosePage = { closePage(it) },
-                    onInfo = { AppRepository.showInfo(context, it) },
+                    onInfo = { if (it.action == null) AppRepository.showInfo(context, it) },
                 )
             }
         }
@@ -508,7 +521,7 @@ fun HomeScreen(homePresses: Int = 0) {
             CompositionLocalProvider(LocalPadLayer provides 1) {
                 DesktopScreen(
                     apps = apps,
-                    homeApps = shown,
+                    homeApps = shown.filter { it.action == null },
                     onHome = homeSet,
                     counts = counts,
                     settings = settings,
@@ -552,7 +565,7 @@ fun HomeScreen(homePresses: Int = 0) {
                     },
                     onWallpaper = { uri -> store.saveWallpaper(uri)?.let { wallpaper = it } },
                     onClearWallpaper = { store.clearWallpaper(); wallpaper = null },
-                    onClearHome = { home = emptyList(); store.saveHome(home) },
+                    onClearHome = { home = SYSTEM_IDS; store.saveHome(home) },
                     onShowTutorial = { showSettings = false; showTutorial = true },
                     onClose = { showSettings = false },
                 )
@@ -578,8 +591,11 @@ fun HomeScreen(homePresses: Int = 0) {
             val onHome = app.packageName in homeSet
             ContextMenu(
                 title = app.label,
-                subtitle = app.packageName,
-                items = listOf(
+                subtitle = if (app.action != null) "Built in" else app.packageName,
+                items = if (app.action != null) listOf(
+                    MenuItem("Open") { menuFor = null; launchApp(app) },
+                    MenuItem("Cancel") { menuFor = null },
+                ) else listOf(
                     MenuItem("Open") { menuFor = null; launchApp(app) },
                     MenuItem(if (onHome) "Remove from home" else "Add to home") {
                         menuFor = null
@@ -773,6 +789,7 @@ private fun BubblePager(
                             showLabel = settings.showLabels,
                             moving = app.packageName == movingPackage,
                             editing = editing,
+                            removable = app.action == null,
                             onRemove = { onRemove(app) },
                             enterDelay = i * 45,
                             onDragStart = { onDragStart(app, it) },
