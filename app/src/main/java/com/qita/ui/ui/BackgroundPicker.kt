@@ -97,7 +97,7 @@ fun BackgroundPicker(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 val base = THEMES[defaultThemeIndex.coerceIn(THEMES.indices)]
-                Tile("bg:default", "Default", override == null, Brush.verticalGradient(listOf(base.top, base.mid, base.bottom)), onDefault)
+                Tile("bg:default", "Default", override == null, Brush.verticalGradient(listOf(base.top, base.mid, base.bottom)), onClick = onDefault)
                 THEMES.forEachIndexed { i, t ->
                     Tile("bg:$i", t.name, override == i, Brush.verticalGradient(listOf(t.top, t.mid, t.bottom))) { onTheme(i) }
                 }
