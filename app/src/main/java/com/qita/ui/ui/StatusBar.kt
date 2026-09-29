@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,12 +24,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import java.text.DateFormat
+import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
 
 /** Top strip with the clock (left) and battery level (right). */
 @Composable
-fun StatusBar(modifier: Modifier = Modifier) {
+fun StatusBar(use24h: Boolean, showBattery: Boolean, onSettings: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var now by remember { mutableStateOf(Date()) }
     var battery by remember { mutableStateOf(batteryPercent(context)) }
@@ -44,11 +46,12 @@ fun StatusBar(modifier: Modifier = Modifier) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            DateFormat.getTimeInstance(DateFormat.SHORT).format(now),
-            color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
-        )
-        Text("$battery%", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        val clock = if (use24h) SimpleDateFormat("HH:mm", Locale.getDefault()) else SimpleDateFormat("h:mm a", Locale.getDefault())
+        Text(clock.format(now), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            if (showBattery) Text("$battery%", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text("⚙", Modifier.clickable(onClick = onSettings).padding(horizontal = 6.dp), color = Color.White, fontSize = 22.sp)
+        }
     }
 }
 

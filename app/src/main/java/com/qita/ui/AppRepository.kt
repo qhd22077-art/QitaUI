@@ -3,6 +3,8 @@ package com.qita.ui
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.provider.Settings as AndroidSettings
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
@@ -38,6 +40,19 @@ object AppRepository {
         context.packageManager.getLaunchIntentForPackage(app.packageName)
             ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             ?.let(context::startActivity)
+    }
+
+    fun showInfo(context: Context, app: LaunchableApp) {
+        context.startActivity(
+            Intent(AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${app.packageName}"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }
+
+    fun uninstall(context: Context, app: LaunchableApp) {
+        context.startActivity(
+            Intent(Intent.ACTION_DELETE, Uri.parse("package:${app.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
     }
 
     /**

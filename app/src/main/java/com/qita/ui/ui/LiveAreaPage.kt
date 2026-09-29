@@ -48,6 +48,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.qita.ui.AppRepository
 import com.qita.ui.LaunchableApp
+import com.qita.ui.Theme
+import androidx.compose.ui.graphics.ImageBitmap
 import kotlinx.coroutines.launch
 
 /**
@@ -55,7 +57,7 @@ import kotlinx.coroutines.launch
  * corner) to peel the page away and return to the home screen.
  */
 @Composable
-fun LiveAreaPage(app: LaunchableApp, onClose: () -> Unit) {
+fun LiveAreaPage(app: LaunchableApp, theme: Theme, particles: Boolean, wallpaper: ImageBitmap?, onClose: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val dismissY = remember { Animatable(0f) }
@@ -75,7 +77,7 @@ fun LiveAreaPage(app: LaunchableApp, onClose: () -> Unit) {
                 alpha = 1f - (dismissY.value / size.height).coerceIn(0f, 1f) * 0.6f
             },
       ) {
-        BubbleBackground(top = Color(0xFF0B3D91), bottom = Color(0xFF2A8FD8))
+        BubbleBackground(top = theme.top, bottom = theme.bottom, particles = particles, wallpaper = wallpaper)
 
         Row(Modifier.fillMaxSize().padding(start = 48.dp, top = 56.dp, end = 32.dp, bottom = 32.dp)) {
             // Left: icon, title and the Start button.

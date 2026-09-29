@@ -3,7 +3,8 @@ package com.qita.ui.ui
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,15 +31,16 @@ import androidx.compose.animation.core.animateFloatAsState
 import com.qita.ui.LaunchableApp
 
 /** Glossy circular app icon with its label underneath. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun Bubble(app: LaunchableApp, size: Dp, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun Bubble(app: LaunchableApp, size: Dp, onClick: () -> Unit, onLongClick: () -> Unit, modifier: Modifier = Modifier) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) 0.92f else 1f, label = "press")
     Column(
         modifier
             .scale(scale)
-            .clickable(interaction, indication = null, onClick = onClick),
+            .combinedClickable(interaction, indication = null, onClick = onClick, onLongClick = onLongClick),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
