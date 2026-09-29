@@ -66,7 +66,7 @@ fun SearchOverlay(
     }
     Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }) {
         BubbleBackground(
-            top = settings.theme.top, bottom = settings.theme.bottom, particles = settings.particles,
+            top = settings.theme.top, mid = settings.theme.mid, bottom = settings.theme.bottom, particles = settings.particles,
             wallpaper = wallpaper, particleCount = settings.particleCount, dim = settings.dim,
         )
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)))

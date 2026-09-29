@@ -172,7 +172,7 @@ object PadNav {
         var bestScore = Float.MAX_VALUE
         for (t in targets.values) {
             if (t === cur || t.layer != layer || !placed(t)) continue
-            if (dy != 0 && !onScreen(t.bounds)) continue
+            if (!onScreen(t.bounds)) continue
             val c = t.bounds.center
             val along = if (dx != 0) (c.x - from.x) * dx else (c.y - from.y) * dy
             val across = abs(if (dx != 0) c.y - from.y else c.x - from.x)

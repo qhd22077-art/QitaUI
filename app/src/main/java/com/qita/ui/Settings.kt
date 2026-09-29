@@ -11,27 +11,63 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import java.io.File
 
-data class Theme(val name: String, val top: Color, val bottom: Color)
+/** A wallpaper palette: the sky colour at the top, the middle band and the bright glow at the bottom. */
+data class Theme(val name: String, val top: Color, val mid: Color, val bottom: Color)
 
 val THEMES = listOf(
-    Theme("Ocean", Color(0xFF1466C8), Color(0xFF4FB6F0)),
-    Theme("Twilight", Color(0xFF4A1E9E), Color(0xFFB061E8)),
-    Theme("Forest", Color(0xFF0F6B3A), Color(0xFF6BD08A)),
-    Theme("Sunset", Color(0xFFD8452A), Color(0xFFFFB35C)),
-    Theme("Sakura", Color(0xFFD8477F), Color(0xFFFFB6D0)),
-    Theme("Midnight", Color(0xFF0A0F2C), Color(0xFF2A3A7A)),
+    Theme("Vita Blue", Color(0xFF0A2C9A), Color(0xFF1B5BD8), Color(0xFFB4D8FF)),
+    Theme("Cloud", Color(0xFF9DB4E8), Color(0xFFC5D2F2), Color(0xFFF1F5FF)),
+    Theme("Emerald", Color(0xFF0B6B2B), Color(0xFF2FB344), Color(0xFFB8F5B0)),
+    Theme("Violet", Color(0xFF3A1C8F), Color(0xFF6B44D6), Color(0xFFD8C8FF)),
+    Theme("Sunset", Color(0xFFB8321A), Color(0xFFF0782C), Color(0xFFFFE0B0)),
+    Theme("Midnight", Color(0xFF060B2A), Color(0xFF14246E), Color(0xFF5A78D0)),
 )
 
-/** Bubble rows per page. The page size is the sum of a layout's rows. */
+/**
+ * Where bubbles sit on a page, as fractions (x, y) of the page area, in reading order. The bubble
+ * at index i on page p is app number p * size + i.
+ */
+class PageLayout(val name: String, val slots: List<Pair<Float, Float>>) {
+    val size: Int get() = slots.size
+
+    /**
+     * The slot reached by moving one step from [from] within the page: left/right walk the reading
+     * order, up/down jump to the nearest slot in the next row. Null means "off the page".
+     */
+    fun step(from: Int, dx: Int, dy: Int): Int? {
+        if (dx != 0) return (from + dx).takeIf { it in slots.indices }
+        val (x, y) = slots[from]
+        return slots.indices
+            .filter { if (dy > 0) slots[it].second > y + 0.05f else slots[it].second < y - 0.05f }
+            .minByOrNull { i ->
+                val (sx, sy) = slots[i]
+                kotlin.math.abs(sy - y) * 2f + kotlin.math.abs(sx - x)
+            }
+    }
+}
+
+private fun grid(cols: Int, rows: Int): List<Pair<Float, Float>> {
+    val ys = if (rows == 3) listOf(0.2f, 0.5f, 0.8f) else listOf(0.3f, 0.7f)
+    return ys.flatMap { y -> (0 until cols).map { c -> (c + 0.5f) / cols to y } }
+}
+
 val LAYOUTS = listOf(
-    "Staggered" to listOf(4, 3, 3),
-    "Grid" to listOf(4, 4, 4),
-    "Wide" to listOf(5, 5),
+    // Measured from the real Vita home screen: three, four, then two bubbles.
+    PageLayout(
+        "Vita (3-4-2)",
+        listOf(
+            0.266f to 0.22f, 0.500f to 0.22f, 0.734f to 0.22f,
+            0.165f to 0.50f, 0.385f to 0.50f, 0.615f to 0.50f, 0.842f to 0.50f,
+            0.266f to 0.80f, 0.742f to 0.80f,
+        ),
+    ),
+    PageLayout("Grid (4x3)", grid(4, 3)),
+    PageLayout("Wide (5x2)", grid(5, 2)),
 )
 
 data class Settings(
     val themeIndex: Int = 0,
-    val particles: Boolean = true,
+    val particles: Boolean = false,
     val bubbleScale: Float = 1f,
     val use24h: Boolean = false,
     val showBattery: Boolean = true,
@@ -60,7 +96,7 @@ class SettingsStore(private val context: Context) {
 
     fun load() = Settings(
         themeIndex = prefs.getInt("theme", 0),
-        particles = prefs.getBoolean("particles", true),
+        particles = prefs.getBoolean("particles", false),
         bubbleScale = prefs.getFloat("bubbleScale", 1f),
         use24h = prefs.getBoolean("use24h", false),
         showBattery = prefs.getBoolean("showBattery", true),

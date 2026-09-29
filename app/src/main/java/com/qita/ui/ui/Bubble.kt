@@ -31,7 +31,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
@@ -117,29 +121,54 @@ fun Bubble(
             },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        val light = lerp(app.tint, Color.White, 0.42f)
+        val dark = lerp(app.tint, Color.Black, 0.38f)
         Box(
             Modifier
                 .size(size)
-                // Registered on the circle itself so the gamepad ring hugs the icon, not the label.
+                // Registered on the circle itself so the gamepad ring hugs the sphere, not the label.
                 .padTarget(padKey, corner = null, app = app, pad = 10.dp, bring = false, onClick = onClick)
-                .shadow(if (lit) (10 + 6 * pulse).dp else 4.dp, shape, ambientColor = Color(0xFFFFD54F), spotColor = if (moving) MoveCyan else Color.Black)
+                // Soft white halo just outside the rim.
+                .drawBehind { drawCircle(Color.White.copy(alpha = 0.20f), radius = this.size.minDimension / 2f + 5.dp.toPx()) }
+                .shadow(if (lit) (12 + 6 * pulse).dp else 7.dp, shape, ambientColor = Color(0xFF0A2A6A), spotColor = if (moving) MoveCyan else Color(0xFF0A2A6A))
                 .clip(shape)
-                .background(Brush.verticalGradient(listOf(Color.White, Color(0xFFD5EBFA))))
-                .border(if (moving) 4.dp else 2.dp, if (moving) MoveCyan else Color.White.copy(alpha = 0.8f), shape),
+                // The sphere: lit from the upper left, darker toward the lower right edge.
+                .drawBehind {
+                    drawRect(
+                        Brush.radialGradient(
+                            listOf(light, app.tint, dark),
+                            center = Offset(this.size.width * 0.42f, this.size.height * 0.30f),
+                            radius = this.size.width * 0.85f,
+                        ),
+                    )
+                }
+                .border(
+                    if (moving) 4.dp else 2.dp,
+                    if (moving) Brush.linearGradient(listOf(MoveCyan, MoveCyan)) else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.95f), Color.White.copy(alpha = 0.35f))),
+                    shape,
+                ),
             contentAlignment = Alignment.Center,
         ) {
             Image(
                 app.icon, app.label,
-                Modifier.size(size * 0.66f).clip(shape),
+                Modifier.size(size * 0.66f).clip(CircleShape),
             )
-            // Gloss highlight on the upper half.
+            // Glossy highlight across the top, and a soft bounce of light along the bottom.
             Box(
                 Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = size * 0.04f)
-                    .size(size * 0.8f, size * 0.4f)
-                    .clip(shape)
-                    .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.55f), Color.Transparent))),
+                    .padding(top = size * 0.045f)
+                    .size(size * 0.80f, size * 0.44f)
+                    .clip(CircleShape)
+                    .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.72f), Color.White.copy(alpha = 0.04f)))),
+            )
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = size * 0.03f)
+                    .size(size * 0.74f, size * 0.30f)
+                    .clip(CircleShape)
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.White.copy(alpha = 0.30f)))),
             )
         }
         if (showLabel) {
@@ -151,10 +180,11 @@ fun Bubble(
                         if (lit) Modifier.background(if (moving) MoveCyan else FocusYellow, RoundedCornerShape(50)).padding(horizontal = 8.dp, vertical = 1.dp)
                         else Modifier,
                     ),
-                color = if (lit) Color(0xFF1B1B1B) else Color.White.copy(alpha = 0.95f),
-                fontSize = 12.sp,
+                color = if (lit) Color(0xFF1B1B1B) else Color.White,
+                fontSize = 13.sp,
                 fontWeight = if (lit) FontWeight.Bold else FontWeight.Normal,
-                maxLines = 1,
+                style = TextStyle(shadow = if (lit) null else Shadow(Color.Black.copy(alpha = 0.55f), Offset(0f, 2f), 5f)),
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
             )

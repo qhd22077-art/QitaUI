@@ -40,7 +40,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -82,6 +83,7 @@ import com.qita.ui.CrashReporter
 import com.qita.ui.Controller
 import com.qita.ui.CursorLayer
 import com.qita.ui.LAYOUTS
+import com.qita.ui.PageLayout
 import com.qita.ui.LaunchableApp
 import com.qita.ui.Settings
 import com.qita.ui.SettingsStore
@@ -108,6 +110,7 @@ fun HomeScreen(homePresses: Int = 0) {
     var showSearch by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showTutorial by remember { mutableStateOf(!store.tutorialSeen()) }
+    var showQuickMenu by remember { mutableStateOf(false) }
     var toast by remember { mutableStateOf<String?>(null) }
     var lastToast by remember { mutableStateOf("") }
     var apps by remember { mutableStateOf<List<LaunchableApp>>(emptyList()) }
@@ -131,10 +134,11 @@ fun HomeScreen(homePresses: Int = 0) {
     var dragPos by remember { mutableStateOf(Offset.Zero) }
     var dragTravel by remember { mutableStateOf(0f) }
     var rootWidth by remember { mutableStateOf(0) }
+    var rootHeight by remember { mutableStateOf(0) }
     val rects = remember { mutableMapOf<String, Rect>() }
 
-    val rowSizes = LAYOUTS[settings.layoutIndex.coerceIn(LAYOUTS.indices)].second
-    val pageSize = rowSizes.sum()
+    val layout = LAYOUTS[settings.layoutIndex.coerceIn(LAYOUTS.indices)]
+    val pageSize = layout.size
     // Only apps the user has added appear on the home screen; the desktop lists everything.
     val shown = remember(apps, home, settings.sortNewest) {
         val byPackage = apps.associateBy { it.packageName }
@@ -145,7 +149,7 @@ fun HomeScreen(homePresses: Int = 0) {
     val pageCount = maxOf(1, (shown.size + pageSize - 1) / pageSize)
     val pagerState = rememberPagerState { pageCount }
 
-    val menuOpen = menuFor != null
+    val menuOpen = menuFor != null || showQuickMenu
     val anyOverlay = showDesktop || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null
 
     fun addToHome(app: LaunchableApp) {
@@ -182,7 +186,14 @@ fun HomeScreen(homePresses: Int = 0) {
         val list = home.toMutableList()
         val from = list.indexOf(pkg)
         if (from < 0) return
-        val to = (from + dx + dy * rowSizes.max()).coerceIn(0, list.size - 1)
+        val page = from / pageSize
+        val local = layout.step(from % pageSize, dx, dy)
+        // Off the page: horizontal steps continue in reading order, vertical steps jump a whole page.
+        val to = when {
+            local != null -> page * pageSize + local
+            dx != 0 -> from + dx
+            else -> from + dy * pageSize
+        }.coerceIn(0, list.size - 1)
         if (to == from) return
         list.add(to, list.removeAt(from))
         home = list; store.saveHome(home)
@@ -293,8 +304,8 @@ fun HomeScreen(homePresses: Int = 0) {
     // Hovering a dragged bubble near the left or right edge flips pages.
     val edgePx = with(density) { 56.dp.toPx() }
     val edge = if (dragApp == null) 0 else when {
-        dragPos.x < edgePx -> -1
-        dragPos.x > rootWidth - edgePx -> 1
+        dragPos.y < edgePx + with(density) { 28.dp.toPx() } -> -1
+        dragPos.y > rootHeight - edgePx -> 1
         else -> 0
     }
     LaunchedEffect(edge) {
@@ -309,7 +320,7 @@ fun HomeScreen(homePresses: Int = 0) {
     // Pressing Home while the launcher is open closes everything and returns to the first page.
     LaunchedEffect(homePresses) {
         if (homePresses > 0) {
-            selected = null; showSettings = false; showSearch = false; showDesktop = false; menuFor = null; dragApp = null
+            selected = null; showSettings = false; showSearch = false; showDesktop = false; menuFor = null; showQuickMenu = false; dragApp = null
             endMove(true)
             pagerState.animateScrollToPage(0)
         }
@@ -337,7 +348,7 @@ fun HomeScreen(homePresses: Int = 0) {
     }
 
     BackHandler(enabled = crashTrace != null) { CrashReporter.clear(context); crashTrace = null }
-    BackHandler(enabled = menuOpen && crashTrace == null) { menuFor = null }
+    BackHandler(enabled = menuOpen && crashTrace == null) { menuFor = null; showQuickMenu = false }
     BackHandler(enabled = showTutorial && !menuOpen) { showTutorial = false; store.setTutorialSeen() }
     BackHandler(enabled = showSettings && !menuOpen && !showTutorial) { showSettings = false }
     BackHandler(enabled = showSearch && !showSettings && !menuOpen && !showTutorial) { showSearch = false }
@@ -350,9 +361,9 @@ fun HomeScreen(homePresses: Int = 0) {
     // A tween, never a spring: springs overshoot and padding must never go negative.
     val hintPad by animateDpAsState(if (Controller.padActive) 46.dp else 0.dp, tween(220), label = "hintPad")
 
-    Box(Modifier.fillMaxSize().onSizeChanged { rootWidth = it.width; PadNav.viewport = Rect(0f, 0f, it.width.toFloat(), it.height.toFloat()) }) {
+    Box(Modifier.fillMaxSize().onSizeChanged { rootWidth = it.width; rootHeight = it.height; PadNav.viewport = Rect(0f, 0f, it.width.toFloat(), it.height.toFloat()) }) {
         BubbleBackground(
-            top = settings.theme.top, bottom = settings.theme.bottom, particles = settings.particles,
+            top = settings.theme.top, mid = settings.theme.mid, bottom = settings.theme.bottom, particles = settings.particles,
             wallpaper = wallpaper, particleCount = settings.particleCount, dim = settings.dim,
         )
         Column(
@@ -366,23 +377,18 @@ fun HomeScreen(homePresses: Int = 0) {
                     alpha = 1f - 0.35f * depth
                 },
         ) {
-            StatusBar(
-                settings.use24h, settings.showBattery,
-                onDesktop = { showDesktop = true }, onSearch = { showSearch = true }, onSettings = { showSettings = true },
-            )
+            StatusBar(settings.use24h, settings.showBattery)
             BubblePager(
                 apps = shown,
                 pagerState = pagerState,
                 scale = settings.bubbleScale,
-                rowSizes = rowSizes,
+                layout = layout,
                 settings = settings,
                 hiddenPackage = dragApp?.packageName,
                 movingPackage = Controller.movingPackage,
                 modifier = Modifier.weight(1f).padding(bottom = hintPad.coerceAtLeast(0.dp)),
                 onSelect = { selected = it },
                 onOpenDesktop = { showDesktop = true },
-                onSwipeUp = { showDesktop = true },
-                onSwipeDown = { showSearch = true },
                 onDragStart = { app, local ->
                     dragApp = app
                     dragTravel = 0f
@@ -402,6 +408,10 @@ fun HomeScreen(homePresses: Int = 0) {
                 onDisposed = { pkg -> rects.remove(pkg) },
             )
         }
+        CornerSphere(
+            onClick = { showQuickMenu = true },
+            modifier = Modifier.align(Alignment.TopEnd).offset(x = 24.dp, y = (-22).dp),
+        )
         // The bubble being dragged, following the finger.
         dragApp?.let { app ->
             val half = with(density) { 44.dp.toPx() }
@@ -490,6 +500,20 @@ fun HomeScreen(homePresses: Int = 0) {
                     onClose = { showSettings = false },
                 )
             }
+        }
+
+        if (showQuickMenu) {
+            ContextMenu(
+                title = "QitaUI",
+                subtitle = "Launcher menu",
+                items = listOf(
+                    MenuItem("Desktop") { showQuickMenu = false; showDesktop = true },
+                    MenuItem("Search") { showQuickMenu = false; showSearch = true },
+                    MenuItem("Settings") { showQuickMenu = false; showSettings = true },
+                    MenuItem("Cancel") { showQuickMenu = false },
+                ),
+                onDismiss = { showQuickMenu = false },
+            )
         }
 
         menuFor?.let { app ->
@@ -594,15 +618,13 @@ private fun BubblePager(
     apps: List<LaunchableApp>,
     pagerState: PagerState,
     scale: Float,
-    rowSizes: List<Int>,
+    layout: PageLayout,
     settings: Settings,
     hiddenPackage: String?,
     movingPackage: String?,
     modifier: Modifier,
     onSelect: (LaunchableApp) -> Unit,
     onOpenDesktop: () -> Unit,
-    onSwipeUp: () -> Unit,
-    onSwipeDown: () -> Unit,
     onDragStart: (LaunchableApp, Offset) -> Unit,
     onDrag: (Offset) -> Unit,
     onDragEnd: () -> Unit,
@@ -610,7 +632,7 @@ private fun BubblePager(
     onPositioned: (String, Rect) -> Unit,
     onDisposed: (String) -> Unit,
 ) {
-    val pages = apps.chunked(rowSizes.sum())
+    val pages = apps.chunked(layout.size)
     if (pages.isEmpty()) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -628,78 +650,58 @@ private fun BubblePager(
         }
         return
     }
-    Row(
-        modifier
-            .fillMaxSize()
-            // Swipe up for the desktop, down for search (horizontal swipes still change page).
-            .pointerInput(Unit) {
-                var total = 0f
-                val threshold = 90.dp.toPx()
-                detectVerticalDragGestures(
-                    onDragStart = { total = 0f },
-                    onVerticalDrag = { _, dy -> total += dy },
-                    onDragEnd = { if (total > threshold) onSwipeDown() else if (total < -threshold) onSwipeUp() },
-                    onDragCancel = { total = 0f },
-                )
-            },
-    ) {
-        // Page dots run down the left edge, like the Vita.
-        if (settings.showDots) PageDots(pages.size, pagerState.currentPage, Modifier.padding(start = 16.dp).align(Alignment.CenterVertically))
-        Spacer(Modifier.width(4.dp))
-        // Keep every page composed so a bubble being dragged is not disposed when the page flips away.
-        HorizontalPager(pagerState, Modifier.weight(1f), beyondViewportPageCount = pages.size) { index ->
+    Box(modifier.fillMaxSize()) {
+        // Pages scroll vertically, like the Vita. Every page stays composed so a bubble being dragged
+        // is not disposed when its page scrolls away.
+        VerticalPager(
+            pagerState,
+            Modifier.fillMaxSize().padScroller { pagerState.animateScrollBy(it) },
+            beyondViewportPageCount = pages.size,
+        ) { index ->
             val pageApps = pages.getOrElse(index) { emptyList() }
             BoxWithConstraints(
                 Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 24.dp)
                     // Pages shrink and fade slightly as they slide away.
                     .graphicsLayer {
                         val distance = ((pagerState.currentPage - index) + pagerState.currentPageOffsetFraction).absoluteValue.coerceIn(0f, 1f)
-                        val s = 1f - 0.1f * distance
+                        val s = 1f - 0.08f * distance
                         scaleX = s
                         scaleY = s
-                        alpha = 1f - 0.5f * distance
+                        alpha = 1f - 0.55f * distance
                     },
             ) {
-                // Largest bubble whose row of four cells (bubble + 44dp) and three rows (bubble + 36dp) still fit.
-                val fit = minOf(maxWidth / rowSizes.max() - 44.dp, maxHeight / rowSizes.size - 36.dp)
-                val bubble = (fit * 0.9f * scale).coerceAtLeast(40.dp)
-                val cell = bubble + 20.dp
-                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceEvenly) {
-                    var offset = 0
-                    rowSizes.forEach { count ->
-                        val start = offset
-                        val row = pageApps.drop(offset).take(count)
-                        offset += count
-                        // Rows with fewer bubbles are centred, which produces the staggered look.
-                        Row(Modifier.fillMaxWidth().height(cell + 16.dp), horizontalArrangement = Arrangement.Center) {
-                            row.forEachIndexed { i, app ->
-                                androidx.compose.runtime.key(app.packageName) {
-                                    DisposableEffect(app.packageName) { onDispose { onDisposed(app.packageName) } }
-                                    Bubble(
-                                        app, bubble,
-                                        onClick = { onSelect(app) },
-                                        modifier = Modifier.padding(horizontal = 12.dp).width(cell),
-                                        padKey = "home:${app.packageName}",
-                                        hidden = app.packageName == hiddenPackage,
-                                        shape = if (settings.roundedBubbles) RoundedCornerShape(28) else CircleShape,
-                                        showLabel = settings.showLabels,
-                                        moving = app.packageName == movingPackage,
-                                        enterDelay = (start + i) * 35,
-                                        onDragStart = { onDragStart(app, it) },
-                                        onDrag = onDrag,
-                                        onDragEnd = onDragEnd,
-                                        onDragCancel = onDragCancel,
-                                        onPositioned = { onPositioned(app.packageName, it) },
-                                    )
-                                }
-                            }
-                        }
+                // The sphere is a quarter of the page height, like the real home screen.
+                val bubble = (minOf(maxHeight * 0.25f, maxWidth * 0.14f) * scale).coerceAtLeast(40.dp)
+                val column = bubble + 56.dp
+                pageApps.forEachIndexed { i, app ->
+                    val (fx, fy) = layout.slots[i]
+                    androidx.compose.runtime.key(app.packageName) {
+                        DisposableEffect(app.packageName) { onDispose { onDisposed(app.packageName) } }
+                        Bubble(
+                            app, bubble,
+                            onClick = { onSelect(app) },
+                            modifier = Modifier
+                                .offset(x = maxWidth * fx - column / 2, y = maxHeight * fy - bubble / 2)
+                                .width(column),
+                            padKey = "home:${app.packageName}",
+                            hidden = app.packageName == hiddenPackage,
+                            shape = if (settings.roundedBubbles) RoundedCornerShape(28) else CircleShape,
+                            showLabel = settings.showLabels,
+                            moving = app.packageName == movingPackage,
+                            enterDelay = i * 45,
+                            onDragStart = { onDragStart(app, it) },
+                            onDrag = onDrag,
+                            onDragEnd = onDragEnd,
+                            onDragCancel = onDragCancel,
+                            onPositioned = { onPositioned(app.packageName, it) },
+                        )
                     }
                 }
             }
         }
+        // Page dots run down the left edge, the current one larger and brighter.
+        if (settings.showDots) PageDots(pages.size, pagerState.currentPage, Modifier.align(Alignment.CenterStart).padding(start = 14.dp))
     }
 }
 

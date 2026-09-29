@@ -112,7 +112,7 @@ fun LiveAreaPage(
                     },
             ) {
                 BubbleBackground(
-                    top = settings.theme.top, bottom = settings.theme.bottom, particles = settings.particles,
+                    top = settings.theme.top, mid = settings.theme.mid, bottom = settings.theme.bottom, particles = settings.particles,
                     wallpaper = wallpaper, particleCount = settings.particleCount, dim = settings.dim,
                 )
                 Row(Modifier.fillMaxSize().padding(start = 32.dp, top = 56.dp, end = 24.dp, bottom = 24.dp)) {

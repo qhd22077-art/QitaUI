@@ -10,6 +10,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 
@@ -22,6 +23,8 @@ data class LaunchableApp(
     val version: String = "",
     val category: Int = -1,
     val isSystem: Boolean = false,
+    /** Average colour of the icon, used to colour its glossy sphere. */
+    val tint: Color = Color(0xFF4A78D0),
 )
 
 object AppRepository {
@@ -32,10 +35,12 @@ object AppRepository {
             .filter { it.activityInfo.packageName != context.packageName }
             .map {
                 val info = runCatching { pm.getPackageInfo(it.activityInfo.packageName, 0) }.getOrNull()
+                val bitmap = it.loadIcon(pm).toBitmap(128)
                 LaunchableApp(
                     label = it.loadLabel(pm).toString(),
                     packageName = it.activityInfo.packageName,
-                    icon = it.loadIcon(pm).toBitmap(128).asImageBitmap(),
+                    icon = bitmap.asImageBitmap(),
+                    tint = averageColor(bitmap),
                     installTime = info?.firstInstallTime ?: 0L,
                     version = info?.versionName.orEmpty(),
                     category = it.activityInfo.applicationInfo.category,
@@ -72,6 +77,26 @@ object AppRepository {
     fun close(context: Context, app: LaunchableApp) {
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         am.killBackgroundProcesses(app.packageName)
+    }
+
+    /** Mean colour of the opaque pixels, sampled on a coarse grid. */
+    private fun averageColor(bmp: Bitmap): Color {
+        var r = 0L; var g = 0L; var b = 0L; var n = 0L
+        val step = maxOf(1, bmp.width / 16)
+        var y = 0
+        while (y < bmp.height) {
+            var x = 0
+            while (x < bmp.width) {
+                val p = bmp.getPixel(x, y)
+                if ((p ushr 24) and 0xFF > 200) {
+                    r += (p shr 16) and 0xFF; g += (p shr 8) and 0xFF; b += p and 0xFF; n++
+                }
+                x += step
+            }
+            y += step
+        }
+        if (n == 0L) return Color(0xFF4A78D0)
+        return Color((r / n).toInt(), (g / n).toInt(), (b / n).toInt())
     }
 
     private fun Drawable.toBitmap(size: Int): Bitmap {
