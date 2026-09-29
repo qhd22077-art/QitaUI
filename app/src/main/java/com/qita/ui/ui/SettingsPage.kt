@@ -378,12 +378,12 @@ private fun InfoBox(text: String, mono: Boolean = false) {
 
 /** Round glossy back button in the bottom-left corner, with a return arrow. */
 @Composable
-private fun BackButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val lit = padHighlighted("set:back") || padHovered("set:back")
+internal fun BackButton(onClick: () -> Unit, modifier: Modifier = Modifier, key: String = "set:back") {
+    val lit = padHighlighted(key) || padHovered(key)
     Box(
         modifier
             .size(66.dp)
-            .padClickable("set:back", corner = null, pad = 4.dp, onClick = onClick)
+            .padClickable(key, corner = null, pad = 4.dp, onClick = onClick)
             .clip(CircleShape)
             .drawBehind {
                 drawRect(

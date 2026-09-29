@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -44,6 +46,8 @@ import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
@@ -89,32 +93,51 @@ fun LiveAreaHost(
         val target = (current + 1).coerceIn(0, pages.size)
         if (pagerState.currentPage != target) pagerState.animateScrollToPage(target)
     }
-    HorizontalPager(
-        pagerState,
-        Modifier.fillMaxSize(),
-        key = { i -> if (i == 0) "home" else pages.getOrNull(i - 1)?.packageName ?: i },
-    ) { page ->
-        val app = pages.getOrNull(page - 1)
-        if (app == null) {
-            Box(Modifier.fillMaxSize())
-        } else {
-            Box(
-                Modifier.fillMaxSize().graphicsLayer {
-                    val distance = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction).absoluteValue.coerceIn(0f, 1f)
-                    val s = 1f - 0.06f * distance
-                    scaleX = s
-                    scaleY = s
-                },
-            ) {
-                LiveAreaPage(
-                    app, settings,
-                    launches = counts[app.packageName] ?: 0,
-                    onLaunch = { onLaunch(app) },
-                    onCloseApp = { onClosePage(app) },
-                    onInfo = { onInfo(app) },
-                )
+    Box(Modifier.fillMaxSize()) {
+        // Padding on both sides lets the neighbouring pages peek in at the edges, like the Vita.
+        HorizontalPager(
+            pagerState,
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 40.dp),
+            key = { i -> if (i == 0) "home" else pages.getOrNull(i - 1)?.packageName ?: i },
+        ) { page ->
+            val app = pages.getOrNull(page - 1)
+            if (app == null) {
+                Box(Modifier.fillMaxSize())
+            } else {
+                Box(
+                    Modifier.fillMaxSize().graphicsLayer {
+                        val distance = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction).absoluteValue.coerceIn(0f, 1f)
+                        val s = 1f - 0.06f * distance
+                        scaleX = s
+                        scaleY = s
+                    },
+                ) {
+                    LiveAreaPage(
+                        app, settings,
+                        launches = counts[app.packageName] ?: 0,
+                        onLaunch = { onLaunch(app) },
+                        onCloseApp = { onClosePage(app) },
+                        onInfo = { onInfo(app) },
+                    )
+                }
             }
         }
+        // Arrows on the edges show there is another page (or home) that way. They are drawn only, so swipes reach the pager.
+        if (pagerState.currentPage > 0) EdgeArrow(true, Modifier.align(Alignment.CenterStart))
+        if (pagerState.currentPage < pages.size) EdgeArrow(false, Modifier.align(Alignment.CenterEnd))
+    }
+}
+
+@Composable
+private fun EdgeArrow(left: Boolean, modifier: Modifier = Modifier) {
+    Canvas(modifier.padding(horizontal = 13.dp).size(width = 14.dp, height = 26.dp)) {
+        val w = size.width
+        val h = size.height
+        val p = Path().apply {
+            if (left) { moveTo(w, 0f); lineTo(0f, h / 2f); lineTo(w, h) } else { moveTo(0f, 0f); lineTo(w, h / 2f); lineTo(0f, h) }
+        }
+        drawPath(p, Color.White.copy(alpha = 0.9f), style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
 }
 
@@ -141,7 +164,8 @@ fun LiveAreaPage(
     val tint = app.tint
 
     Column(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }.statusBarsPadding()) {
-        StatusBar(settings.use24h, settings.showBattery)
+        // The information bar is drawn once by the home screen, so it stays put while pages are swiped.
+        Spacer(Modifier.height(28.dp))
         Box(Modifier.weight(1f).fillMaxWidth().onSizeChanged { pageWidth = it.width }) {
             Box(
                 Modifier

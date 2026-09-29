@@ -24,12 +24,15 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -52,6 +55,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,10 +69,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -84,7 +91,10 @@ import com.qita.ui.CrashReporter
 import com.qita.ui.Controller
 import com.qita.ui.CursorLayer
 import com.qita.ui.LAYOUTS
+import com.qita.ui.PAGE_PHOTO
 import com.qita.ui.PageLayout
+import com.qita.ui.THEMES
+import com.qita.ui.Theme
 import com.qita.ui.SYSTEM_APPS
 import com.qita.ui.SYSTEM_IDS
 import com.qita.ui.SystemAction
@@ -96,6 +106,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.absoluteValue
+import kotlin.math.floor
 import kotlin.math.roundToInt
 
 /** Vita-style home: swipeable pages of bubbles; tap one to open its floating LiveArea card. */
@@ -128,6 +139,10 @@ fun HomeScreen(homePresses: Int = 0) {
     var menuFor by remember { mutableStateOf<LaunchableApp?>(null) }
     var moveOriginal by remember { mutableStateOf<List<String>?>(null) }
     var crashTrace by remember { mutableStateOf(CrashReporter.read(context)) }
+    // Each home page can have its own background: a theme, or its own photo. Pages not listed use the global one.
+    var pageBg by remember { mutableStateOf(store.loadPageBg()) }
+    var pageWallpapers by remember { mutableStateOf(store.loadPageWallpapers(pageBg)) }
+    var showBackgrounds by remember { mutableStateOf(false) }
 
     // Push the saved controller settings into the shared state before the first frame.
     remember(store) {
@@ -157,6 +172,14 @@ fun HomeScreen(homePresses: Int = 0) {
     val homeSet = remember(home) { home.toSet() }
     val pageCount = maxOf(1, (shown.size + pageSize - 1) / pageSize)
     val pagerState = rememberPagerState { pageCount }
+    // 0 -> 1 as the page edit view (zoomed out, framed, information bar gone) opens.
+    val editAmt by animateFloatAsState(if (editMode) 1f else 0f, tween(320), label = "editAmt")
+    fun themeOf(page: Int): Theme {
+        val v = pageBg[page]
+        return if (v != null && v >= 0) THEMES[v.coerceIn(THEMES.indices)] else settings.theme
+    }
+    // The page whose photo (if any) is shown: the nearest one while swiping.
+    val bgPage by remember { derivedStateOf { (pagerState.currentPage + pagerState.currentPageOffsetFraction).roundToInt().coerceAtLeast(0) } }
 
     val menuOpen = menuFor != null || showQuickMenu
     val anyOverlay = showLock || showDesktop || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null
@@ -332,7 +355,9 @@ fun HomeScreen(homePresses: Int = 0) {
             }
             Command.Desktop -> if (!menuOpen && !showTutorial) { showSettings = false; showSearch = false; selected = null; showDesktop = !showDesktop }
             Command.Search -> if (!menuOpen && !showTutorial) { showDesktop = false; showSettings = false; selected = null; showSearch = !showSearch }
-            Command.Settings -> if (!menuOpen && !showTutorial) showSettings = !showSettings
+            Command.Settings ->
+                if (editMode) { if (!menuOpen && !showTutorial) showBackgrounds = !showBackgrounds }
+                else if (!menuOpen && !showTutorial) showSettings = !showSettings
             Command.Options ->
                 if (!showSettings && !showSearch && !menuOpen && !showTutorial) (selected ?: PadNav.currentApp())?.let { menuFor = it }
             Command.Toggle -> when {
@@ -365,7 +390,7 @@ fun HomeScreen(homePresses: Int = 0) {
     // Pressing Home while the launcher is open closes everything and returns to the first page.
     LaunchedEffect(homePresses) {
         if (homePresses > 0) {
-            selected = null; showSettings = false; showSearch = false; showDesktop = false; menuFor = null; showQuickMenu = false; editMode = false; dragApp = null
+            selected = null; showSettings = false; showSearch = false; showDesktop = false; menuFor = null; showQuickMenu = false; editMode = false; showBackgrounds = false; dragApp = null
             endMove(true)
             pagerState.animateScrollToPage(0)
         }
@@ -394,6 +419,7 @@ fun HomeScreen(homePresses: Int = 0) {
 
     // Lowest priority: Back leaves edit mode only when nothing else is open.
     BackHandler(enabled = editMode) { editMode = false }
+    BackHandler(enabled = showBackgrounds && !menuOpen) { showBackgrounds = false }
     BackHandler(enabled = crashTrace != null && !showLock) { CrashReporter.clear(context); crashTrace = null }
     BackHandler(enabled = menuOpen && crashTrace == null) { menuFor = null; showQuickMenu = false }
     BackHandler(enabled = showTutorial && !menuOpen) { showTutorial = false; store.setTutorialSeen() }
@@ -413,8 +439,22 @@ fun HomeScreen(homePresses: Int = 0) {
     Box(Modifier.fillMaxSize().onSizeChanged { rootWidth = it.width; rootHeight = it.height; PadNav.viewport = Rect(0f, 0f, it.width.toFloat(), it.height.toFloat()) }) {
         BubbleBackground(
             top = settings.theme.top, mid = settings.theme.mid, bottom = settings.theme.bottom, particles = settings.particles,
-            wallpaper = wallpaper, particleCount = settings.particleCount, dim = settings.dim,
+            wallpaper = when (pageBg[bgPage]) {
+                null -> wallpaper
+                PAGE_PHOTO -> pageWallpapers[bgPage]
+                else -> null
+            },
+            particleCount = settings.particleCount, dim = settings.dim,
             scroll = { pagerState.currentPage + pagerState.currentPageOffsetFraction },
+            // The sky blends from one page's theme into the next as you swipe.
+            palette = {
+                val pos = (pagerState.currentPage + pagerState.currentPageOffsetFraction).coerceAtLeast(0f)
+                val lo = floor(pos).toInt()
+                val f = pos - lo
+                val a = themeOf(lo)
+                val b = themeOf(lo + 1)
+                Triple(lerp(a.top, b.top, f), lerp(a.mid, b.mid, f), lerp(a.bottom, b.bottom, f))
+            },
         )
         Column(
             Modifier
@@ -427,7 +467,8 @@ fun HomeScreen(homePresses: Int = 0) {
                     alpha = 1f - 0.35f * depth
                 },
         ) {
-            StatusBar(settings.use24h, settings.showBattery)
+            // Room for the information bar, which is drawn once above everything so it never moves.
+            Spacer(Modifier.height(28.dp))
             BubblePager(
                 apps = shown,
                 pagerState = pagerState,
@@ -437,6 +478,13 @@ fun HomeScreen(homePresses: Int = 0) {
                 hiddenPackage = dragApp?.packageName,
                 movingPackage = Controller.movingPackage,
                 modifier = Modifier.weight(1f).padding(bottom = hintPad.coerceAtLeast(0.dp)),
+                editAmt = editAmt,
+                onLongPressAt = { p ->
+                    if (!editMode && dragApp == null && rects.values.none { it.contains(p) }) {
+                        editMode = true
+                        if (settings.haptics) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    }
+                },
                 onSelect = { app -> if (editMode) menuFor = app else openLiveArea(app, rects[app.packageName]?.center) },
                 onOpenDesktop = { showDesktop = true },
                 onOpenRecent = { openPages.firstOrNull()?.let { selected = it } },
@@ -461,25 +509,22 @@ fun HomeScreen(homePresses: Int = 0) {
                 onDisposed = { pkg -> rects.remove(pkg) },
             )
         }
-        CornerSphere(
-            onClick = { showQuickMenu = true },
-            modifier = Modifier.align(Alignment.TopEnd).offset(x = 24.dp, y = (-22).dp),
-        )
-        // Edit mode: a Done pill in the bottom-right corner ends it.
+        // Page edit view: a back button bottom-left and the wallpaper button by the frame's bottom-right corner.
         AnimatedVisibility(
-            visible = editMode,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 22.dp, bottom = 18.dp),
-            enter = fadeIn(tween(160)) + slideInVertically(spring(dampingRatio = 0.75f, stiffness = 450f)) { it },
-            exit = fadeOut(tween(140)) + slideOutVertically(tween(160)) { it },
+            visible = editMode && !showBackgrounds,
+            modifier = Modifier.align(Alignment.BottomStart).padding(start = 16.dp, bottom = 12.dp + hintPad.coerceAtLeast(0.dp)),
+            enter = fadeIn(tween(160)) + scaleIn(initialScale = 0.6f, animationSpec = spring(dampingRatio = 0.7f, stiffness = 450f)),
+            exit = fadeOut(tween(120)) + scaleOut(targetScale = 0.6f, animationSpec = tween(140)),
         ) {
-            Text(
-                "Done",
-                Modifier
-                    .padClickable("home:done", corner = null, onClick = { editMode = false })
-                    .background(Color.White, RoundedCornerShape(50))
-                    .padding(horizontal = 30.dp, vertical = 10.dp),
-                color = Color(0xFF0B3D91), fontWeight = FontWeight.Bold, fontSize = 16.sp,
-            )
+            BackButton(onClick = { editMode = false }, key = "edit:back")
+        }
+        AnimatedVisibility(
+            visible = editMode && !showBackgrounds,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 66.dp, bottom = 36.dp + hintPad.coerceAtLeast(0.dp)),
+            enter = fadeIn(tween(160)) + scaleIn(initialScale = 0.6f, animationSpec = spring(dampingRatio = 0.7f, stiffness = 450f)),
+            exit = fadeOut(tween(120)) + scaleOut(targetScale = 0.6f, animationSpec = tween(140)),
+        ) {
+            WallpaperButton(onClick = { showBackgrounds = true })
         }
         // The bubble being dragged, following the finger.
         dragApp?.let { app ->
@@ -512,6 +557,34 @@ fun HomeScreen(homePresses: Int = 0) {
                     onInfo = { if (it.action == null) AppRepository.showInfo(context, it) },
                 )
             }
+        }
+        // The information bar and corner sphere sit above the home screen and LiveArea pages and never move
+        // with them. In the page edit view they slide away.
+        if (editAmt < 0.99f) {
+            Box(
+                Modifier
+                    .align(Alignment.TopStart)
+                    .statusBarsPadding()
+                    .graphicsLayer {
+                        alpha = 1f - editAmt
+                        translationY = -size.height * editAmt
+                    },
+            ) {
+                StatusBar(
+                    settings.use24h, settings.showBattery,
+                    openApps = openPages,
+                    current = openPages.indexOfFirst { it.packageName == selected?.packageName },
+                    onHome = { selected = null },
+                    onPick = { i -> openPages.getOrNull(i)?.let { selected = it } },
+                )
+            }
+            CornerSphere(
+                onClick = { showQuickMenu = true },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 24.dp, y = (-22).dp)
+                    .graphicsLayer { alpha = 1f - editAmt },
+            )
         }
         AnimatedVisibility(
             visible = showDesktop,
@@ -568,6 +641,34 @@ fun HomeScreen(homePresses: Int = 0) {
                     onClearHome = { home = SYSTEM_IDS; store.saveHome(home) },
                     onShowTutorial = { showSettings = false; showTutorial = true },
                     onClose = { showSettings = false },
+                )
+            }
+        }
+
+        AnimatedVisibility(
+            visible = showBackgrounds,
+            enter = fadeIn(tween(180)) + slideInVertically(spring(dampingRatio = 0.9f, stiffness = 420f)) { it / 3 },
+            exit = fadeOut(tween(140)) + slideOutVertically(tween(180)) { it / 3 },
+        ) {
+            CompositionLocalProvider(LocalPadLayer provides 3) {
+                BackgroundPicker(
+                    page = pagerState.currentPage,
+                    override = pageBg[pagerState.currentPage],
+                    defaultThemeIndex = settings.themeIndex,
+                    onTheme = { t ->
+                        pageBg = pageBg + (pagerState.currentPage to t); store.savePageBg(pageBg)
+                    },
+                    onDefault = {
+                        pageBg = pageBg - pagerState.currentPage; store.savePageBg(pageBg)
+                    },
+                    onPhoto = { uri ->
+                        val page = pagerState.currentPage
+                        store.saveWallpaper(uri, page)?.let {
+                            pageWallpapers = pageWallpapers + (page to it)
+                            pageBg = pageBg + (page to PAGE_PHOTO); store.savePageBg(pageBg)
+                        }
+                    },
+                    onDone = { showBackgrounds = false },
                 )
             }
         }
@@ -660,11 +761,12 @@ fun HomeScreen(homePresses: Int = 0) {
             showLock -> listOf("A" to "Unlock")
             showTutorial -> listOf("A" to "Got it")
             menuOpen -> listOf("D-pad" to "Move", "A" to "Choose", "B" to "Cancel")
+            showBackgrounds -> listOf("D-pad" to "Choose", "A" to "Apply", "L1" to "Prev page", "R1" to "Next page", "B" to "Back")
             Controller.movingPackage != null -> listOf("D-pad" to "Move", "A" to "Drop", "B" to "Cancel")
             showSettings -> listOf("D-pad" to "Move / adjust", "A" to "Toggle", "B" to "Done")
             showSearch -> listOf("D-pad" to "Move", "A" to "Open", "B" to "Close")
             showDesktop -> listOf("A" to "Launch", "X" to "Options", "Y" to "Add / remove", "L1" to "Folder", "L2" to "Close", "B" to "Back")
-            editMode && selected == null -> listOf("A" to "Options", "Y" to "Move", "B" to "Done")
+            editMode && selected == null -> listOf("A" to "Options", "Y" to "Move", "START" to "Background", "B" to "Done")
             selected != null -> listOf("A" to "Start", "X" to "Options", "L1" to "Prev", "R1" to "Next", "B" to "Home")
             else -> listOf("A" to "Open", "X" to "Options", "Y" to "Move", "L1" to "Prev", "R1" to "Next", "L2" to "Desktop", "R2" to "Search", "START" to "Settings")
         }
@@ -708,6 +810,8 @@ private fun BubblePager(
     onSelect: (LaunchableApp) -> Unit,
     onOpenDesktop: () -> Unit,
     onOpenRecent: () -> Unit,
+    editAmt: Float,
+    onLongPressAt: (Offset) -> Unit,
     editing: Boolean,
     onRemove: (LaunchableApp) -> Unit,
     onDragStart: (LaunchableApp, Offset) -> Unit,
@@ -735,9 +839,14 @@ private fun BubblePager(
         }
         return
     }
+    val longPress by rememberUpdatedState(onLongPressAt)
+    var origin by remember { mutableStateOf(Offset.Zero) }
     Box(
         modifier
             .fillMaxSize()
+            .onGloballyPositioned { origin = it.positionInRoot() }
+            // Holding the background (not a bubble) opens the page edit view.
+            .pointerInput(Unit) { detectTapGestures(onLongPress = { longPress(origin + it) }) }
             // Swiping sideways on the home screen reaches the open LiveArea pages, as on the Vita.
             .pointerInput(Unit) {
                 var total = 0f
@@ -755,6 +864,8 @@ private fun BubblePager(
         VerticalPager(
             pagerState,
             Modifier.fillMaxSize().padScroller { pagerState.animateScrollBy(it) },
+            // The page edit view zooms out: the pages shrink inside a margin, so the frame and neighbours show.
+            contentPadding = PaddingValues(horizontal = (44.dp * editAmt).coerceAtLeast(0.dp), vertical = (22.dp * editAmt).coerceAtLeast(0.dp)),
             beyondViewportPageCount = pages.size,
         ) { index ->
             val pageApps = pages.getOrElse(index) { emptyList() }
@@ -773,6 +884,18 @@ private fun BubblePager(
                 // The sphere is a quarter of the page height, like the real home screen.
                 val bubble = (minOf(maxHeight * 0.25f, maxWidth * 0.14f) * scale).coerceAtLeast(40.dp)
                 val column = bubble + 56.dp
+                if (editAmt > 0.01f) {
+                    // The translucent frame around the page being edited.
+                    val frame = RoundedCornerShape(6.dp)
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .padding(2.dp)
+                            .graphicsLayer { alpha = editAmt }
+                            .background(Color.White.copy(alpha = 0.16f), frame)
+                            .border(1.dp, Color.White.copy(alpha = 0.5f), frame),
+                    )
+                }
                 pageApps.forEachIndexed { i, app ->
                     val (fx, fy) = layout.slots[i]
                     androidx.compose.runtime.key(app.packageName) {

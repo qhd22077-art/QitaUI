@@ -11,6 +11,9 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import java.io.File
 
+/** Marks a home page whose background is its own photo (see [SettingsStore.loadPageBg]). */
+const val PAGE_PHOTO = -2
+
 /** A wallpaper palette: the sky colour at the top, the middle band and the bright glow at the bottom. */
 data class Theme(val name: String, val top: Color, val mid: Color, val bottom: Color)
 
@@ -93,7 +96,9 @@ data class Settings(
 /** Persists [Settings] in SharedPreferences and the custom wallpaper as a file in app storage. */
 class SettingsStore(private val context: Context) {
     private val prefs = context.getSharedPreferences("qita_settings", Context.MODE_PRIVATE)
-    private val wallpaperFile get() = File(context.filesDir, "wallpaper.jpg")
+    /** The global wallpaper (page == null) or the photo chosen for one home page. */
+    private fun wallpaperFile(page: Int? = null) =
+        File(context.filesDir, if (page == null) "wallpaper.jpg" else "wallpaper_page_$page.jpg")
 
     fun load() = Settings(
         themeIndex = prefs.getInt("theme", 0),
@@ -183,11 +188,30 @@ class SettingsStore(private val context: Context) {
             .mapKeys { it.key.removePrefix("launch_") }
             .mapValues { (it.value as? Int) ?: 0 }
 
-    fun loadWallpaper(): ImageBitmap? =
-        if (wallpaperFile.exists()) BitmapFactory.decodeFile(wallpaperFile.path)?.asImageBitmap() else null
+    fun loadWallpaper(page: Int? = null): ImageBitmap? {
+        val file = wallpaperFile(page)
+        return if (file.exists()) BitmapFactory.decodeFile(file.path)?.asImageBitmap() else null
+    }
+
+    /** Each home page's own background: a theme index, or [PAGE_PHOTO]. Pages not listed use the global one. */
+    fun loadPageBg(): Map<Int, Int> =
+        prefs.getString("pageBg", "").orEmpty().split(',').mapNotNull {
+            val parts = it.split(':')
+            val page = parts.getOrNull(0)?.toIntOrNull()
+            val value = parts.getOrNull(1)?.toIntOrNull()
+            if (page != null && value != null) page to value else null
+        }.toMap()
+
+    fun savePageBg(map: Map<Int, Int>) {
+        prefs.edit().putString("pageBg", map.entries.joinToString(",") { "${it.key}:${it.value}" }).apply()
+    }
+
+    /** The photos of every page that uses one. */
+    fun loadPageWallpapers(pageBg: Map<Int, Int>): Map<Int, ImageBitmap> =
+        pageBg.filterValues { it == PAGE_PHOTO }.keys.mapNotNull { page -> loadWallpaper(page)?.let { page to it } }.toMap()
 
     /** Copies the picked image into app storage (downscaled) and returns it, or null on failure. */
-    fun saveWallpaper(uri: Uri): ImageBitmap? = runCatching {
+    fun saveWallpaper(uri: Uri, page: Int? = null): ImageBitmap? = runCatching {
         val resolver = context.contentResolver
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
@@ -208,11 +232,11 @@ class SettingsStore(private val context: Context) {
         }
         val upright = if (degrees == 0f) bmp else
             Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, Matrix().apply { postRotate(degrees) }, true)
-        wallpaperFile.outputStream().use { upright.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+        wallpaperFile(page).outputStream().use { upright.compress(Bitmap.CompressFormat.JPEG, 90, it) }
         upright.asImageBitmap()
     }.getOrNull()
 
-    fun clearWallpaper() {
-        wallpaperFile.delete()
+    fun clearWallpaper(page: Int? = null) {
+        wallpaperFile(page).delete()
     }
 }

@@ -46,6 +46,8 @@ fun BubbleBackground(
     dim: Float = 0f,
     /** Current home page (fractional while swiping); the swooshes drift with it. Read while drawing. */
     scroll: () -> Float = { 0f },
+    /** When set, the sky colours (top, middle, bottom) come from here, read while drawing, so they can follow a swipe. */
+    palette: (() -> Triple<Color, Color, Color>)? = null,
 ) {
     val topColor by animateColorAsState(top, tween(600), label = "top")
     val midColor by animateColorAsState(mid, tween(600), label = "mid")
@@ -54,7 +56,7 @@ fun BubbleBackground(
         if (wallpaper != null) {
             Image(wallpaper, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         } else {
-            Swooshes(topColor, midColor, bottomColor, scroll)
+            Swooshes(palette ?: { Triple(topColor, midColor, bottomColor) }, scroll)
         }
         if (dim > 0f) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dim)))
         if (particles) Particles(particleCount)
@@ -62,13 +64,14 @@ fun BubbleBackground(
 }
 
 @Composable
-private fun Swooshes(top: Color, mid: Color, bottom: Color, scroll: () -> Float) {
+private fun Swooshes(colors: () -> Triple<Color, Color, Color>, scroll: () -> Float) {
     val phase by rememberInfiniteTransition(label = "swoosh").animateFloat(
         0f, (2 * PI).toFloat(),
         infiniteRepeatable(tween(22_000, easing = LinearEasing), RepeatMode.Restart),
         label = "phase",
     )
     Canvas(Modifier.fillMaxSize()) {
+        val (top, mid, bottom) = colors()
         drawRect(Brush.verticalGradient(0f to top, 0.55f to mid, 1f to bottom))
         // Extra glow along the bottom edge.
         drawRect(

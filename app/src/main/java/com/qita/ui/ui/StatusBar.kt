@@ -8,6 +8,7 @@ import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import android.provider.Settings as AndroidSettings
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -38,12 +39,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.qita.ui.LaunchableApp
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -56,7 +59,17 @@ internal data class Status(val battery: Int, val charging: Boolean, val wifi: Bo
  * icon in the middle, and the time and a green battery on the right.
  */
 @Composable
-fun StatusBar(use24h: Boolean, showBattery: Boolean, modifier: Modifier = Modifier, showHome: Boolean = true) {
+fun StatusBar(
+    use24h: Boolean,
+    showBattery: Boolean,
+    modifier: Modifier = Modifier,
+    showHome: Boolean = true,
+    /** Apps with an open LiveArea, shown as small icons beside the home icon; [current] is the one on screen (-1 = home). */
+    openApps: List<LaunchableApp> = emptyList(),
+    current: Int = -1,
+    onHome: () -> Unit = {},
+    onPick: (Int) -> Unit = {},
+) {
     val context = LocalContext.current
     var now by remember { mutableStateOf(Date()) }
     var status by remember { mutableStateOf(readStatus(context)) }
@@ -81,7 +94,30 @@ fun StatusBar(use24h: Boolean, showBattery: Boolean, modifier: Modifier = Modifi
             if (status.wifi) WifiIcon()
             if (status.bluetooth) BluetoothIcon()
         }
-        if (showHome) HomeIcon(Modifier.align(Alignment.Center))
+        if (showHome) {
+            Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                val onHomeNow = current < 0
+                Box(
+                    Modifier
+                        .clip(CircleShape)
+                        .then(if (onHomeNow && openApps.isNotEmpty()) Modifier.background(Color.White.copy(alpha = 0.20f)) else Modifier)
+                        .clickable(onClick = onHome)
+                        .padding(horizontal = 6.dp, vertical = 3.dp),
+                ) { HomeIcon() }
+                openApps.forEachIndexed { i, app ->
+                    val on = i == current
+                    Image(
+                        app.icon, app.label,
+                        Modifier
+                            .size(20.dp)
+                            .clip(CircleShape)
+                            .graphicsLayer { alpha = if (on) 1f else 0.65f }
+                            .then(if (on) Modifier.border(2.dp, Color.White, CircleShape) else Modifier)
+                            .clickable { onPick(i) },
+                    )
+                }
+            }
+        }
         Row(
             Modifier.align(Alignment.CenterEnd).padding(end = 78.dp),
             verticalAlignment = Alignment.CenterVertically,
