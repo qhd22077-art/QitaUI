@@ -77,6 +77,7 @@ data class Settings(
     val sortNewest: Boolean = false,
     val layoutIndex: Int = 0,
     val roundedBubbles: Boolean = false,
+    val fullArt: Boolean = true,
     val showLabels: Boolean = true,
     val showDots: Boolean = true,
     val particleCount: Int = 28,
@@ -109,6 +110,7 @@ class SettingsStore(private val context: Context) {
         sortNewest = prefs.getBoolean("sortNewest", false),
         layoutIndex = prefs.getInt("layout", 0),
         roundedBubbles = prefs.getBoolean("rounded", false),
+        fullArt = prefs.getBoolean("fullArt", true),
         showLabels = prefs.getBoolean("labels", true),
         showDots = prefs.getBoolean("dots", true),
         particleCount = prefs.getInt("particleCount", 28),
@@ -133,6 +135,7 @@ class SettingsStore(private val context: Context) {
             .putBoolean("sortNewest", s.sortNewest)
             .putInt("layout", s.layoutIndex)
             .putBoolean("rounded", s.roundedBubbles)
+            .putBoolean("fullArt", s.fullArt)
             .putBoolean("labels", s.showLabels)
             .putBoolean("dots", s.showDots)
             .putInt("particleCount", s.particleCount)

@@ -173,7 +173,7 @@ fun HomeScreen(homePresses: Int = 0) {
     val pageCount = maxOf(1, (shown.size + pageSize - 1) / pageSize)
     val pagerState = rememberPagerState { pageCount }
     // 0 -> 1 as the page edit view (zoomed out, framed, information bar gone) opens.
-    val editAmt by animateFloatAsState(if (editMode) 1f else 0f, tween(320), label = "editAmt")
+    val editAmt by animateFloatAsState(if (editMode) 1f else 0f, tween(VitaMotion.Long, easing = VitaMotion.Ease), label = "editAmt")
     fun themeOf(page: Int): Theme {
         val v = pageBg[page]
         return if (v != null && v >= 0) THEMES[v.coerceIn(THEMES.indices)] else settings.theme
@@ -436,6 +436,7 @@ fun HomeScreen(homePresses: Int = 0) {
     // A tween, never a spring: springs overshoot and padding must never go negative.
     val hintPad by animateDpAsState(if (Controller.padActive) 46.dp else 0.dp, tween(220), label = "hintPad")
 
+    CompositionLocalProvider(LocalFullArt provides settings.fullArt) {
     Box(Modifier.fillMaxSize().onSizeChanged { rootWidth = it.width; rootHeight = it.height; PadNav.viewport = Rect(0f, 0f, it.width.toFloat(), it.height.toFloat()) }) {
         BubbleBackground(
             top = settings.theme.top, mid = settings.theme.mid, bottom = settings.theme.bottom, particles = settings.particles,
@@ -795,6 +796,7 @@ fun HomeScreen(homePresses: Int = 0) {
         }
         CursorLayer()
     }
+    }
 }
 
 @Composable
@@ -884,6 +886,7 @@ private fun BubblePager(
                 // The sphere is a quarter of the page height, like the real home screen.
                 val bubble = (minOf(maxHeight * 0.25f, maxWidth * 0.14f) * scale).coerceAtLeast(40.dp)
                 val column = bubble + 56.dp
+                val pageHeightPx = constraints.maxHeight.toFloat()
                 if (editAmt() > 0.01f) {
                     // The translucent frame around the page being edited.
                     val frame = RoundedCornerShape(6.dp)
@@ -905,7 +908,12 @@ private fun BubblePager(
                             onClick = { onSelect(app) },
                             modifier = Modifier
                                 .offset(x = maxWidth * fx - column / 2, y = maxHeight * fy - bubble / 2)
-                                .width(column),
+                                .width(column)
+                                // While the page scrolls, lower rows trail behind and upper rows lead, so the bubbles ripple.
+                                .graphicsLayer {
+                                    val away = (pagerState.currentPage - index) + pagerState.currentPageOffsetFraction
+                                    translationY = away * (fy - 0.5f) * pageHeightPx * 0.25f
+                                },
                             padKey = "home:${app.packageName}",
                             hidden = app.packageName == hiddenPackage,
                             shape = if (settings.roundedBubbles) RoundedCornerShape(28) else CircleShape,

@@ -37,7 +37,7 @@ object AppRepository {
             .filter { it.activityInfo.packageName != context.packageName }
             .map {
                 val info = runCatching { pm.getPackageInfo(it.activityInfo.packageName, 0) }.getOrNull()
-                val bitmap = it.loadIcon(pm).toBitmap(128)
+                val bitmap = it.loadIcon(pm).toBitmap(192)
                 LaunchableApp(
                     label = it.loadLabel(pm).toString(),
                     packageName = it.activityInfo.packageName,

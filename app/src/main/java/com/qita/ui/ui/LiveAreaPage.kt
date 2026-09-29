@@ -193,8 +193,8 @@ fun LiveAreaPage(
                         .padding(20.dp),
                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                 ) {
-                    Gate(app, onLaunch, Modifier.weight(0.95f).fillMaxHeight())
-                    Column(Modifier.weight(1.05f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Gate(app, onLaunch, Modifier.weight(0.95f).fillMaxHeight().staggerIn(0, scaleFrom = 0.88f))
+                    Column(Modifier.weight(1.05f).fillMaxHeight().staggerIn(1, fromX = 70f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         val action = app.action
                         if (action != null) {
                             Banner("About") { Line(action.blurb) }

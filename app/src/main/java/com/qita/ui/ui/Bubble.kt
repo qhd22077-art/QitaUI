@@ -35,6 +35,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -116,6 +117,14 @@ fun Bubble(
         )
     } else null
 
+    // A soft ring spreads from the bubble when it is pressed.
+    val ring = remember { Animatable(1f) }
+    LaunchedEffect(pressed) {
+        if (pressed) {
+            ring.snapTo(0f)
+            ring.animateTo(1f, tween(VitaMotion.Long + 120, easing = VitaMotion.Ease))
+        }
+    }
     val start by rememberUpdatedState(onDragStart)
     val drag by rememberUpdatedState(onDrag)
     val end by rememberUpdatedState(onDragEnd)
@@ -123,6 +132,17 @@ fun Bubble(
     Column(
         modifier
             .onGloballyPositioned { onPositioned(it.boundsInRoot()) }
+            .drawBehind {
+                val p = ring.value
+                if (p < 1f) {
+                    drawCircle(
+                        Color.White.copy(alpha = 0.55f * (1f - p)),
+                        radius = size.toPx() / 2f * (1f + 0.45f * p),
+                        center = Offset(this.size.width / 2f, size.toPx() / 2f),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx() * (1f - p) + 1f),
+                    )
+                }
+            }
             .graphicsLayer {
                 val s = scale * (0.6f + 0.4f * appear.value)
                 scaleX = s
