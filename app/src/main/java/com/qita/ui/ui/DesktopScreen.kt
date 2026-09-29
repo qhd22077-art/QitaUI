@@ -160,9 +160,9 @@ fun DesktopScreen(
                             Modifier.fillMaxWidth().background(WinHeader, RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp)).padding(horizontal = 12.dp, vertical = 7.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Spacer(Modifier.width(72.dp))
+                            Spacer(Modifier.width(80.dp))
                             Text("Applications", Modifier.weight(1f), color = Text1, fontWeight = FontWeight.Bold, fontSize = 14.sp, textAlign = TextAlign.Center)
-                            Row(Modifier.width(72.dp), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End)) {
+                            Row(Modifier.width(80.dp), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End)) {
                                 WindowButton("–", Color(0xFF555555)) {}
                                 WindowButton("□", Color(0xFF555555)) {}
                                 WindowButton("✕", Orange, onClose)
