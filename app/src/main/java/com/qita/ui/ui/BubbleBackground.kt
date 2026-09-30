@@ -79,6 +79,7 @@ private fun SceneCanvas(mix: () -> SceneMix, scroll: () -> Float) {
     // With reduced motion the scene stands still.
     val phase = if (look.reduceMotion) 1.9f else running
     val cache = remember { SceneCache() }
+    cache.symbolCount = look.symbols
     val layerPaint = remember { Paint() }
     Canvas(Modifier.fillMaxSize()) {
         val m = mix()

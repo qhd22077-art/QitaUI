@@ -41,6 +41,18 @@ class SceneCache {
     val dots: List<Dot> = Random(23).let { rnd ->
         List(120) { Dot(rnd.nextFloat(), rnd.nextFloat(), rnd.nextFloat().let { it * it * 0.4f + it * 0.6f }, 0.5f + rnd.nextFloat(), rnd.nextFloat() * 6.28f) }
     }.sortedBy { it.z }
+    /** How many PlayStation symbols the Vita Symbols scene shows (a setting). */
+    var symbolCount = 45
+    private var sortedFor = -1
+    private var sorted: List<Symbol> = emptyList()
+    fun symbolPool(): List<Symbol> = SYMBOL_POOL
+    fun symbolsFor(): List<Symbol> {
+        if (sortedFor != symbolCount) {
+            sorted = SYMBOL_POOL.take(symbolCount).sortedBy { it.z }
+            sortedFor = symbolCount
+        }
+        return sorted
+    }
     val shards: List<Dot> = Random(5).let { rnd ->
         List(20) { Dot(rnd.nextFloat(), rnd.nextFloat(), rnd.nextFloat(), 0.4f + rnd.nextFloat(), rnd.nextFloat() * 6.28f) }
     }.sortedBy { it.z }
@@ -590,14 +602,15 @@ private fun DrawScope.drawSilk(c: Sky, phase: Float, page: Float, k: SceneCache)
 // ---------------------------------------------------------------------------------------------------------------
 
 /** A symbol of the field: position as fractions of the screen, depth z, shape kind and phase. */
-private class Symbol(val x: Float, val y: Float, val z: Float, val kind: Int, val seed: Float)
+class Symbol(val x: Float, val y: Float, val z: Float, val kind: Int, val seed: Float)
 
-private val SYMBOL_FIELD: List<Symbol> = Random(3).let { rnd ->
-    List(28) { i ->
+/** The first [count] symbols of a fixed pool of 100, far to near, so raising the count only adds symbols. */
+val SYMBOL_POOL: List<Symbol> = Random(3).let { rnd ->
+    List(100) { i ->
         val z = rnd.nextFloat()
         val kind = i % 4
         val seed = rnd.nextFloat() * 6f
-        if (i > 5) {
+        if (i % 6 != 0) {
             // Along the big arc on the right.
             val th = Math.toRadians(95.0 + rnd.nextFloat() * 105.0)
             val rr = 0.36f + rnd.nextFloat() * 0.16f
@@ -605,7 +618,7 @@ private val SYMBOL_FIELD: List<Symbol> = Random(3).let { rnd ->
         } else {
             Symbol(0.05f + rnd.nextFloat() * 0.5f, 0.85f + rnd.nextFloat() * 0.15f, z, kind, seed)
         }
-    }.sortedBy { it.z }
+    }
 }
 
 private fun DrawScope.drawSymbols(c: Sky, phase: Float, page: Float, k: SceneCache) {
@@ -653,7 +666,7 @@ private fun DrawScope.drawSymbols(c: Sky, phase: Float, page: Float, k: SceneCac
 
     // Floating glass symbols, far to near: each tips and turns in its own 3D orientation.
     val turn = phase / TAU
-    for (s in SYMBOL_FIELD) {
+    for (s in k.symbolsFor()) {
         val z = s.z
         val cxs = (s.x - page * 0.02f * (0.3f + z) + 0.006f * sin(phase + s.seed)) * w
         val cys = (s.y + 0.008f * sin(phase * 0.8f + s.seed * 2f)) * h

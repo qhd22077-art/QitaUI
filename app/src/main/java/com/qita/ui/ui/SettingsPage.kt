@@ -180,6 +180,9 @@ fun SettingsPage(
                                 }
                             }
                             SliderRow("set:dim", "◑", "Dim background", settings.dim, 0f..0.6f, 0.05f) { onChange(settings.copy(dim = it)) }
+                            SliderRow("set:symbolCount", "△", "Vita Symbols: number of symbols", settings.symbolCount.toFloat(), 0f..100f, 5f) {
+                                onChange(settings.copy(symbolCount = it.roundToInt()))
+                            }
                             SliderRow("set:sceneSpeed", "≋", "Background animation speed", settings.sceneSpeed, 0.3f..2.5f, 0.1f) { onChange(settings.copy(sceneSpeed = it)) }
                             SwatchRow("set:accent", "◎", "Accent colour (selection and highlights)", settings.accent) { onChange(settings.copy(accent = it)) }
                         }

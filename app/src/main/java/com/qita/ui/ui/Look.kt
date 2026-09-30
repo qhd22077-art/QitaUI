@@ -33,6 +33,7 @@ data class Look(
     val clockSize: Float = 1f,
     /** 0 opaque discs .. 1 clear glass (PS Vita mode). */
     val glass: Float = 0f,
+    val symbols: Int = 45,
 )
 
 val LocalLook = compositionLocalOf { Look() }
@@ -63,6 +64,7 @@ fun Settings.look() = Look(
     barOpacity = barOpacity,
     clockSize = clockSize,
     glass = if (vitaMode) glass else 0f,
+    symbols = symbolCount,
 )
 
 /** The swatches offered wherever a colour is picked. */
