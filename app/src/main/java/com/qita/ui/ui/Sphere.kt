@@ -78,7 +78,7 @@ fun Sphere(
                 val lift = elevation.toPx()
                 for (i in 3 downTo 1) {
                     drawCircle(
-                        spot.copy(alpha = 0.10f),
+                        spot.copy(alpha = 0.10f * (1f - 0.8f * look.glass)),
                         radius = r + lift * 0.035f * i,
                         center = Offset(this.size.width / 2f, this.size.height / 2f + lift * 0.05f * i),
                     )

@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.lerp
 import kotlin.math.PI
 import kotlin.math.abs
@@ -21,7 +22,7 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 /** The kinds of animated 3D-looking backgrounds. Each one is drawn from layers at different depths. */
-enum class Scene { WAVES, AURORA, OCEAN, CRYSTAL, SPACE, GRID, DUNES }
+enum class Scene { WAVES, AURORA, OCEAN, CRYSTAL, SPACE, GRID, DUNES, SILK, SYMBOLS }
 
 typealias Sky = Triple<Color, Color, Color>
 
@@ -57,6 +58,8 @@ fun DrawScope.drawScene(scene: Scene, c: Sky, phase: Float, page: Float, k: Scen
         Scene.SPACE -> drawSpace(c, phase, page, k)
         Scene.GRID -> drawGrid(c, phase, page, k)
         Scene.DUNES -> drawDunes(c, phase, page, k)
+        Scene.SILK -> drawSilk(c, phase, page, k)
+        Scene.SYMBOLS -> drawSymbols(c, phase, page, k)
     }
 }
 
@@ -524,4 +527,154 @@ private fun DrawScope.drawDunes(c: Sky, phase: Float, page: Float, k: SceneCache
         drawCircle(Color(0xFFFFE0A8).copy(alpha = 0.10f + 0.25f * d.z), px * (1.5f + 5f * d.z * d.z), Offset(x, y))
     }
     vignette(0.32f)
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// SILK: the Vita's glossy translucent ribbons, sweeping down across a blue sky and twisting as they drift
+// ---------------------------------------------------------------------------------------------------------------
+
+private class Ribbon(val base: Float, val amp: Float, val ph: Float, val k: Float, val width: Float, val alpha: Float, val speed: Float, val z: Float)
+
+private val RIBBONS = listOf(
+    Ribbon(0.22f, 0.050f, 0.0f, 0.9f, 0.16f, 0.70f, 0.6f, 0.2f),
+    Ribbon(0.30f, 0.060f, 1.0f, 0.8f, 0.12f, 0.80f, 0.7f, 0.3f),
+    Ribbon(0.40f, 0.070f, 2.1f, 0.7f, 0.14f, 1.00f, 0.9f, 0.5f),
+    Ribbon(0.16f, 0.050f, 3.0f, 1.0f, 0.09f, 0.60f, 0.5f, 0.15f),
+    Ribbon(0.46f, 0.055f, 4.0f, 0.9f, 0.11f, 0.85f, 1.0f, 0.7f),
+    Ribbon(0.34f, 0.080f, 5.0f, 0.6f, 0.08f, 0.55f, 1.2f, 0.9f),
+)
+
+private fun DrawScope.drawSilk(c: Sky, phase: Float, page: Float, k: SceneCache) {
+    val (top, mid, bottom) = c
+    val w = size.width
+    val h = size.height
+    val fill = k.p1
+    val edge = k.p2
+    val px = w / 1000f
+    drawRect(Brush.verticalGradient(0f to top, 0.5f to mid, 1f to bottom))
+    // A soft bloom where the ribbons catch the light.
+    glow(w * (0.25f - page * 0.01f), h * 0.35f, w * 0.6f, Color.White, 0.12f)
+    val steps = 36
+    for (r in RIBBONS) {
+        val t = phase * r.speed
+        val shift = page * 0.05f * (0.3f + r.z)
+        fill.rewind(); edge.rewind()
+        // Top curve left to right, then the bottom curve back: the ribbon is the band between them.
+        for (pass in 0..1) {
+            for (j in 0..steps) {
+                val i = if (pass == 0) j else steps - j
+                val u = i.toFloat() / steps
+                val us = u + shift
+                // The big sweep: the ribbons start high on the left and flow down toward the right.
+                val sweep = 0.30f * (0.5f - 0.5f * cos(PI.toFloat() * u))
+                val wave = r.amp * (sin(us * TAU * r.k + r.ph + t) + 0.5f * sin(us * TAU * r.k * 2.3f + r.ph * 1.7f - t * 1.3f))
+                val twist = 0.55f + 0.45f * sin(us * TAU * 1.3f + r.ph + t * 0.5f)
+                val yc = (r.base + sweep + wave) * h
+                val half = h * r.width * twist / 2f
+                val y = if (pass == 0) yc - half else yc + half
+                val x = w * u
+                if (pass == 0) {
+                    if (j == 0) { fill.moveTo(x, y); edge.moveTo(x, y) } else { fill.lineTo(x, y); edge.lineTo(x, y) }
+                } else fill.lineTo(x, y)
+            }
+        }
+        fill.close()
+        drawPath(fill, Brush.verticalGradient(listOf(Color(0xFFD0EAFF).copy(alpha = 0.30f * r.alpha), Color(0xFF9CC8FF).copy(alpha = 0.10f * r.alpha)), startY = 0f, endY = h))
+        // A soft glow under a fine bright edge along the top of the ribbon.
+        drawPath(edge, Color.White.copy(alpha = 0.16f * r.alpha), style = Stroke(width = 6f * px * (1f + r.z), cap = StrokeCap.Round))
+        drawPath(edge, Color(0xFFEAFAFF).copy(alpha = 0.85f * r.alpha), style = Stroke(width = 1.6f * px * (1f + r.z * 0.6f), cap = StrokeCap.Round))
+    }
+    vignette(0.12f)
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// SYMBOLS: deep blue with a sweeping glass sheet, glowing filaments and tumbling PlayStation symbols
+// ---------------------------------------------------------------------------------------------------------------
+
+private fun DrawScope.drawSymbols(c: Sky, phase: Float, page: Float, k: SceneCache) {
+    val (top, mid, bottom) = c
+    val w = size.width
+    val h = size.height
+    val px = w / 1000f
+    val fill = k.p1
+    val edge = k.p2
+    drawRect(Brush.verticalGradient(0f to top, 0.55f to mid, 1f to bottom))
+    // Light blooming from the lower right.
+    glow(w * (0.95f - page * 0.01f), h * 0.85f, w * 0.65f, Color(0xFF9CD8FF), 0.45f)
+
+    // The glass sheet: a wide translucent swell along the bottom with a bright crest.
+    val sway = sin(phase) * 0.02f
+    fill.rewind(); edge.rewind()
+    val steps = 32
+    for (i in 0..steps) {
+        val u = i.toFloat() / steps
+        val y = h * (0.95f - 0.27f * sin(PI.toFloat() * (u * 0.9f + 0.05f + sway)).coerceAtLeast(0f) - 0.04f * sin(u * TAU + phase))
+        val x = w * u
+        if (i == 0) { fill.moveTo(x, y); edge.moveTo(x, y) } else { fill.lineTo(x, y); edge.lineTo(x, y) }
+    }
+    fill.lineTo(w, h); fill.lineTo(0f, h); fill.close()
+    drawPath(fill, Brush.verticalGradient(listOf(Color(0xFF8FCBFF).copy(alpha = 0.30f), Color(0xFF3A78E0).copy(alpha = 0.08f)), startY = h * 0.65f, endY = h))
+    drawPath(edge, Color.White.copy(alpha = 0.18f), style = Stroke(width = 8f * px))
+    drawPath(edge, Color(0xFFDDF4FF).copy(alpha = 0.85f), style = Stroke(width = 1.8f * px))
+
+    // Fine glowing filaments sweeping up the right side.
+    for (n in 0 until 7) {
+        val f = n / 6f
+        edge.rewind()
+        val sx = w * (0.82f + 0.03f * n)
+        val ex = w * (0.72f + 0.06f * n - page * 0.004f * n)
+        edge.moveTo(sx + w * 0.10f, h * 1.02f)
+        edge.cubicTo(
+            sx + w * (0.03f + 0.01f * sin(phase + n)), h * 0.65f,
+            ex + w * 0.02f, h * (0.40f - 0.03f * f),
+            w * (0.96f - 0.02f * n + 0.01f * sin(phase * 0.7f + n)), h * (0.08f + 0.04f * n),
+        )
+        val a = 0.22f + 0.30f * (1f - f)
+        drawPath(edge, Color(0xFF9CE0FF).copy(alpha = a * 0.35f), style = Stroke(width = 5f * px, cap = StrokeCap.Round))
+        drawPath(edge, Color.White.copy(alpha = a), style = Stroke(width = 1.3f * px, cap = StrokeCap.Round))
+    }
+
+    // Floating glass symbols, far to near: each tumbles in its own 3D orientation.
+    val turn = phase / TAU
+    val shapes = k.shards
+    for (i in 0 until 16) {
+        val d = shapes[i]
+        val z = 0.3f + 0.7f * d.z
+        val cx = (d.x + (page * -0.03f * z) + 0.02f * sin(phase + d.seed)).mod(1.1f) * w
+        val cy = (0.15f + 0.85f * ((d.y - turn * 0.1f * d.s).mod(1f))) * h
+        val rad = px * (14f + 46f * z)
+        val ax = d.seed + phase * d.s * 0.9f
+        val ay = d.seed * 1.7f + phase * d.s * 0.6f
+        val az = d.seed * 0.5f + phase * d.s * 0.4f
+        symbolPath(edge, i % 4, cx, cy, rad, ax, ay, az)
+        val alpha = (0.35f + 0.55f * z)
+        val sw = rad * 0.16f
+        // Thickness: a darker copy behind, then the lit face.
+        translate(rad * 0.06f, rad * 0.08f) { drawPath(edge, Color(0xFF0A2A6A).copy(alpha = alpha * 0.8f), style = Stroke(width = sw * 1.15f, cap = StrokeCap.Round)) }
+        drawPath(edge, Color(0xFF7DB8F0).copy(alpha = alpha * 0.8f), style = Stroke(width = sw, cap = StrokeCap.Round))
+        drawPath(edge, Color.White.copy(alpha = alpha * 0.7f), style = Stroke(width = sw * 0.3f, cap = StrokeCap.Round))
+    }
+}
+
+/** The path of symbol [kind] (0 circle, 1 cross, 2 triangle, 3 square) of radius [r], rotated in 3D and seen with some perspective. */
+private fun symbolPath(path: Path, kind: Int, cx: Float, cy: Float, r: Float, ax: Float, ay: Float, az: Float) {
+    path.rewind()
+    val ca = cos(ax); val sa = sin(ax); val cb = cos(ay); val sb = sin(ay); val cg = cos(az); val sg = sin(az)
+    var first = true
+    fun pt(x: Float, y: Float, move: Boolean) {
+        // Rotate about z, then x, then y, then a gentle perspective.
+        val x1 = x * cg - y * sg; val y1 = x * sg + y * cg
+        val y2 = y1 * ca; val z2 = y1 * sa
+        val x3 = x1 * cb + z2 * sb; val z3 = -x1 * sb + z2 * cb
+        val p = 1f / (1f + z3 * 0.25f)
+        val sx = cx + x3 * r * p; val sy = cy + y2 * r * p
+        if (move || first) path.moveTo(sx, sy) else path.lineTo(sx, sy)
+        first = false
+    }
+    when (kind) {
+        0 -> { for (i in 0..24) { val a = TAU * i / 24f; pt(cos(a) * 0.9f, sin(a) * 0.9f, false) }; path.close() }
+        1 -> { pt(-0.8f, -0.8f, true); pt(0.8f, 0.8f, false); pt(0.8f, -0.8f, true); pt(-0.8f, 0.8f, false) }
+        2 -> { pt(0f, -0.95f, false); pt(0.9f, 0.7f, false); pt(-0.9f, 0.7f, false); path.close() }
+        else -> { pt(-0.75f, -0.75f, false); pt(0.75f, -0.75f, false); pt(0.75f, 0.75f, false); pt(-0.75f, 0.75f, false); path.close() }
+    }
 }

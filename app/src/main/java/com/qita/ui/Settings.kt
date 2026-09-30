@@ -34,7 +34,13 @@ val THEMES = listOf(
     Theme("Nebula", Color(0xFF02010A), Color(0xFF0B0724), Color(0xFF1A0F3A), Scene.SPACE),
     Theme("Neon Grid", Color(0xFF120033), Color(0xFFC2185B), Color(0xFFFF7043), Scene.GRID),
     Theme("Dunes", Color(0xFF3B1552), Color(0xFFE0567A), Color(0xFFFFB25B), Scene.DUNES),
+    // The real Vita wallpapers: glossy silk ribbons, and glass symbols over deep blue.
+    Theme("Vita Silk", Color(0xFF52C4EC), Color(0xFF2A64B4), Color(0xFF12257F), Scene.SILK),
+    Theme("Vita Symbols", Color(0xFF031A4E), Color(0xFF0A4FA8), Color(0xFF1C7CD0), Scene.SYMBOLS),
 )
+
+/** Index of the Vita Silk theme in [THEMES], the look of PS Vita mode. */
+const val VITA_SILK = 12
 
 /**
  * Where bubbles sit on a page, as fractions (x, y) of the page area, in reading order. The bubble
@@ -79,7 +85,7 @@ val LAYOUTS = listOf(
 )
 
 data class Settings(
-    val themeIndex: Int = 0,
+    val themeIndex: Int = VITA_SILK,
     val particles: Boolean = false,
     val bubbleScale: Float = 1f,
     val use24h: Boolean = false,
@@ -101,6 +107,9 @@ data class Settings(
     val autoAdd: Boolean = false,
     val debugInput: Boolean = false,
     val lockScreen: Boolean = true,
+    val vitaMode: Boolean = true,
+    val glass: Float = 0.75f,
+    val prevTheme: Int = 0,
     val bodyMode: Int = 0,
     val bodyColor: Int = 0xFF4A78D0.toInt(),
     val accent: Int = 0xFF40E0E0.toInt(),
@@ -136,7 +145,7 @@ class SettingsStore(private val context: Context) {
         File(context.filesDir, if (page == null) "wallpaper.jpg" else "wallpaper_page_$page.jpg")
 
     fun load() = Settings(
-        themeIndex = prefs.getInt("theme", 0),
+        themeIndex = prefs.getInt("theme", VITA_SILK),
         particles = prefs.getBoolean("particles", false),
         bubbleScale = prefs.getFloat("bubbleScale", 1f),
         use24h = prefs.getBoolean("use24h", false),
@@ -158,6 +167,9 @@ class SettingsStore(private val context: Context) {
         autoAdd = prefs.getBoolean("autoAdd", false),
         debugInput = prefs.getBoolean("debugInput", false),
         lockScreen = prefs.getBoolean("lockScreen", true),
+        vitaMode = prefs.getBoolean("vitaMode", true),
+        glass = prefs.getFloat("glass", 0.75f),
+        prevTheme = prefs.getInt("prevTheme", 0),
         bodyMode = prefs.getInt("bodyMode", 0),
         bodyColor = prefs.getInt("bodyColor", 0xFF4A78D0.toInt()),
         accent = prefs.getInt("accent", 0xFF40E0E0.toInt()),
@@ -207,6 +219,9 @@ class SettingsStore(private val context: Context) {
             .putBoolean("autoAdd", s.autoAdd)
             .putBoolean("debugInput", s.debugInput)
             .putBoolean("lockScreen", s.lockScreen)
+            .putBoolean("vitaMode", s.vitaMode)
+            .putFloat("glass", s.glass)
+            .putInt("prevTheme", s.prevTheme)
             .putInt("bodyMode", s.bodyMode)
             .putInt("bodyColor", s.bodyColor)
             .putInt("accent", s.accent)

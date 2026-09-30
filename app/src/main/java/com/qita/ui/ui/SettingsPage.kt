@@ -156,6 +156,15 @@ fun SettingsPage(
                 ) {
                     when (current) {
                         "theme" -> {
+                            CheckRow("set:vita", "◉", "PS Vita mode (silk wallpaper, glass bubbles)", settings.vitaMode) { on ->
+                                onChange(
+                                    if (on) settings.copy(vitaMode = true, prevTheme = settings.themeIndex, themeIndex = com.qita.ui.VITA_SILK)
+                                    else settings.copy(vitaMode = false, themeIndex = settings.prevTheme),
+                                )
+                            }
+                            if (settings.vitaMode) {
+                                SliderRow("set:glass", "◌", "Glass clearness", settings.glass, 0f..1f, 0.05f) { onChange(settings.copy(glass = it)) }
+                            }
                             THEMES.forEachIndexed { i, t ->
                                 MenuRow("set:theme:$i", "◐", t.name, trailing = {
                                     Box(Modifier.size(22.dp).background(Brush.verticalGradient(listOf(t.top, t.bottom)), CircleShape).border(1.5.dp, Color.White, CircleShape))

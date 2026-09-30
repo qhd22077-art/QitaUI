@@ -28,7 +28,7 @@ val LocalBallClock = compositionLocalOf<State<Float>> {
 object Ball3D {
     val supported: Boolean get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
 
-    class Paint @RequiresApi(Build.VERSION_CODES.TIRAMISU) constructor(val shader: RuntimeShader) {
+    class Paint @RequiresApi(Build.VERSION_CODES.TIRAMISU) constructor(val shader: RuntimeShader, val system: Boolean = false) {
         val brush = ShaderBrush(shader)
     }
 
@@ -55,7 +55,7 @@ object Ball3D {
         shader.setFloatUniform("acc", 0.09f, 0.88f, 1f)
         shader.setFloatUniform("t2", 1f, 1f, 1f, 0f)
         shader.setFloatUniform("hazy", if (app.action != null && app.action != com.qita.ui.SystemAction.SETTINGS) 0.55f else 1f)
-        return Paint(shader)
+        return Paint(shader, app.action != null)
     }
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
@@ -68,7 +68,7 @@ object Ball3D {
         // Icon saturation, brightness, icon size, dome exponent; then rim width, highlight, thickness.
         paint.shader.setFloatUniform("t1", look.iconSat, look.iconBright, look.iconScale.coerceIn(0.6f, 1.1f), 3f / look.dome.coerceIn(0.5f, 2f))
         paint.shader.setFloatUniform("acc", look.accent.red, look.accent.green, look.accent.blue)
-        paint.shader.setFloatUniform("t2", look.rimWidth.coerceIn(0.3f, 2.5f), look.highlight, look.thickness.coerceIn(0f, 1.8f), 0f)
+        paint.shader.setFloatUniform("t2", look.rimWidth.coerceIn(0.3f, 2.5f), look.highlight, look.thickness.coerceIn(0f, 1.8f), look.glass * (if (paint.system) 0.6f else 1f))
         paint.shader.setFloatUniform("rot", yaw, pitch)
         paint.shader.setFloatUniform("glow", glow)
     }
@@ -113,6 +113,7 @@ float4 wallPix(float ub, float vb, float rb, float cy, float sy, float cp, float
     float wl = max(dot(float3(wnx, wny, wnz2), L), 0.0);
     float3 wcol = (body * 0.55 + float3(0.75, 0.80, 0.92) * (0.45 * hazy)) * (0.55 + 0.6 * wl);
     wcol = clamp(wcol, 0.0, 1.0);
+    wcov *= mix(1.0, 0.65, t2.w);
     return float4(wcol * wcov, wcov);
 }
 
@@ -139,6 +140,7 @@ float4 frontPix(float u, float v, float rr, float cy, float sy, float cp, float 
     float2 d = float2(u, v) + sh;
     float2 uv = 0.5 + d / (2.0 * R);
     float3 base = body;
+    float artA = 0.0;
     if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {
         half4 c = sampleIcon(uv * iconSize);
         float mask = 1.0 - smoothstep(0.93, 1.0, length(d) / R);
@@ -146,6 +148,7 @@ float4 frontPix(float u, float v, float rr, float cy, float sy, float cp, float 
         float lum = dot(ic, float3(0.299, 0.587, 0.114));
         ic = clamp((float3(lum) + (ic - float3(lum)) * t1.x) * t1.y, 0.0, 1.0);
         base = body * (1.0 - float(c.a) * mask) + ic * mask;
+        artA = float(c.a) * mask;
     }
 
     // Soft, bright lighting so the colours stay vivid.
@@ -173,6 +176,10 @@ float4 frontPix(float u, float v, float rr, float cy, float sy, float cp, float 
 
     col = mix(col, acc, 0.34 * glow);
     col = clamp(col, 0.0, 1.0);
+    // Glass: the face is see-through, more so where there is no art, with the rim and the lit edge staying solid.
+    float g = t2.w;
+    float clear = clamp(0.30 + 0.50 * artA + 0.9 * f + 1.6 * edgeLine + 2.0 * max(ndh - 0.96, 0.0) * 25.0 * t2.y, 0.0, 1.0);
+    cov *= mix(1.0, clear, g);
     return float4(col * cov, cov);
 }
 
