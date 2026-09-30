@@ -100,13 +100,16 @@ half4 main(float2 frag) {
     float z2 = -n.x * sy + z1 * cy;
     float lon = atan(x2, z2);
     float lat = asin(clamp(y1, -1.0, 1.0));
-    float span = 1.5708 * 0.98;
+    // The icon covers only the middle of the ball, as a round patch, so it is not stretched at the edges.
+    float span = 1.5708 * 0.66;
     float2 uv = float2(0.5 + lon / (2.0 * span), 0.5 + lat / (2.0 * span));
 
     float3 base = body;
     if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {
         half4 c = sampleIcon(uv * iconSize);
-        base = body * (1.0 - float(c.a)) + float3(c.rgb);
+        float d = length(uv - 0.5) * 2.0;
+        float mask = 1.0 - smoothstep(0.90, 1.0, d);
+        base = body * (1.0 - float(c.a) * mask) + float3(c.rgb) * mask;
     }
 
     // Lighting stays fixed while the picture rolls.
@@ -126,15 +129,13 @@ half4 main(float2 frag) {
 
     float3 H = normalize(L + float3(0.0, 0.0, 1.0));
     float ndh = max(dot(n, H), 0.0);
-    float spec = pow(ndh, 70.0) + pow(ndh, 14.0) * 0.16;
-    col += float3(spec);
-
-    if (nz > 0.2) {
-        float wx = p.x + 0.12;
-        float wy = p.y + 0.50;
-        float v = 1.0 - (wx * wx / 0.42 + wy * wy / 0.07);
-        if (v > 0.0) { col += float3(v * sqrt(v) * 0.28); }
-    }
+    // Subtle highlights that follow the curve: a small glint, and a broad soft reflection of a window
+    // computed from the reflected view direction, so it stretches and bends with the surface.
+    float spec = pow(ndh, 90.0) * 0.55;
+    float3 R = 2.0 * nz * n - float3(0.0, 0.0, 1.0);
+    float3 W = normalize(float3(-0.35, -0.62, 0.70));
+    float env = pow(max(dot(R, W), 0.0), 6.0) * 0.16;
+    col += float3(spec + env);
 
     col = mix(col, float3(0.09, 0.88, 1.0), 0.34 * glow);
     col = clamp(col, 0.0, 1.0);

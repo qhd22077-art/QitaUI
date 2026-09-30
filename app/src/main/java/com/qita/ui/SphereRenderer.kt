@@ -15,11 +15,12 @@ import kotlin.math.sqrt
  */
 object SphereRenderer {
     /** How much of the sphere the icon spans (1 = the whole ball). */
-    private const val ART_SCALE = 0.98f
+    private const val ART_SCALE = 0.66f
 
     private val light = normalize(-0.42f, -0.58f, 0.70f)
     private val half = normalize(light[0], light[1], light[2] + 1f)
     private val bounceDir = normalize(0.15f, 0.85f, 0.45f)
+    private val window = normalize(-0.35f, -0.62f, 0.70f)
 
     private fun normalize(x: Float, y: Float, z: Float): FloatArray {
         val n = sqrt(x * x + y * y + z * z)
@@ -65,7 +66,12 @@ object SphereRenderer {
                     val w00 = (1 - fx) * (1 - fy); val w10 = fx * (1 - fy); val w01 = (1 - fx) * fy; val w11 = fx * fy
                     val p00 = src[y0 * aw + x0]; val p10 = src[y0 * aw + x1]
                     val p01 = src[y1 * aw + x0]; val p11 = src[y1 * aw + x1]
-                    ca = (((p00 ushr 24) * w00 + (p10 ushr 24) * w10 + (p01 ushr 24) * w01 + (p11 ushr 24) * w11)) / 255f
+                    val dx = ux - 0.5f
+                    val dy = uy - 0.5f
+                    val dist = sqrt(dx * dx + dy * dy) * 2f
+                    val edgeT = ((dist - 0.90f) / 0.10f).coerceIn(0f, 1f)
+                    val mask = 1f - edgeT * edgeT * (3f - 2f * edgeT)
+                    ca = mask * (((p00 ushr 24) * w00 + (p10 ushr 24) * w10 + (p01 ushr 24) * w01 + (p11 ushr 24) * w11)) / 255f
                     cr = ((((p00 shr 16) and 0xFF) * w00 + ((p10 shr 16) and 0xFF) * w10 + ((p01 shr 16) and 0xFF) * w01 + ((p11 shr 16) and 0xFF) * w11)) / 255f
                     cg = ((((p00 shr 8) and 0xFF) * w00 + ((p10 shr 8) and 0xFF) * w10 + ((p01 shr 8) and 0xFF) * w01 + ((p11 shr 8) and 0xFF) * w11)) / 255f
                     cb = (((p00 and 0xFF) * w00 + (p10 and 0xFF) * w10 + (p01 and 0xFF) * w01 + (p11 and 0xFF) * w11)) / 255f
@@ -91,22 +97,19 @@ object SphereRenderer {
                 val bounce = nb2 * nb2 * 0.30f * (fres * 2.2f + 0.12f)
                 r += 0.75f * bounce; g += 0.85f * bounce; b += bounce
 
-                // Sharp highlight plus a broad faint gloss (powers by repeated squaring).
+                // Subtle highlights that follow the curve: a small glint, and a broad soft reflection of a window
+                // from the reflected view direction, so it stretches and bends with the surface.
                 val ndh = (x * half[0] + y * half[1] + nz * half[2]).coerceAtLeast(0f)
-                val p2 = ndh * ndh; val p4 = p2 * p2; val p8 = p4 * p4; val p16 = p8 * p8; val p32 = p16 * p16; val p64 = p32 * p32
-                val spec = p64 * p4 * p2 + p8 * p4 * p2 * 0.16f
-                r += spec; g += spec; b += spec
-
-                // A soft window reflection across the upper part of the ball.
-                if (nz > 0.2f) {
-                    val wx = x + 0.12f
-                    val wy = y + 0.50f
-                    val v = 1f - (wx * wx / 0.42f + wy * wy / 0.07f)
-                    if (v > 0f) {
-                        val win = v * sqrt(v) * 0.28f
-                        r += win; g += win; b += win
-                    }
-                }
+                val p2 = ndh * ndh;
+                val q4 = p2 * p2; val q8 = q4 * q4; val q16 = q8 * q8; val q32 = q16 * q16; val q64 = q32 * q32
+                val spec = q64 * q16 * q8 * p2 * 0.55f
+                val rx = 2f * nz * x
+                val ry = 2f * nz * y
+                val rz = 2f * nz * nz - 1f
+                val rd = (rx * window[0] + ry * window[1] + rz * window[2]).coerceAtLeast(0f)
+                val e2 = rd * rd; val e4 = e2 * e2
+                val env = e4 * e2 * 0.16f
+                r += spec + env; g += spec + env; b += spec + env
 
                 val ir = (r.coerceIn(0f, 1f) * 255f + 0.5f).toInt()
                 val ig = (g.coerceIn(0f, 1f) * 255f + 0.5f).toInt()

@@ -22,10 +22,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.layout.ContentScale
 import kotlin.math.PI
+import kotlin.math.hypot
 import kotlin.math.sin
 import kotlin.random.Random
 
@@ -65,54 +69,106 @@ fun BubbleBackground(
     }
 }
 
-private class Bokeh(val x: Float, val y: Float, val r: Float, val alpha: Float, val speed: Float, val seed: Float)
+/** A soft floating bubble of light. [z] is its depth: 0 = far (small, dim, slow), 1 = near (big, bright, fast). */
+private class Mote(val x: Float, val y: Float, val z: Float, val speed: Float, val seed: Float)
 
+/**
+ * The animated Vita-style scene, built from layers at different depths so the depth is obvious: hazy far
+ * waves and dim small motes at the back, sharper brighter waves and big bubbles in front, each layer drifting at
+ * its own speed and sliding by its own amount as the page changes (parallax). Everything is drawn in one pass
+ * from reused paths, and the animation is only read while drawing.
+ */
 @Composable
 private fun Swooshes(colors: () -> Triple<Color, Color, Color>, scroll: () -> Float) {
     val phase by rememberInfiniteTransition(label = "swoosh").animateFloat(
         0f, (2 * PI).toFloat(),
-        infiniteRepeatable(tween(22_000, easing = LinearEasing), RepeatMode.Restart),
+        infiniteRepeatable(tween(26_000, easing = LinearEasing), RepeatMode.Restart),
         label = "phase",
     )
-    // One path is reused for every band, and the soft light dots are fixed once.
-    val path = remember { Path() }
-    val bokeh = remember {
-        val rnd = Random(11)
-        List(12) { Bokeh(rnd.nextFloat(), 0.10f + rnd.nextFloat() * 0.60f, 0.010f + rnd.nextFloat() * 0.028f, 0.05f + rnd.nextFloat() * 0.09f, 0.5f + rnd.nextFloat(), rnd.nextFloat() * 6.28f) }
+    val fill = remember { Path() }
+    val crest = remember { Path() }
+    val motes = remember {
+        val rnd = Random(23)
+        List(44) { Mote(rnd.nextFloat(), rnd.nextFloat(), rnd.nextFloat().let { it * it * 0.4f + it * 0.6f }, 0.5f + rnd.nextFloat(), rnd.nextFloat() * 6.28f) }
     }
     Canvas(Modifier.fillMaxSize()) {
         val (top, mid, bottom) = colors()
         val w = size.width
         val h = size.height
         val page = scroll()
-        drawRect(Brush.verticalGradient(0f to top, 0.55f to mid, 1f to bottom))
-        // Two wide, faint beams of light falling from the upper left.
-        val beamAlpha = 0.05f + 0.02f * sin(phase)
-        for ((x0, x1) in listOf(0.05f to 0.38f, 0.40f to 0.62f)) {
-            path.rewind()
-            path.moveTo(w * x0, 0f); path.lineTo(w * x1, 0f); path.lineTo(w * (x1 + 0.35f), h); path.lineTo(w * (x0 + 0.20f), h); path.close()
-            drawPath(path, Brush.verticalGradient(listOf(Color.White.copy(alpha = beamAlpha), Color.Transparent), startY = 0f, endY = h * 0.9f))
-        }
-        // Bright glow along the horizon that follows the page a little.
-        drawRect(
+        val turn = phase / (2f * PI.toFloat())
+
+        // Sky: deep at the top, bright at the horizon.
+        drawRect(Brush.verticalGradient(0f to top, 0.50f to mid, 1f to lerp(bottom, Color.White, 0.25f)))
+        // Far away: a big soft glow and two faint beams of light.
+        drawCircle(
             Brush.radialGradient(
-                listOf(Color.White.copy(alpha = 0.55f), Color.Transparent),
-                center = Offset(w * (0.5f - page * 0.02f), h * 1.04f), radius = w * 0.8f,
+                listOf(Color.White.copy(alpha = 0.30f), Color.Transparent),
+                center = Offset(w * (0.72f - page * 0.010f), h * 0.30f), radius = w * 0.45f,
             ),
+            radius = w * 0.45f, center = Offset(w * (0.72f - page * 0.010f), h * 0.30f),
         )
-        drawRect(
-            Brush.verticalGradient(listOf(Color.Transparent, Color.White.copy(alpha = 0.30f)), startY = h * 0.62f, endY = h),
-        )
-        // Soft dots of light that drift slowly, nearer ones moving more with the page.
-        bokeh.forEach { b ->
-            val cx = (b.x - page * 0.03f * b.speed).mod(1f) * w
-            val cy = (b.y + sin(phase * b.speed + b.seed) * 0.012f) * h
-            drawCircle(Color.White.copy(alpha = b.alpha), b.r * w, Offset(cx, cy))
+        val beam = 0.05f + 0.02f * sin(phase)
+        for ((x0, x1) in listOf(0.05f to 0.36f, 0.40f to 0.60f)) {
+            fill.rewind()
+            fill.moveTo(w * (x0 - page * 0.006f), 0f); fill.lineTo(w * (x1 - page * 0.006f), 0f)
+            fill.lineTo(w * (x1 + 0.35f - page * 0.006f), h); fill.lineTo(w * (x0 + 0.20f - page * 0.006f), h); fill.close()
+            drawPath(fill, Brush.verticalGradient(listOf(Color.White.copy(alpha = beam), Color.Transparent), startY = 0f, endY = h * 0.9f))
         }
-        // The long bright streak of light through the middle, like the Vita's default wallpaper.
+
+        // Motes and waves are drawn back to front: far motes, far waves, the light streak, near waves, near motes.
+        fun drawMotes(near: Boolean) {
+            for (m in motes) {
+                if ((m.z >= 0.55f) != near) continue
+                val cx = (m.x - page * 0.035f * (0.3f + m.z) + sin(phase * 0.7f + m.seed) * 0.02f).mod(1f) * w
+                val cy = (m.y - turn * m.speed * (0.5f + m.z)).mod(1f) * h
+                val r = (0.005f + 0.034f * m.z * m.z) * w
+                val a = 0.10f + 0.24f * m.z
+                drawCircle(Color.White.copy(alpha = a * 0.30f), r * 1.9f, Offset(cx, cy))
+                drawCircle(Color.White.copy(alpha = a), r, Offset(cx, cy))
+                if (m.z > 0.6f) {
+                    // Near bubbles get a thin bright rim and a glint, so they read as glass.
+                    drawCircle(Color.White.copy(alpha = 0.35f * m.z), r, Offset(cx, cy), style = Stroke(width = 1.5f))
+                    drawCircle(Color.White.copy(alpha = 0.55f), r * 0.22f, Offset(cx - r * 0.35f, cy - r * 0.38f))
+                }
+            }
+        }
+        fun drawWave(layer: Int) {
+            val z = layer / 4f
+            val baseY = h * (0.44f + 0.105f * layer) - page * h * (0.004f + 0.018f * z)
+            val amp = h * (0.018f + 0.034f * z)
+            val speed = 0.45f + 0.95f * z
+            val shift = page * w * (0.012f + 0.07f * z)
+            val steps = 28
+            fill.rewind(); crest.rewind()
+            for (i in 0..steps) {
+                val x = -w * 0.05f + w * 1.1f * i / steps
+                val u = (x + shift) / w
+                val y = baseY + amp * sin(u * 6.28f * (1.3f + 0.25f * layer) + phase * speed + layer * 1.7f) +
+                    amp * 0.45f * sin(u * 6.28f * 3.1f - phase * speed * 1.6f + layer)
+                if (i == 0) { fill.moveTo(x, y); crest.moveTo(x, y) } else { fill.lineTo(x, y); crest.lineTo(x, y) }
+            }
+            fill.lineTo(w * 1.05f, h); fill.lineTo(-w * 0.05f, h); fill.close()
+            // Far layers are hazy and blue, near ones bright and white, so distance reads as atmosphere.
+            val tint = lerp(lerp(mid, Color.White, 0.25f), Color.White, z)
+            drawPath(
+                fill,
+                Brush.verticalGradient(
+                    0f to tint.copy(alpha = 0.10f + 0.20f * z),
+                    0.30f to tint.copy(alpha = 0.03f + 0.05f * z),
+                    1f to Color.Black.copy(alpha = 0.05f * z),
+                    startY = baseY - amp, endY = h,
+                ),
+            )
+            if (z > 0.2f) drawPath(crest, Color.White.copy(alpha = 0.10f + 0.34f * z), style = Stroke(width = (1f + 2.5f * z) * 1.4f, cap = StrokeCap.Round))
+        }
+
+        drawMotes(near = false)
+        drawWave(0); drawWave(1)
+        // The long bright streak of light through the middle.
         val streakY = h * (0.50f - page * 0.02f) + sin(phase * 0.6f) * h * 0.012f
         rotate(-3f, Offset(w / 2f, streakY)) {
-            for ((thick, a) in listOf(0.16f to 0.08f, 0.07f to 0.14f, 0.022f to 0.34f)) {
+            for ((thick, a) in listOf(0.16f to 0.07f, 0.07f to 0.12f, 0.022f to 0.30f)) {
                 drawOval(
                     Brush.horizontalGradient(
                         listOf(Color.Transparent, Color.White.copy(alpha = a), Color.White.copy(alpha = a * 0.55f), Color.Transparent),
@@ -122,37 +178,18 @@ private fun Swooshes(colors: () -> Triple<Color, Color, Color>, scroll: () -> Fl
                 )
             }
         }
-        // Each band drifts a different distance as the page changes, which gives a sense of depth.
-        swoosh(path, 0.74f - page * 0.030f, 0.040f, 0.16f, 0.55f, phase)
-        swoosh(path, 0.83f - page * 0.050f, 0.050f, 0.20f, 0.28f, phase * 0.7f + 1.5f)
-        swoosh(path, 0.63f - page * 0.020f, 0.035f, 0.10f, 0.16f, phase * 1.2f + 3f)
-        swoosh(path, 0.70f - page * 0.040f, 0.030f, 0.06f, 0.12f, phase * 0.5f + 4.5f)
-    }
-}
+        drawWave(2); drawWave(3); drawWave(4)
+        drawMotes(near = true)
 
-/** One soft curved band of light that bobs gently up and down. */
-private fun DrawScope.swoosh(path: Path, yBase: Float, amp: Float, thickness: Float, alpha: Float, phase: Float) {
-    val w = size.width
-    val h = size.height
-    val y0 = h * yBase + sin(phase) * amp * h
-    val t = h * thickness
-    path.rewind()
-    path.moveTo(-w * 0.05f, y0 + t * 0.6f)
-    path.cubicTo(w * 0.30f, y0 - t * 0.9f, w * 0.62f, y0 + t * 1.1f, w * 1.05f, y0 - t * 0.7f)
-    path.lineTo(w * 1.05f, y0 - t * 0.7f + t)
-    path.cubicTo(w * 0.62f, y0 + t * 2.4f, w * 0.30f, y0 + t * 0.3f, -w * 0.05f, y0 + t * 1.4f)
-    path.close()
-    drawPath(
-        path,
-        Brush.horizontalGradient(
-            listOf(
-                Color.White.copy(alpha = 0f),
-                Color.White.copy(alpha = alpha),
-                Color.White.copy(alpha = alpha * 0.5f),
-                Color.White.copy(alpha = 0f),
+        // A bright glow along the horizon, then dark corners to pull the eye in and deepen the scene.
+        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.White.copy(alpha = 0.22f)), startY = h * 0.70f, endY = h))
+        drawRect(
+            Brush.radialGradient(
+                0.55f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.34f),
+                center = Offset(w / 2f, h / 2f), radius = hypot(w, h) / 2f,
             ),
-        ),
-    )
+        )
+    }
 }
 
 @Composable
