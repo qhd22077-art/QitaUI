@@ -426,8 +426,6 @@ fun HomeScreen(homePresses: Int = 0) {
             }
         }
     }
-    // Every screen's status bar gets a rotate button.
-    DisposableEffect(Unit) { ScreenRotator.onRotate = { rotate() }; onDispose { ScreenRotator.onRotate = null } }
     LaunchedEffect(settings.orientation) { (context as? android.app.Activity)?.requestedOrientation = com.qita.ui.orientationFlag(settings.orientation) }
     // The download engine starts with the launcher, and tells it when a file has finished.
     DisposableEffect(Unit) {
@@ -442,6 +440,8 @@ fun HomeScreen(homePresses: Int = 0) {
         settings = settings.copy(orientation = next)
         store.save(settings)
     }
+    // Every screen's status bar gets a rotate button.
+    DisposableEffect(Unit) { ScreenRotator.onRotate = { rotate() }; onDispose { ScreenRotator.onRotate = null } }
     /** Opens (or brings to the front) an app's LiveArea page. */
     fun openLiveArea(app: LaunchableApp, from: Offset? = null) {
         // The page grows out of the bubble that was tapped (and shrinks back into it).
