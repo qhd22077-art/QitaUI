@@ -87,61 +87,103 @@ half4 sampleIcon(float2 px) {
     return mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);
 }
 
-half4 main(float2 frag) {
-    float2 p = (frag / size) * 2.0 - 1.0;
-    float r2 = dot(p, p);
-    if (r2 >= 1.04) { return half4(0.0); }
-    float rr = sqrt(r2);
-    float cov = clamp((1.0 - rr) * size.x * 0.5 + 0.5, 0.0, 1.0);
-    float nz = sqrt(max(1.0 - r2, 0.0));
-    float3 n = float3(p, nz);
+// The slim side wall of the disc: what shows of its thickness when it is turned or tilted.
+float4 wallPix(float ub, float vb, float rb, float cy, float sy, float cp, float sp) {
+    if (rb >= 1.03) { return float4(0.0); }
+    float wcov = clamp((1.0 - rb) * size.x * 0.5 * abs(cy) + 0.5, 0.0, 1.0);
+    float2 wd = rb > 0.0001 ? float2(ub, vb) / rb : float2(0.0);
+    float wnx = wd.x * cy;
+    float wnz = -wd.x * sy;
+    float wny = wd.y * cp - wnz * sp;
+    float wnz2 = wd.y * sp + wnz * cp;
+    float wl = max(dot(float3(wnx, wny, wnz2), L), 0.0);
+    float3 wcol = (body * 0.55 + float3(0.75, 0.80, 0.92) * (0.45 * hazy)) * (0.55 + 0.6 * wl);
+    wcol = clamp(wcol, 0.0, 1.0);
+    return float4(wcol * wcov, wcov);
+}
 
-    // The bubble is a glass ball with the art printed on it. Turn the ball (yaw, pitch) and look the art up where it now is.
-    float cy = cos(rot.x);
-    float sy = sin(rot.x);
-    float cp = cos(rot.y);
-    float sp = sin(rot.y);
-    float y1 = n.y * cp - n.z * sp;
-    float z1 = n.y * sp + n.z * cp;
-    float x2 = n.x * cy + z1 * sy;
-    float z2 = -n.x * sy + z1 * cy;
-    float lon = atan(x2, z2);
-    float lat = asin(clamp(y1, -1.0, 1.0));
-    // The art fills most of the ball (about 80 degrees each way), wrapping and squeezing toward the edge, as on the real icons.
-    float TM = 1.40;
-    float2 uv = 0.5 + float2(lon, lat) / (2.0 * TM);
-    float ang = acos(clamp(z2, -1.0, 1.0));
-    float mask = 1.0 - smoothstep(0.80, 1.0, ang / TM);
+// The inflated front face: flat art under a gently domed glass, with a soft milky rim.
+float4 frontPix(float u, float v, float rr, float cy, float sy, float cp, float sp) {
+    if (rr >= 1.03) { return float4(0.0); }
+    float cov = clamp((1.0 - rr) * size.x * 0.5 * abs(cy) + 0.5, 0.0, 1.0);
+
+    // Inflated profile: the normal tilts gently from the middle and more steeply toward the rim.
+    float rc = min(rr, 1.0);
+    float rp = rc * rc;
+    float2 dir = rc > 0.0001 ? float2(u, v) / rc : float2(0.0);
+    float3 n0 = float3(dir * rp, sqrt(max(1.0 - rp * rp, 0.0)));
+    float nx1 = n0.x * cy + n0.z * sy;
+    float nz1 = -n0.x * sy + n0.z * cy;
+    float ny2 = n0.y * cp - nz1 * sp;
+    float nz2 = n0.y * sp + nz1 * cp;
+    float3 n = float3(nx1, ny2, nz2);
+    if (n.z < 0.0) { n = -n; }
+
+    // The art lies flat (not stretched), sits a little below the glass so it slides as the disc turns, and the dome bends it slightly.
+    float2 sh = float2(clamp(0.10 * sy / cy, -0.4, 0.4), clamp(-0.10 * sp / (abs(cy) * cp), -0.4, 0.4));
+    float R = 0.92;
+    float2 d = float2(u, v) + sh + n0.xy * 0.06;
+    float2 uv = 0.5 + d / (2.0 * R);
     float3 base = body;
     if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {
         half4 c = sampleIcon(uv * iconSize);
+        float mask = 1.0 - smoothstep(0.93, 1.0, length(d) / R);
         base = body * (1.0 - float(c.a) * mask) + float3(c.rgb) * mask;
     }
 
-    // Soft, bright lighting so the colours stay vivid; the light is fixed while the art rolls.
+    // Soft, bright lighting so the colours stay vivid.
     float ndl = max(dot(n, L), 0.0);
     float3 col = base * (0.74 + 0.36 * ndl);
 
-    // Milky glass: the edge fades toward white, with a brighter lit rim on the upper-left.
-    float f1 = 1.0 - nz;
-    float f = pow(f1, 2.2);
+    // Milky glass: a narrow rim that fades toward white, brighter on the lit upper-left side.
+    float f = pow(max(1.0 - n.z, 0.0), 2.8);
     col = col * (1.0 - 0.5 * f) + float3(0.95, 0.96, 1.0) * (0.5 * f * hazy);
-    float nl = length(p) + 0.0001;
-    float facing = max(dot(p / nl, L.xy / 0.72), 0.0);
-    col += float3(0.30 * f * facing);
+    float nl = length(n.xy) + 0.0001;
+    float facing = max(dot(n.xy / nl, L.xy / 0.72), 0.0);
+    col += float3(0.26 * f * facing);
 
-    // Light bounced up from below, and gentle highlights: a soft wide reflection and a small glint.
+    // Light bounced up from below, and gentle highlights that follow the dome.
     float nb = max(dot(n, Bn), 0.0);
     nb = nb * nb * nb;
-    col += float3(0.8, 0.9, 1.0) * (0.45 * nb * (f * 2.0 + 0.05));
+    col += float3(0.8, 0.9, 1.0) * (0.40 * nb * (f * 2.0 + 0.05));
     float ndh = max(dot(n, Hh), 0.0);
     float3 Rv = 2.0 * n.z * n - float3(0.0, 0.0, 1.0);
-    float env = pow(max(dot(Rv, W1), 0.0), 5.0) * 0.24;
-    col += float3(pow(ndh, 70.0) * 0.30 + env);
+    float env = pow(max(dot(Rv, W1), 0.0), 6.0) * 0.16;
+    col += float3(pow(ndh, 80.0) * 0.20 + env);
 
     col = mix(col, float3(0.09, 0.88, 1.0), 0.34 * glow);
     col = clamp(col, 0.0, 1.0);
-    return half4(half3(col * cov), half(cov));
+    return float4(col * cov, cov);
+}
+
+half4 main(float2 frag) {
+    float2 p = (frag / size) * 2.0 - 1.0;
+
+    // The bubble is an inflated disc seen from slightly above. It can turn about its vertical axis (yaw, like a
+    // flipping coin) and tilt about its horizontal axis (pitch).
+    float pitch = rot.y + 0.20;
+    float cy = cos(rot.x);
+    float sy = sin(rot.x);
+    float cp = cos(pitch);
+    float sp = sin(pitch);
+    if (abs(cy) < 0.03) { cy = cy < 0.0 ? -0.03 : 0.03; }
+    if (abs(cp) < 0.03) { cp = 0.03; }
+
+    // Front face: which point of the disc is under this pixel. Back face: the same disc pushed 0.12 back.
+    float u = p.x / cy;
+    float v = (p.y - u * sy * sp) / cp;
+    float rr = sqrt(u * u + v * v);
+    float T = 0.12;
+    float ub = (p.x + T * sy) / cy;
+    float vb = (p.y - ub * sy * sp - T * cy * sp) / cp;
+    float rb = sqrt(ub * ub + vb * vb);
+
+    float4 f = frontPix(u, v, rr, cy, sy, cp, sp);
+    float4 w = wallPix(ub, vb, rb, cy, sy, cp, sp);
+    float3 rgb = f.rgb + w.rgb * (1.0 - f.a);
+    float a = f.a + w.a * (1.0 - f.a);
+    if (a <= 0.0) { return half4(0.0); }
+    return half4(half3(rgb), half(a));
 }
 """
 }
