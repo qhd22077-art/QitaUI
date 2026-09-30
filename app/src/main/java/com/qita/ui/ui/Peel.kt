@@ -7,12 +7,15 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +40,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToUp
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
@@ -142,6 +148,9 @@ internal fun PeelBack(fold: Float, tint: Color, radius: Float = 0f) {
     }
 }
 
+/** Set by a pager that hosts pages with a peel corner: it is held true while a finger is on a corner, so the pager stays still. */
+val LocalPeelLock = compositionLocalOf<MutableState<Boolean>?> { null }
+
 /**
  * The touch zone for a page's curled corner. Drag it toward the bottom-left to peel the page; past
  * a quarter of the page width it finishes and calls [onPeeled]. It also nudges itself now and then
@@ -165,6 +174,7 @@ fun PeelCorner(
     // The page width is measured after the first frame, so the gestures must read the latest value.
     val width by rememberUpdatedState(pageWidth)
     val peeled by rememberUpdatedState(onPeeled)
+    val lock = LocalPeelLock.current
     var dragging by remember { mutableStateOf(false) }
     var finishing by remember { mutableStateOf(false) }
 
@@ -202,35 +212,58 @@ fun PeelCorner(
                 detectTapGestures(onTap = { if (tapToPeel) finish() else scope.launch { wiggle() } })
             }
             .pointerInput(Unit) {
-                // Speed of the drag along the peel direction (px/s), so a quick flick finishes the peel.
-                var velocity = 0f
-                var lastTime = 0L
-                detectDragGestures(
-                    onDragStart = {
-                        dragging = true
-                        velocity = 0f
-                        lastTime = 0L
-                        scope.launch { peel.stop() }
-                    },
-                    onDrag = { change, drag ->
-                        change.consume()
-                        // Project the drag onto the diagonal from the top-right corner toward the bottom-left.
-                        val along = (-drag.x + drag.y) / 1.4142f
-                        val dt = change.uptimeMillis - (if (lastTime == 0L) change.previousUptimeMillis else lastTime)
-                        if (dt > 0) velocity = 0.6f * velocity + 0.4f * (along / dt * 1000f)
-                        lastTime = change.uptimeMillis
-                        scope.launch { peel.snapTo((peel.value + along).coerceAtLeast(0f)) }
-                    },
-                    onDragEnd = {
-                        dragging = false
-                        if (peel.value > width * 0.25f || (velocity > 1400f && peel.value > 40f)) finish()
-                        else scope.launch { peel.animateTo(0f, spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessMedium)) }
-                    },
-                    onDragCancel = {
-                        dragging = false
-                        scope.launch { peel.animateTo(0f) }
-                    },
-                )
+                // The peel claims the gesture before anything above it (such as the pager that swipes between open
+                // apps) can, by watching the touch in the Initial pass and consuming it once it moves. While a finger
+                // is down on the corner the pager is also locked, so the page stays put under the peel.
+                val slop = viewConfiguration.touchSlop
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    lock?.value = true
+                    var started = false
+                    var travelled = Offset.Zero
+                    var velocity = 0f
+                    var lastTime = 0L
+                    try {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) {
+                                if (started) {
+                                    change.consume()
+                                    dragging = false
+                                    if (peel.value > width * 0.25f || (velocity > 1400f && peel.value > 40f)) finish()
+                                    else scope.launch { peel.animateTo(0f, spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessMedium)) }
+                                }
+                                break
+                            }
+                            val drag = change.positionChange()
+                            if (!started) {
+                                travelled += drag
+                                if (travelled.getDistance() > slop) {
+                                    started = true
+                                    dragging = true
+                                    scope.launch { peel.stop() }
+                                    change.consume()
+                                }
+                            } else {
+                                change.consume()
+                                // Project the drag onto the diagonal from the top-right corner toward the bottom-left.
+                                val along = (-drag.x + drag.y) / 1.4142f
+                                val dt = change.uptimeMillis - (if (lastTime == 0L) change.previousUptimeMillis else lastTime)
+                                if (dt > 0) velocity = 0.6f * velocity + 0.4f * (along / dt * 1000f)
+                                lastTime = change.uptimeMillis
+                                scope.launch { peel.snapTo((peel.value + along).coerceAtLeast(0f)) }
+                            }
+                        }
+                    } finally {
+                        lock?.value = false
+                        if (started && dragging) {
+                            // The gesture was cut short: settle back.
+                            dragging = false
+                            scope.launch { peel.animateTo(0f, spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessMedium)) }
+                        }
+                    }
+                }
             },
     )
 }

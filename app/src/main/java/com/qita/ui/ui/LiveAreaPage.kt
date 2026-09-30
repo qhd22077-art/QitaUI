@@ -27,6 +27,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -101,9 +102,13 @@ fun LiveAreaHost(
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         // The page sits inside side margins where the wallpaper shows and the neighbouring pages barely peek in.
+        // Held true by a page's peel corner while a finger is on it, so swiping does not steal the peel.
+        val peelLock = remember { mutableStateOf(false) }
+        CompositionLocalProvider(LocalPeelLock provides peelLock) {
         HorizontalPager(
             pagerState,
             Modifier.fillMaxSize(),
+            userScrollEnabled = !peelLock.value,
             contentPadding = PaddingValues(horizontal = maxWidth * 0.07f),
             key = { i -> if (i == 0) "home" else pages.getOrNull(i - 1)?.packageName ?: i },
         ) { page ->
@@ -135,6 +140,7 @@ fun LiveAreaHost(
                     )
                 }
             }
+        }
         }
         // Arrows on the edges show there is another page (or home) that way. They are drawn only, so swipes reach the pager.
         if (pagerState.currentPage > 0) EdgeArrow(true, Modifier.align(Alignment.CenterStart))
