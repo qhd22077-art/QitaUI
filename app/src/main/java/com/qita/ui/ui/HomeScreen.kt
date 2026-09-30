@@ -169,16 +169,6 @@ fun HomeScreen(homePresses: Int = 0) {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    // A one-time nudge if notifications are not switched on yet.
-    LaunchedEffect(Unit) {
-        Notifications.checkAccess(context)
-        delay(5000)
-        val p = context.getSharedPreferences("qita_settings", Context.MODE_PRIVATE)
-        if (!Notifications.granted && !p.getBoolean("notifHint", false)) {
-            toast = "Open the top-right button to turn on notifications"
-            p.edit().putBoolean("notifHint", true).apply()
-        }
-    }
     var showSearch by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showTutorial by remember { mutableStateOf(!store.tutorialSeen()) }
@@ -189,6 +179,16 @@ fun HomeScreen(homePresses: Int = 0) {
     var liveOrigin by remember { mutableStateOf(TransformOrigin.Center) }
     var toast by remember { mutableStateOf<String?>(null) }
     var lastToast by remember { mutableStateOf("") }
+    // A one-time nudge if notifications are not switched on yet.
+    LaunchedEffect(Unit) {
+        Notifications.checkAccess(context)
+        delay(5000)
+        val p = context.getSharedPreferences("qita_settings", Context.MODE_PRIVATE)
+        if (!Notifications.granted && !p.getBoolean("notifHint", false)) {
+            toast = "Open the top-right button to turn on notifications"
+            p.edit().putBoolean("notifHint", true).apply()
+        }
+    }
     var apps by remember { mutableStateOf<List<LaunchableApp>>(emptyList()) }
     var reload by remember { mutableStateOf(0) }
     var selected by remember { mutableStateOf<LaunchableApp?>(null) }
