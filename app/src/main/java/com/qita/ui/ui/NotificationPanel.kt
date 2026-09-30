@@ -42,6 +42,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
@@ -76,7 +77,7 @@ fun NotificationPanel(color: Color, onLaunch: (String) -> Unit, onDismiss: () ->
             Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures(onTap = { onDismiss() }) },
         ) {
             val screenHeight = maxHeight
-            val panelShape = RoundedCornerShape(12.dp)
+            val panelShape = RoundedCornerShape(14.dp)
             Column(
                 Modifier
                     .align(if (expanded) Alignment.TopCenter else Alignment.TopEnd)
@@ -96,15 +97,19 @@ fun NotificationPanel(color: Color, onLaunch: (String) -> Unit, onDismiss: () ->
                 }
                 Column(
                     Modifier
+                        .shadow(6.dp, panelShape, clip = false)
                         .clip(panelShape)
-                        .background(Color(0xFFEDEFF3))
-                        .border(if (expanded) 3.dp else 1.dp, Color.White.copy(alpha = 0.95f), panelShape)
+                        .background(Brush.verticalGradient(listOf(Color(0xFFF7F8FB), Color(0xFFC9CDD4))))
+                        // A bevelled frame: bright along the top, greyer along the bottom.
+                        .border(3.dp, Brush.verticalGradient(listOf(Color.White, Color(0xFFB9BEC6))), panelShape)
                         .pointerInput(Unit) { detectTapGestures { } }
-                        .padding(if (expanded) 3.dp else 3.dp),
+                        .padding(4.dp),
                 ) {
                     Column(
                         Modifier
-                            .clip(RoundedCornerShape(9.dp))
+                            .clip(RoundedCornerShape(10.dp))
+                            // The rows sit sunk into the frame: a fine dark edge around them.
+                            .border(1.dp, Color.Black.copy(alpha = 0.40f), RoundedCornerShape(10.dp))
                             .heightIn(max = if (expanded) screenHeight * 0.74f else 290.dp)
                             .verticalScroll(rememberScrollState()),
                     ) {
@@ -142,6 +147,7 @@ fun NotificationPanel(color: Color, onLaunch: (String) -> Unit, onDismiss: () ->
                                     else if (granted && items.isNotEmpty()) Notifications.clearAll()
                                     else onDismiss()
                                 }
+                                .background(Brush.verticalGradient(listOf(Color.White, Color(0xFFD3D7DD))), RoundedCornerShape(bottomStart = 10.dp, bottomEnd = 10.dp))
                                 .padding(vertical = 9.dp),
                             color = Color(0xFF2A2F3A), fontSize = 14.sp, fontWeight = FontWeight.Medium,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -240,9 +246,19 @@ private fun timeAgo(time: Long): String {
     }
 }
 
+/** The groove between two rows: a dark line with a light line under it, so the rows look embossed. */
 @Composable
 private fun Divider() {
-    Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.25f)))
+    Column(Modifier.fillMaxWidth()) {
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Color.Black.copy(alpha = 0.38f)))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.30f)))
+    }
+}
+
+/** A row's fill: lighter at the top, darker at the bottom, so it reads as a raised pad. */
+private fun rowFill(base: Color, lit: Boolean): Brush {
+    val b = if (lit) lerp(base, Color.White, 0.22f) else base
+    return Brush.verticalGradient(listOf(lerp(b, Color.White, 0.16f), lerp(b, Color.Black, 0.18f)))
 }
 
 @Composable
@@ -251,7 +267,7 @@ private fun InfoRow(color: Color, key: String, title: String, text: String, onCl
     Column(
         Modifier
             .fillMaxWidth()
-            .background(if (lit) lerp(color, Color.White, 0.22f) else color)
+            .background(rowFill(color, lit))
             .padClickable(key, corner = 0.dp, ring = false, onClick = onClick)
             .padding(12.dp),
     ) {
@@ -266,14 +282,14 @@ private fun NotificationRow(n: NotificationItem, index: Int, color: Color, onCli
     Row(
         Modifier
             .fillMaxWidth()
-            .background(if (lit) lerp(color, Color.White, 0.22f) else color)
+            .background(rowFill(color, lit))
             .padClickable("notif:$index", corner = 0.dp, ring = false, onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 7.dp),
         horizontalArrangement = Arrangement.spacedBy(9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // The Vita shows a small rounded-square picture with a pale rim.
-        val shape = RoundedCornerShape(7.dp)
+        // The Vita shows a small round picture with a pale rim.
+        val shape = CircleShape
         if (n.icon != null) Image(n.icon, null, Modifier.size(34.dp).clip(shape).border(1.dp, Color.White.copy(alpha = 0.7f), shape))
         else Box(Modifier.size(34.dp).clip(shape).background(Color.White.copy(alpha = 0.3f)))
         Column(Modifier.weight(1f)) {

@@ -31,6 +31,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -98,7 +100,9 @@ fun Bubble(
 ) {
     val look = LocalLook.current
     val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
+    // Whether a finger is on the bubble. Watched from the raw touches (without consuming them), because after a long press the
+    // drag handler eats the final "up" and the usual pressed state would never be released, leaving the bubble looking held.
+    var pressed by remember { mutableStateOf(false) }
     val focused = padHighlighted(padKey)
     val lit = focused || moving
     val pulse = rememberPulse(moving)
@@ -168,6 +172,14 @@ fun Bubble(
     val cancel by rememberUpdatedState(onDragCancel)
     Column(
         modifier
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        pressed = event.changes.any { it.pressed }
+                    }
+                }
+            }
             .onGloballyPositioned { onPositioned(it.boundsInRoot()) }
             .drawBehind {
                 if (glow > 0.01f) {
