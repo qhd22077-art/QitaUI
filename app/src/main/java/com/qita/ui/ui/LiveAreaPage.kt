@@ -1,6 +1,7 @@
 package com.qita.ui.ui
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
@@ -27,6 +28,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -104,6 +106,8 @@ fun LiveAreaHost(
         // The page sits inside side margins where the wallpaper shows and the neighbouring pages barely peek in.
         // Held true by a page's peel corner while a finger is on it, so swiping does not steal the peel.
         val peelLock = remember { mutableStateOf(false) }
+        // Each open page's peel amount lives here, so the peel corner can sit above the pager, outside its reach.
+        val peels = remember { mutableMapOf<String, Animatable<Float, AnimationVector1D>>() }
         CompositionLocalProvider(LocalPeelLock provides peelLock) {
         HorizontalPager(
             pagerState,
@@ -137,8 +141,26 @@ fun LiveAreaHost(
                         onLaunch = { onLaunch(app) },
                         onCloseApp = { onClosePage(app) },
                         onInfo = { onInfo(app) },
+                        peel = peels.getOrPut(app.packageName) { Animatable(0f) },
                     )
                 }
+            }
+        }
+        // The peel corner of the page in the middle is drawn above the pager as a sibling. A touch that lands on it goes only to
+        // it, never to the pager underneath, so a peel can no longer turn into a swipe to the next app.
+        val current = pages.getOrNull(pagerState.currentPage - 1)
+        if (current != null) {
+            key(current.packageName) {
+                PeelCorner(
+                    peel = peels.getOrPut(current.packageName) { Animatable(0f) },
+                    pageWidth = (constraints.maxWidth * 0.86f).toInt(),
+                    padKey = "card:peel:${current.packageName}",
+                    hint = true,
+                    repeatHint = false,
+                    tapToPeel = false,
+                    onPeeled = { onClosePage(current); peels.remove(current.packageName) },
+                    modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 28.dp, end = maxWidth * 0.07f),
+                )
             }
         }
         }
@@ -173,19 +195,17 @@ fun LiveAreaPage(
     onLaunch: () -> Unit,
     onCloseApp: () -> Unit,
     onInfo: () -> Unit,
+    /** Extra px the corner has been peeled beyond its resting size. The host owns it and drives it from the peel corner. */
+    peel: Animatable<Float, AnimationVector1D>,
 ) {
-    val scope = rememberCoroutineScope()
     val density = LocalDensity.current
-    // Extra px the corner has been peeled beyond its resting size.
-    val peel = remember { Animatable(0f) }
-    var pageWidth by remember { mutableStateOf(1) }
     val baseFold = with(density) { 56.dp.toPx() }
     val tint = app.tint
 
     Column(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }.statusBarsPadding()) {
         // The information bar is drawn once by the home screen, so it stays put while pages are swiped.
         Spacer(Modifier.height(28.dp))
-        Box(Modifier.weight(1f).fillMaxWidth().onSizeChanged { pageWidth = it.width }) {
+        Box(Modifier.weight(1f).fillMaxWidth()) {
             Box(
                 Modifier
                     .fillMaxSize()
@@ -261,16 +281,6 @@ fun LiveAreaPage(
                 }
             }
             PeelBack(baseFold + peel.value, tint)
-            PeelCorner(
-                peel = peel,
-                pageWidth = pageWidth,
-                padKey = "card:peel:${app.packageName}",
-                hint = true,
-                repeatHint = false,
-                tapToPeel = false,
-                onPeeled = onCloseApp,
-                modifier = Modifier.align(Alignment.TopEnd),
-            )
         }
     }
 }
