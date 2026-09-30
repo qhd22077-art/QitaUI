@@ -16,6 +16,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.composed
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import com.qita.ui.GameLibrary
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
@@ -94,16 +98,16 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 // The colours of the real PlayStation Store, measured from photos of it.
-private val StoreTop = Color(0xFF3A66CC)
-private val StoreMid = Color(0xFF2F53B9)
-private val StoreBottom = Color(0xFF2A3DAA)
-private val StoreIndigo = Color(0xFF4343C6)
-private val BarTop = Color(0xFF9AA3D2)
-private val BarBottom = Color(0xFF545FC1)
-private val TabDark = Color(0xFF2D3B72)
-private val RowLine = Color(0xFF748BCF)
-private val SoftText = Color(0xFFB8C4F0)
-private val DimText = Color(0xFF9AA8E0)
+private val StoreTop = Color(0xFF22428F)
+private val StoreMid = Color(0xFF1A3379)
+private val StoreBottom = Color(0xFF142460)
+private val StoreIndigo = Color(0xFF2A2A94)
+private val BarTop = Color(0xFF6F79B0)
+private val BarBottom = Color(0xFF36408F)
+private val TabDark = Color(0xFF172248)
+private val RowLine = Color(0xFF4F66AC)
+private val SoftText = Color(0xFFA6B4E8)
+private val DimText = Color(0xFF8798D2)
 private val OrangeTop = Color(0xFFF58A3A)
 private val OrangeBottom = Color(0xFFE6621C)
 
@@ -159,6 +163,8 @@ private val PRESETS = listOf(
     Preset("Libretro docs", "https://docs.libretro.com", "Guides and free content"),
 )
 
+private val TitleShadow = TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.45f), Offset(0f, 2f), 4f))
+
 private fun storeBackground() = Brush.verticalGradient(listOf(StoreTop, StoreMid, StoreBottom))
 
 /**
@@ -201,7 +207,7 @@ fun StoreScreen(
             vitaLoading = false
         }
     }
-    LaunchedEffect(segment, tab) { if (tab == 0 && segment == 3 && vita == null && !vitaLoading) loadVita(false) }
+    LaunchedEffect(segment, tab) { if (tab == 0 && vita == null && !vitaLoading) loadVita(false) }
 
     // The browser is created once and kept while the user moves between tabs.
     var browsing by remember { mutableStateOf(false) }
@@ -294,6 +300,8 @@ fun StoreScreen(
         Canvas(Modifier.fillMaxSize()) {
             drawRect(Brush.horizontalGradient(listOf(Color.Transparent, StoreIndigo.copy(alpha = 0.35f))))
             drawRect(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.10f), Color.Transparent), 0f, size.height * 0.35f))
+            // Darker corners pull the eye to the middle, like light falling off on a real screen.
+            drawRect(Brush.radialGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.45f)), center, size.maxDimension * 0.75f))
         }
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             StatusBar(settings.use24h, settings.showBattery, showHome = false)
@@ -356,6 +364,7 @@ private fun TabBar(tab: Int, onTab: (Int) -> Unit, onSearch: () -> Unit) {
             .fillMaxWidth()
             .height(46.dp)
             .background(Brush.verticalGradient(listOf(BarTop, BarBottom)))
+            .gloss(0.dp, 0.20f)
             .drawLine(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -404,8 +413,17 @@ private fun RoundButton(onClick: () -> Unit, modifier: Modifier, key: String, do
         modifier
             .size(64.dp)
             .padClickable(key, corner = null, pad = 3.dp, onClick = onClick)
+            .shadow(if (lit) 12.dp else 8.dp, CircleShape)
             .clip(CircleShape)
-            .background(Brush.radialGradient(listOf(Color(0xFF8C98D8), Color(0xFF4C5AAE), Color(0xFF2D3B8A)), Offset(60f, 40f), 120f))
+            .background(Brush.radialGradient(listOf(Color(0xFF6A77BE), Color(0xFF34428F), Color(0xFF1E2A66)), Offset(60f, 40f), 120f))
+            .drawBehind {
+                // The glare: a pale lens across the upper half.
+                drawOval(
+                    Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.03f)), 0f, size.height * 0.5f),
+                    topLeft = Offset(size.width * 0.14f, size.height * 0.05f),
+                    size = androidx.compose.ui.geometry.Size(size.width * 0.72f, size.height * 0.45f),
+                )
+            }
             .border(if (lit) 3.dp else 1.5.dp, if (lit) Color.White else Color.White.copy(alpha = 0.7f), CircleShape),
         contentAlignment = Alignment.Center,
     ) {
@@ -433,10 +451,12 @@ private fun OrangeButton(key: String, label: String, enabled: Boolean = true, on
         label,
         Modifier
             .padClickable(key, corner = 10.dp, ring = false, onClick = onClick)
+            .shadow(if (lit) 8.dp else 4.dp, RoundedCornerShape(10.dp))
             .background(
                 Brush.verticalGradient(if (enabled) listOf(OrangeTop, OrangeBottom) else listOf(Color(0xFF8A94C8), Color(0xFF5A66B0))),
                 RoundedCornerShape(10.dp),
             )
+            .gloss(10.dp, 0.35f)
             .border(if (lit) 2.dp else 1.dp, if (lit) Color.White else Color(0xFFFFC08A), RoundedCornerShape(10.dp))
             .padding(horizontal = 28.dp, vertical = 9.dp),
         color = Color.White, fontSize = 18.sp, textAlign = TextAlign.Center, maxLines = 1,
@@ -446,6 +466,17 @@ private fun OrangeButton(key: String, label: String, enabled: Boolean = true, on
 // ------------------------------------------------------------------------------------------------------------------------
 // Catalogue
 // ------------------------------------------------------------------------------------------------------------------------
+
+/** A soft light across the top half of a glossy part (bars, buttons), like the glass of the real store's controls. */
+private fun Modifier.gloss(radius: Dp = 8.dp, strength: Float = 0.28f): Modifier = this.drawBehind {
+    val r = radius.toPx()
+    drawRoundRect(
+        Brush.verticalGradient(listOf(Color.White.copy(alpha = strength), Color.White.copy(alpha = strength * 0.12f)), 0f, size.height * 0.5f),
+        topLeft = Offset(1.dp.toPx(), 1.dp.toPx()),
+        size = androidx.compose.ui.geometry.Size(size.width - 2.dp.toPx(), size.height * 0.5f),
+        cornerRadius = CornerRadius(r, r),
+    )
+}
 
 /** Slides a piece in from the right and fades it up when it first appears, so lists and pages move instead of popping. */
 private fun Modifier.slideIn(fromX: Float = 60f): Modifier = composed {
@@ -516,6 +547,20 @@ private fun Catalogue(
     val state = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
+    val appContext = LocalContext.current
+    // Covers of the user's own games, already fetched for the Games screen.
+    val myGames = remember { runCatching { GameLibrary.games(appContext).filter { GameLibrary.coverFile(appContext, it.id).exists() } }.getOrDefault(emptyList()) }
+    val banners = remember(vitaAll, myGames) {
+        buildList {
+            vitaAll?.filter { it.type == 1 && it.iconUrl != null }?.take(5)?.forEach { hb ->
+                add(BannerArt("v${hb.id}", hb.name, "Vita homebrew  ·  ${hb.author}", hb.iconUrl, true, 0xFF1A5FB4, "VITA") { vita.onOpen(hb) })
+            }
+            myGames.take(4).forEach { g ->
+                add(BannerArt("g${g.id}", g.title, "From your library", GameLibrary.coverFile(appContext, g.id).path, true, 0xFF203060, "GAME", null))
+            }
+            CATALOGUE.take(7).forEach { e -> add(BannerArt(e.id, e.name, e.developer, bannerUrl(e), false, e.color, e.short) { onDetail(e) }) }
+        }
+    }
     val onVita = segment == 3
     val rail = onVita && vitaAll != null && vita.type >= 1 && vitaRows.isNotEmpty()
     val railPad = if (rail) 128.dp else 0.dp
@@ -548,7 +593,12 @@ private fun Catalogue(
                 state = state,
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 90.dp),
             ) {
-                item(key = "banners") { BannerStrip(railPad, onDetail) }
+                item(key = "banners") {
+                    // The strip drifts up slower than the list, so it sits a little behind the rows.
+                    Box(Modifier.graphicsLayer { translationY = if (state.firstVisibleItemIndex == 0) state.firstVisibleItemScrollOffset * 0.3f else 0f }) {
+                        BannerStrip(banners, railPad)
+                    }
+                }
                 stickyHeader(key = "segments") {
                     Box(Modifier.fillMaxWidth().background(StoreMid)) {
                         Segmented(listOf("Featured", "Emulators", "Free games", "Vita homebrew", "All"), segment, onSegment)
@@ -612,24 +662,86 @@ private fun RailTile(label: String, big: Boolean, onClick: () -> Unit) {
     }
 }
 
+private val BANNER_REPOS = mapOf(
+    "retroarch" to "libretro/RetroArch", "ppsspp" to "hrydgard/ppsspp", "dolphin" to "dolphin-emu/dolphin",
+    "duckstation" to "stenzek/duckstation", "scummvm" to "scummvm/scummvm", "redream" to "",
+)
+
+/** A picture for an entry: its GitHub project's social image (the project's own artwork), when it has a project. */
+private fun bannerUrl(e: StoreEntry): String? =
+    (e.repo ?: BANNER_REPOS[e.id])?.takeIf { it.contains('/') }?.let { "https://opengraph.githubassets.com/1/$it" }
+
+/** One banner: real artwork when there is some, the entry's colour and letters until it arrives or if it cannot be loaded. */
+private class BannerArt(
+    val id: String,
+    val title: String,
+    val sub: String,
+    val image: String?,
+    /** A tall picture (an icon or a box cover) shown whole over a blurred copy of itself, rather than cropped across. */
+    val portrait: Boolean,
+    val color: Long,
+    val short: String,
+    val onClick: (() -> Unit)?,
+)
+
+@Composable
+private fun ArtBanner(b: BannerArt) {
+    val shape = RoundedCornerShape(8.dp)
+    val click = b.onClick
+    Box(
+        Modifier
+            .width(270.dp)
+            .height(112.dp)
+            .shadow(10.dp, shape)
+            .then(if (click != null) Modifier.padClickable("store:banner:${b.id}", corner = 8.dp, pad = 3.dp, onClick = click) else Modifier)
+            .clip(shape)
+            .background(Brush.linearGradient(listOf(Color(b.color), Color.Black.copy(alpha = 0.85f))))
+            .border(1.dp, Color.White.copy(alpha = 0.4f), shape),
+    ) {
+        val fallback: @Composable () -> Unit = {
+            Text(b.short, color = Color.White.copy(alpha = 0.22f), fontSize = 60.sp, fontWeight = FontWeight.Black, modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp))
+        }
+        if (b.image == null) fallback()
+        else if (b.portrait) {
+            RemoteImage(b.image, Modifier.fillMaxSize().blur(16.dp).graphicsLayer { alpha = 0.65f }) { }
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.25f)))
+            RemoteImage(
+                b.image,
+                Modifier.align(Alignment.CenterStart).padding(start = 10.dp).size(width = 76.dp, height = 92.dp).shadow(8.dp, RoundedCornerShape(4.dp)).clip(RoundedCornerShape(4.dp))
+                    .border(1.dp, Color.White.copy(alpha = 0.8f), RoundedCornerShape(4.dp)),
+            ) { Text(b.short, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Black, modifier = Modifier.align(Alignment.Center)) }
+        } else {
+            RemoteImage(b.image, Modifier.fillMaxSize()) { fallback() }
+        }
+        // A dark band at the foot for the words, and a pale diagonal glare across the corner.
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f)), 120f, 300f)))
+        Canvas(Modifier.fillMaxSize()) {
+            drawRect(Brush.linearGradient(listOf(Color.White.copy(alpha = 0.30f), Color.Transparent), Offset.Zero, Offset(size.width * 0.65f, size.height * 0.9f)))
+        }
+        Column(Modifier.align(Alignment.BottomStart).padding(start = if (b.portrait && b.image != null) 96.dp else 14.dp, end = 10.dp, bottom = 9.dp)) {
+            Text(b.title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, style = TitleShadow)
+            Text(b.sub, color = SoftText, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
 /** The banner strip moves by itself every few seconds (and stops while a finger or the gamepad is scrolling it). */
 @Composable
-private fun BannerStrip(startPad: Dp, onDetail: (StoreEntry?) -> Unit) {
-    val banners = remember { CATALOGUE.take(7) }
+private fun BannerStrip(banners: List<BannerArt>, startPad: Dp) {
     val strip = rememberLazyListState()
-    LaunchedEffect(Unit) {
-        while (true) {
+    LaunchedEffect(banners.size) {
+        while (banners.size > 1) {
             delay(3500)
             if (!strip.isScrollInProgress) strip.animateScrollToItem((strip.firstVisibleItemIndex + 1) % banners.size)
         }
     }
     LazyRow(
-        Modifier.fillMaxWidth().padding(top = 10.dp),
+        Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp),
         state = strip,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 14.dp + startPad, end = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        items(banners, key = { it.id }) { e -> Banner(e) { onDetail(e) } }
+        items(banners, key = { it.id }) { b -> ArtBanner(b) }
     }
 }
 
@@ -642,7 +754,9 @@ private fun GetButton(key: String, label: String, onClick: () -> Unit) {
         Modifier
             .padding(end = 14.dp)
             .padClickable(key, corner = 8.dp, pad = 2.dp, ring = false, onClick = onClick)
+            .shadow(if (lit) 7.dp else 3.dp, RoundedCornerShape(8.dp))
             .background(Brush.verticalGradient(listOf(OrangeTop, OrangeBottom)), RoundedCornerShape(8.dp))
+            .gloss(8.dp, 0.35f)
             .border(if (lit) 2.dp else 1.dp, if (lit) Color.White else Color(0xFFFFC08A), RoundedCornerShape(8.dp))
             .padding(horizontal = 14.dp, vertical = 7.dp),
         color = Color.White, fontSize = 16.sp, maxLines = 1,
@@ -654,25 +768,6 @@ private fun vitaDownload(started: Map<String, DownloadItem>, hb: VitaHb): Downlo
     started["vita:${hb.id}"] ?: DownloadEngine.items.firstOrNull { it.url == hb.download }
 
 @Composable
-private fun Banner(e: StoreEntry, onClick: () -> Unit) {
-    Box(
-        Modifier
-            .width(260.dp)
-            .height(100.dp)
-            .padClickable("store:banner:${e.id}", corner = 8.dp, pad = 3.dp, onClick = onClick)
-            .clip(RoundedCornerShape(6.dp))
-            .background(Brush.linearGradient(listOf(Color(e.color).copy(alpha = 1f), Color.Black.copy(alpha = 0.85f)))),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(e.short, color = Color.White.copy(alpha = 0.22f), fontSize = 64.sp, fontWeight = FontWeight.Black, modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp))
-        Column(Modifier.align(Alignment.CenterStart).padding(start = 16.dp)) {
-            Text(e.name, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-            Text(e.developer, color = SoftText, fontSize = 13.sp, maxLines = 1)
-        }
-    }
-}
-
-@Composable
 private fun Segmented(options: List<String>, selected: Int, onSelect: (Int) -> Unit) {
     val shape = RoundedCornerShape(10.dp)
     Row(
@@ -681,8 +776,9 @@ private fun Segmented(options: List<String>, selected: Int, onSelect: (Int) -> U
             .padding(horizontal = 14.dp, vertical = 10.dp)
             .height(40.dp)
             .clip(shape)
-            .background(Brush.verticalGradient(listOf(Color(0xFF8793D6), Color(0xFF4F5DB8))))
-            .border(1.dp, Color(0xFF2D3B72), shape),
+            .background(Brush.verticalGradient(listOf(Color(0xFF6670B6), Color(0xFF323E8C))))
+            .gloss(10.dp, 0.22f)
+            .border(1.dp, Color(0xFF172248), shape),
     ) {
         options.forEachIndexed { i, label ->
             val on = i == selected
@@ -697,7 +793,7 @@ private fun Segmented(options: List<String>, selected: Int, onSelect: (Int) -> U
             ) {
                 Text(label, color = Color.White, fontSize = 17.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
             }
-            if (i < options.size - 1) Box(Modifier.width(1.dp).fillMaxHeight().background(Color(0xFF2D3B72).copy(alpha = 0.7f)))
+            if (i < options.size - 1) Box(Modifier.width(1.dp).fillMaxHeight().background(Color(0xFF172248).copy(alpha = 0.8f)))
         }
     }
 }
@@ -718,7 +814,7 @@ private fun CatalogueRow(e: StoreEntry, download: DownloadItem?, looking: Boolea
             EntryIcon(e, 74.dp)
             Column(Modifier.weight(1f).padding(start = 14.dp)) {
                 Text(if (e.category == 0) "Emulator" else "Free games", color = SoftText, fontSize = 13.sp, maxLines = 1)
-                Text(e.name, color = Color.White, fontSize = 24.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(e.name, color = Color.White, fontSize = 24.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, style = TitleShadow)
                 Text(e.developer, color = DimText, fontSize = 15.sp, maxLines = 1)
             }
             GetButton(
@@ -745,7 +841,8 @@ private fun EntryIcon(e: StoreEntry, size: Dp) {
     Box(
         Modifier
             .size(size)
-            .background(Brush.verticalGradient(listOf(Color(e.color), Color.Black.copy(alpha = 0.8f)))),
+            .background(Brush.verticalGradient(listOf(Color(e.color), Color.Black.copy(alpha = 0.8f))))
+            .gloss(0.dp, 0.22f),
         contentAlignment = Alignment.Center,
     ) {
         Text(e.short, color = Color.White, fontSize = (size.value * 0.28f).sp, fontWeight = FontWeight.Black, maxLines = 1)
@@ -764,7 +861,7 @@ private fun DetailPage(
     val others = remember(e.id) { CATALOGUE.filter { it.id != e.id && it.category == e.category }.take(3) }
     Row(Modifier.fillMaxSize().slideIn(80f).padding(start = 18.dp, end = 12.dp, top = 12.dp)) {
         Box(
-            Modifier.size(150.dp).border(2.dp, Color.White, RoundedCornerShape(6.dp)).clip(RoundedCornerShape(6.dp)),
+            Modifier.size(150.dp).shadow(14.dp, RoundedCornerShape(6.dp)).border(2.dp, Color.White, RoundedCornerShape(6.dp)).clip(RoundedCornerShape(6.dp)),
         ) { EntryIcon(e, 150.dp) }
         Column(Modifier.weight(1f).padding(start = 18.dp).verticalScroll(rememberScrollState()).padding(bottom = 90.dp)) {
             Text(e.name, color = Color.White, fontSize = 30.sp, maxLines = 2)
@@ -808,7 +905,7 @@ private fun DetailPage(
                     Modifier.padClickable("store:like:${o.id}", corner = 8.dp, pad = 2.dp) { onDetail(o) }.padding(bottom = 10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Box(Modifier.size(84.dp).border(2.dp, Color.White, RoundedCornerShape(6.dp)).clip(RoundedCornerShape(6.dp))) { EntryIcon(o, 84.dp) }
+                    Box(Modifier.size(84.dp).shadow(8.dp, RoundedCornerShape(6.dp)).border(2.dp, Color.White, RoundedCornerShape(6.dp)).clip(RoundedCornerShape(6.dp))) { EntryIcon(o, 84.dp) }
                     Text(o.name, color = Color.White, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
                 }
             }
@@ -1159,7 +1256,7 @@ private fun VitaRow(hb: VitaHb, download: DownloadItem?, startPad: Dp, onGet: ()
             VitaIcon(hb, 74.dp)
             Column(Modifier.weight(1f).padding(start = 14.dp)) {
                 Text(hb.date.ifEmpty { "Vita homebrew" }, color = SoftText, fontSize = 13.sp, maxLines = 1)
-                Text(hb.name, color = Color.White, fontSize = 24.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(hb.name, color = Color.White, fontSize = 24.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, style = TitleShadow)
                 Text(hb.author, color = DimText, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             GetButton(
@@ -1180,7 +1277,7 @@ private fun VitaRow(hb: VitaHb, download: DownloadItem?, startPad: Dp, onGet: ()
 @Composable
 private fun VitaDetailPage(hb: VitaHb, download: DownloadItem?, others: List<VitaHb>, onDownload: (VitaHb) -> Unit, onOpen: (VitaHb) -> Unit) {
     Row(Modifier.fillMaxSize().slideIn(80f).padding(start = 18.dp, end = 12.dp, top = 12.dp)) {
-        Box(Modifier.size(150.dp).border(2.dp, Color.White, RoundedCornerShape(6.dp)).clip(RoundedCornerShape(6.dp))) { VitaIcon(hb, 150.dp) }
+        Box(Modifier.size(150.dp).shadow(14.dp, RoundedCornerShape(6.dp)).border(2.dp, Color.White, RoundedCornerShape(6.dp)).clip(RoundedCornerShape(6.dp))) { VitaIcon(hb, 150.dp) }
         Column(Modifier.weight(1f).padding(start = 18.dp).verticalScroll(rememberScrollState()).padding(bottom = 90.dp)) {
             Text(hb.name, color = Color.White, fontSize = 30.sp, maxLines = 2)
             Text(hb.author.uppercase(), color = SoftText, fontSize = 17.sp, maxLines = 1)
@@ -1215,7 +1312,7 @@ private fun VitaDetailPage(hb: VitaHb, download: DownloadItem?, others: List<Vit
                     Modifier.padClickable("store:vlike:${o.id}", corner = 8.dp, pad = 2.dp) { onOpen(o) }.padding(bottom = 10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Box(Modifier.size(84.dp).border(2.dp, Color.White, RoundedCornerShape(6.dp)).clip(RoundedCornerShape(6.dp))) { VitaIcon(o, 84.dp) }
+                    Box(Modifier.size(84.dp).shadow(8.dp, RoundedCornerShape(6.dp)).border(2.dp, Color.White, RoundedCornerShape(6.dp)).clip(RoundedCornerShape(6.dp))) { VitaIcon(o, 84.dp) }
                     Text(o.name, color = Color.White, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
                 }
             }

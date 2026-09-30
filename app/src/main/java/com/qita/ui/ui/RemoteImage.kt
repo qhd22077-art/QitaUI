@@ -22,7 +22,7 @@ import java.net.URL
 
 /** Downloads small pictures (icons) and keeps the last few in memory. */
 object RemoteImages {
-    private val cache = LruCache<String, Bitmap>(48)
+    private val cache = LruCache<String, Bitmap>(40)
     private val failed = HashSet<String>()
 
     fun cached(url: String): Bitmap? = cache.get(url)
@@ -32,6 +32,14 @@ object RemoteImages {
         cache.get(url)?.let { return it }
         if (url in failed) return null
         val bmp = runCatching {
+            // A path on the device (a cover already saved) is read from disk.
+            if (url.startsWith("/")) {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(url, bounds)
+                var sample = 1
+                while (bounds.outWidth / sample > 720) sample *= 2
+                return@runCatching BitmapFactory.decodeFile(url, BitmapFactory.Options().apply { inSampleSize = sample })
+            }
             val conn = URL(url).openConnection() as HttpURLConnection
             conn.connectTimeout = 8000
             conn.readTimeout = 12000
@@ -41,7 +49,7 @@ object RemoteImages {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
             var sample = 1
-            while (bounds.outWidth / sample > 512) sample *= 2
+            while (bounds.outWidth / sample > 720) sample *= 2
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
         }.getOrNull()
         if (bmp != null) cache.put(url, bmp) else failed.add(url)
