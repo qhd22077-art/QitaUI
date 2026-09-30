@@ -108,6 +108,7 @@ data class Settings(
     val debugInput: Boolean = false,
     val lockScreen: Boolean = true,
     val vitaMode: Boolean = true,
+    val lockClockPos: Int = 0,
     val symbolCount: Int = 45,
     val notifColor: Int = 0xFF1D3E8F.toInt(),
     val glass: Float = 0.85f,
@@ -171,6 +172,7 @@ class SettingsStore(private val context: Context) {
         debugInput = prefs.getBoolean("debugInput", false),
         lockScreen = prefs.getBoolean("lockScreen", true),
         vitaMode = prefs.getBoolean("vitaMode", true),
+        lockClockPos = prefs.getInt("lockClockPos", 0),
         symbolCount = prefs.getInt("symbolCount", 45),
         notifColor = prefs.getInt("notifColor", 0xFF1D3E8F.toInt()),
         glass = prefs.getFloat("glass", 0.85f),
@@ -226,6 +228,7 @@ class SettingsStore(private val context: Context) {
             .putBoolean("debugInput", s.debugInput)
             .putBoolean("lockScreen", s.lockScreen)
             .putBoolean("vitaMode", s.vitaMode)
+            .putInt("lockClockPos", s.lockClockPos)
             .putInt("symbolCount", s.symbolCount)
             .putInt("notifColor", s.notifColor)
             .putFloat("glass", s.glass)

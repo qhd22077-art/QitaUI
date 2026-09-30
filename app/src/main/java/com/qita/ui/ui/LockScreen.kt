@@ -1,6 +1,10 @@
 package com.qita.ui.ui
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -58,19 +62,19 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * The Vita lock screen, as on the console: the wallpaper with a framed translucent panel inset from the edges, the date
- * and a big clock at the bottom left, the faint PlayStation symbols at the bottom right and a small curled corner at
- * the top right. Peel the corner away (or tap it, or double-tap anywhere, or press the confirm button) to reveal the
- * home screen. This is in-app only: Android does not let a launcher replace the phone's real lock screen, so it is
- * visual and not a security lock.
+ * The Vita lock screen, as on the console: the wallpaper behind a thin-bordered, almost clear panel inset from the edges, the
+ * date above a large thin clock (bottom right by default), and a small curled corner at the top right. Peel the corner away
+ * (or tap it, or double-tap anywhere, or press the confirm button) to reveal the home screen. This is in-app only: Android
+ * does not let a launcher replace the phone's real lock screen, so it is visual and not a security lock.
  */
 @Composable
 fun LockScreen(settings: Settings, wallpaper: ImageBitmap?, onUnlock: () -> Unit) {
     val density = LocalDensity.current
     val peel = remember { Animatable(0f) }
     var pageWidth by remember { mutableStateOf(1) }
-    val baseFold = with(density) { 40.dp.toPx() }
-    val radius = with(density) { 10.dp.toPx() }
+    // The curl is a small corner, about a tenth of the panel's width.
+    val baseFold = pageWidth * 0.095f
+    val radius = with(density) { 12.dp.toPx() }
     var now by remember { mutableStateOf(Date()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -107,42 +111,54 @@ fun LockScreen(settings: Settings, wallpaper: ImageBitmap?, onUnlock: () -> Unit
                             shape = PeelShape(baseFold + peel.value, radius)
                             clip = true
                         }
-                        .background(Color.Black.copy(alpha = 0.16f))
-                        .vitaPanel(10.dp, 0.30f),
+                        .drawBehind {
+                            // An almost clear panel with a thin pale border, like a pane of glass over the wallpaper.
+                            val r = CornerRadius(radius, radius)
+                            drawRoundRect(Color.White.copy(alpha = 0.06f), cornerRadius = r)
+                            drawRoundRect(Color.White.copy(alpha = 0.5f), cornerRadius = r, style = Stroke(width = 1.2.dp.toPx()))
+                        },
                 ) {
-                    val clockSize = (maxHeight.value * 0.30f).sp
-                    val dateSize = (maxHeight.value * 0.075f).sp
+                    val clockSize = (maxHeight.value * 0.27f).sp
+                    val dateSize = (maxHeight.value * 0.072f).sp
                     // The content fades as the sheet peels, so nothing is cut off abruptly.
                     val fade = { (1f - peel.value / (pageWidth * 0.35f)).coerceIn(0f, 1f) }
-                    // The faint PlayStation symbols in the lower right corner.
-                    Canvas(
-                        Modifier
-                            .align(Alignment.BottomEnd)
-                            .size(width = maxWidth * 0.52f, height = maxHeight * 0.26f)
-                            .graphicsLayer { alpha = enter.value * fade() },
-                    ) { drawSymbolRow() }
+                    val shadow = Shadow(Color.Black.copy(alpha = 0.30f), Offset(0f, 3f), 8f)
+                    val pos = settings.lockClockPos
                     Column(
                         Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(start = 18.dp, bottom = 10.dp)
+                            .align(if (pos == 0) Alignment.BottomEnd else if (pos == 1) Alignment.BottomStart else Alignment.TopStart)
+                            .padding(horizontal = 22.dp, vertical = 10.dp)
                             .graphicsLayer {
                                 alpha = enter.value * fade()
                                 translationY = (1f - enter.value) * 12.dp.toPx()
                             },
+                        horizontalAlignment = if (pos == 0) Alignment.End else Alignment.Start,
                     ) {
                         Text(
                             SimpleDateFormat("MMMM d (EEEE)", Locale.getDefault()).format(now),
-                            color = Color.White, fontSize = dateSize,
+                            color = Color.White.copy(alpha = 0.92f), fontSize = dateSize, fontWeight = FontWeight.Light,
+                            fontFamily = FontFamily.SansSerif, style = TextStyle(shadow = shadow),
                         )
-                        Text(
-                            SimpleDateFormat(if (settings.use24h) "HH:mm" else "h:mm", Locale.getDefault()).format(now),
-                            color = Color.White, fontSize = clockSize, fontWeight = FontWeight.Normal,
-                            style = TextStyle(letterSpacing = 1.sp),
-                        )
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                SimpleDateFormat(if (settings.use24h) "HH : mm" else "h : mm", Locale.getDefault()).format(now),
+                                color = Color.White, fontSize = clockSize, fontWeight = FontWeight.ExtraLight,
+                                fontFamily = FontFamily.SansSerif, style = TextStyle(shadow = shadow),
+                            )
+                            if (!settings.use24h) {
+                                Text(
+                                    SimpleDateFormat(" a", Locale.getDefault()).format(now).uppercase(Locale.getDefault()),
+                                    Modifier.padding(bottom = (maxHeight.value * 0.03f).dp),
+                                    color = Color.White, fontSize = dateSize * 1.3f, fontWeight = FontWeight.Light,
+                                    fontFamily = FontFamily.SansSerif, style = TextStyle(shadow = shadow),
+                                )
+                            }
+                        }
                     }
                 }
 
-                PeelBack(baseFold + peel.value, Color(0xFF1E5AE0), radius)
+                // The deep blue under the curl, and the silvery flap.
+                PeelBack(baseFold + peel.value, Color(0xFF0B2E9E), radius)
 
                 // Above everything else in the panel, so nothing can cover it.
                 PeelCorner(
@@ -158,29 +174,4 @@ fun LockScreen(settings: Settings, wallpaper: ImageBitmap?, onUnlock: () -> Unit
             }
         }
     }
-}
-
-/** △ ○ × □ side by side as thin pale outlines, cut off by the panel's lower edge as on the console. */
-private fun DrawScope.drawSymbolRow() {
-    val slot = size.width / 4f
-    val r = minOf(slot * 0.42f, size.height * 0.9f)
-    val stroke = Stroke(width = r * 0.16f, cap = StrokeCap.Round, join = StrokeJoin.Round)
-    val color = Color.White.copy(alpha = 0.28f)
-    val cy = size.height * 0.62f
-    // Triangle
-    var cx = slot * 0.5f
-    drawPath(
-        Path().apply { moveTo(cx, cy - r); lineTo(cx + r * 0.95f, cy + r * 0.8f); lineTo(cx - r * 0.95f, cy + r * 0.8f); close() },
-        color, style = stroke,
-    )
-    // Circle
-    cx = slot * 1.5f
-    drawCircle(color, radius = r * 0.92f, center = Offset(cx, cy), style = stroke)
-    // Cross
-    cx = slot * 2.5f
-    drawLine(color, Offset(cx - r * 0.8f, cy - r * 0.8f), Offset(cx + r * 0.8f, cy + r * 0.8f), stroke.width, StrokeCap.Round)
-    drawLine(color, Offset(cx + r * 0.8f, cy - r * 0.8f), Offset(cx - r * 0.8f, cy + r * 0.8f), stroke.width, StrokeCap.Round)
-    // Square
-    cx = slot * 3.5f
-    drawRoundRect(color, Offset(cx - r * 0.8f, cy - r * 0.8f), androidx.compose.ui.geometry.Size(r * 1.6f, r * 1.6f), androidx.compose.ui.geometry.CornerRadius(r * 0.08f), style = stroke)
 }

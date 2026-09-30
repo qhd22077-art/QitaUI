@@ -270,6 +270,9 @@ fun SettingsPage(
                         }
                         "system" -> {
                             CheckRow("set:haptics", "∷", "Vibrate on long-press and highlight", settings.haptics) { onChange(settings.copy(haptics = it)) }
+                            ChoiceRow("set:lockPos", "▭", "Lock screen clock position", listOf("Bottom right", "Bottom left", "Top left"), settings.lockClockPos) {
+                                onChange(settings.copy(lockClockPos = it))
+                            }
                             CheckRow("set:lock", "▭", "Lock screen when the launcher starts or the screen wakes", settings.lockScreen) { onChange(settings.copy(lockScreen = it)) }
                             MenuRow("set:export", "↥", "Save my settings to a file") { exporter.launch("qitaui-settings.json") }
                             MenuRow("set:import", "↧", "Load settings from a file") { importer.launch("*/*") }
