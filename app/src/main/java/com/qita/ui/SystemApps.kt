@@ -24,7 +24,7 @@ import kotlin.math.sin
 /** What a built-in bubble does when started. */
 enum class SystemAction(val id: String, val label: String, val blurb: String) {
     SETTINGS("qita.sys.settings", "Settings", "Change the theme, home screen layout, controller and system options."),
-    STORE("qita.sys.store", "Store", "The store is not built yet. It will be added later."),
+    STORE("qita.sys.store", "Store", "Emulators and free games to download, a browser for any page, and your downloads."),
     DESKTOP("qita.sys.desktop", "Desktop", "A desktop with every app on this device, for anything not on the home screen."),
     GAMES("qita.sys.games", "Games", "Your games from every console, and the emulators that play them."),
 }

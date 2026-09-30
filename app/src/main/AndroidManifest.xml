@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Cover art for games is downloaded from the libretro thumbnail server. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The Store installs emulator APKs it downloads; Android asks the user to allow this once. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Needed to list the apps that can be launched from the Vita-style home screen. -->
     <queries>
@@ -35,6 +37,14 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+        </provider>
 
         <!-- Lets the launcher show the notifications panel; the user grants this in Android settings. -->
         <service

@@ -97,8 +97,8 @@ class MenuItem(val label: String, val action: () -> Unit)
  * was when the menu closes.
  */
 @Composable
-fun ContextMenu(title: String, subtitle: String, items: List<MenuItem>, onDismiss: () -> Unit) {
-    CompositionLocalProvider(LocalPadLayer provides 4) {
+fun ContextMenu(title: String, subtitle: String, items: List<MenuItem>, onDismiss: () -> Unit, layer: Int = 4) {
+    CompositionLocalProvider(LocalPadLayer provides layer) {
         Box(
             Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).pointerInput(Unit) { detectTapGestures(onTap = { onDismiss() }) },
             contentAlignment = Alignment.Center,

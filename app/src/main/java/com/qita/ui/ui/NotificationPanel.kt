@@ -55,6 +55,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.qita.ui.NotificationItem
+import com.qita.ui.ApkInstaller
+import com.qita.ui.DownloadItem
+import com.qita.ui.DownloadEngine
+import com.qita.ui.DlState
+import com.qita.ui.DlKind
 import com.qita.ui.Notifications
 
 /**
@@ -67,6 +72,8 @@ fun NotificationPanel(color: Color, onLaunch: (String) -> Unit, onDismiss: () ->
     LaunchedEffect(Unit) { Notifications.checkAccess(context) }
     val items = Notifications.items
     val granted = Notifications.granted
+    val dls = DownloadEngine.items.toList()
+    var dlMenu by remember { mutableStateOf<DownloadItem?>(null) }
     var expanded by remember { mutableStateOf(false) }
     // The panel eases in from the corner it hangs from.
     val enter = remember { androidx.compose.animation.core.Animatable(0f) }
@@ -125,7 +132,14 @@ fun NotificationPanel(color: Color, onLaunch: (String) -> Unit, onDismiss: () ->
                             .heightIn(max = if (expanded) screenHeight * 0.74f else 290.dp)
                             .verticalScroll(rememberScrollState()),
                     ) {
+                        // Downloads from the Store come first, as in the Vita's list.
+                        dls.forEachIndexed { i, d ->
+                            if (i > 0) Divider()
+                            DownloadNotifRow(d, i, rowColor) { dlMenu = d }
+                        }
+                        if (dls.isNotEmpty() && granted && items.isNotEmpty()) Divider()
                         when {
+                            !granted && dls.isNotEmpty() -> {}
                             !granted -> {
                                 InfoRow(
                                     rowColor, "notif:step1", "1  Unlock the switch",
@@ -136,6 +150,7 @@ fun NotificationPanel(color: Color, onLaunch: (String) -> Unit, onDismiss: () ->
                                     Notifications.openListenerPage(context); onDismiss()
                                 }
                             }
+                            items.isEmpty() && dls.isNotEmpty() -> {}
                             items.isEmpty() -> Box(Modifier.fillMaxWidth().height(64.dp).background(rowColor), contentAlignment = Alignment.Center) {
                                 Text("No notifications", color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
                             }
@@ -181,6 +196,31 @@ fun NotificationPanel(color: Color, onLaunch: (String) -> Unit, onDismiss: () ->
                         .pointerInput(Unit) { detectTapGestures { } },
                     contentAlignment = Alignment.Center,
                 ) { Dots(Color(0xFF6B7078)) }
+            }
+            // The options of a download: pause, resume, cancel, install or remove.
+            dlMenu?.let { d ->
+                val context2 = LocalContext.current
+                ContextMenu(
+                    title = d.name,
+                    subtitle = d.status(),
+                    items = buildList {
+                        when (d.state) {
+                            DlState.RUNNING -> add(MenuItem("Pause") { dlMenu = null; DownloadEngine.pause(d) })
+                            DlState.PAUSED, DlState.FAILED -> add(MenuItem("Resume") { dlMenu = null; DownloadEngine.resume(d) })
+                            DlState.DONE -> {
+                                if (d.kind == DlKind.APK) add(MenuItem("Install") {
+                                    dlMenu = null
+                                    d.finalPath?.let { p -> ApkInstaller.install(context2, java.io.File(p)) }
+                                })
+                                add(MenuItem("Remove from the list") { dlMenu = null; DownloadEngine.remove(d) })
+                            }
+                        }
+                        if (d.state != DlState.DONE) add(MenuItem("Cancel the download") { dlMenu = null; DownloadEngine.cancel(d) })
+                        add(MenuItem("Back") { dlMenu = null })
+                    },
+                    onDismiss = { dlMenu = null },
+                    layer = 5,
+                )
             }
         }
     }
@@ -339,4 +379,36 @@ private fun openAccessSettings(context: Context) {
 private fun openNotification(context: Context, n: NotificationItem, onLaunch: (String) -> Unit) {
     val sent = runCatching { n.intent?.send(); n.intent != null }.getOrDefault(false)
     if (!sent) onLaunch(n.packageName)
+}
+
+/** A download in the notification list: the blue arrow picture, a bold title, the green progress line, the status, a round "..." button and the age. */
+@Composable
+private fun DownloadNotifRow(d: DownloadItem, index: Int, color: Color, onMenu: () -> Unit) {
+    val key = "notif:dl:$index"
+    val lit = padHighlighted(key) || padHovered(key)
+    val base = lerp(color, Color(0xFF8C9098), 0.55f)
+    val shadow = Shadow(Color.Black.copy(alpha = 0.45f), Offset(0f, 2f), 4f)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(rowFill(base, lit))
+            .padClickable(key, corner = 0.dp, ring = false, onClick = onMenu)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        DownloadGlyph(Modifier.size(44.dp))
+        Column(Modifier.weight(1f)) {
+            Text(d.name, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(shadow = shadow))
+            DownloadBar(d, Modifier.padding(vertical = 2.dp))
+            Text(d.status(), color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(shadow = shadow))
+        }
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Box(
+                Modifier.size(26.dp).clip(CircleShape).background(Color.White).padClickable("notif:dlmenu:$index", corner = null, ring = false, onClick = onMenu),
+                contentAlignment = Alignment.Center,
+            ) { Dots(Color(0xFF6B7078), small = true) }
+            Text(timeAgo(d.startedAt), color = Color.White, fontSize = 11.sp, style = TextStyle(shadow = shadow))
+        }
+    }
 }

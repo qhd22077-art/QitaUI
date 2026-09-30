@@ -96,6 +96,13 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.qita.ui.AppRepository
 import com.qita.ui.Command
+import java.io.File
+import com.qita.ui.GameSystem
+import com.qita.ui.DownloadPlacer
+import com.qita.ui.DownloadItem
+import com.qita.ui.DownloadEngine
+import com.qita.ui.DlKind
+import com.qita.ui.ApkInstaller
 import com.qita.ui.Covers
 import com.qita.ui.EMULATORS
 import com.qita.ui.Game
@@ -146,11 +153,14 @@ fun HomeScreen(homePresses: Int = 0) {
     var counts by remember { mutableStateOf(store.loadLaunchCounts()) }
     var showDesktop by remember { mutableStateOf(false) }
     var showGames by remember { mutableStateOf(false) }
+    var showStore by remember { mutableStateOf(false) }
     // The games library: folders, which emulator plays what, and a status line while scanning or fetching cover art.
     var gameFolders by remember { mutableStateOf(GameLibrary.folders(context)) }
     var gameChoices by remember { mutableStateOf(SYSTEMS.mapNotNull { s -> GameLibrary.emulatorChoice(context, s.id)?.let { s.id to it } }.toMap()) }
     var gamesBusy by remember { mutableStateOf<String?>(null) }
     var settingsStart by remember { mutableStateOf<String?>(null) }
+    var pendingZip by remember { mutableStateOf<DownloadItem?>(null) }
+    var pendingPlace by remember { mutableStateOf<PendingPlace?>(null) }
     var coverTarget by remember { mutableStateOf<String?>(null) }
     val emuInstalled = remember(context) { installedEmulators(context) }
     var lockWallpaper by remember { mutableStateOf(store.loadWallpaper(-5)) }
@@ -272,7 +282,7 @@ fun HomeScreen(homePresses: Int = 0) {
     val bgPage by remember { derivedStateOf { (pagerState.currentPage + pagerState.currentPageOffsetFraction).roundToInt().coerceAtLeast(0) } }
 
     val menuOpen = menuFor != null || showQuickMenu || showNotifs
-    val anyOverlay = showLock || showDesktop || showGames || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null
+    val anyOverlay = showLock || showDesktop || showGames || showStore || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null
 
     fun addToHome(app: LaunchableApp) {
         if (app.packageName !in home) { home = home + app.packageName; store.saveHome(home) }
@@ -288,7 +298,7 @@ fun HomeScreen(homePresses: Int = 0) {
             SystemAction.SETTINGS -> { selected = null; showSettings = true }
             SystemAction.DESKTOP -> { selected = null; showDesktop = true }
             SystemAction.GAMES -> { selected = null; showGames = true }
-            SystemAction.STORE -> toast = "The Store is coming soon"
+            SystemAction.STORE -> { selected = null; showStore = true }
             null -> {
                 val game = app.game
                 if (game != null) {
@@ -348,6 +358,43 @@ fun HomeScreen(homePresses: Int = 0) {
             toast = "Found ${found.size} game${if (found.size == 1) "" else "s"}"
             if (found.isNotEmpty() && settings.gameCovers) fetchCovers()
         }
+    }
+    /** Puts a finished download with the games: copies it into the console's folder, then rescans the library. */
+    fun placeDownload(item: DownloadItem, system: GameSystem, zip: Boolean) {
+        val path = item.finalPath ?: return
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                if (zip) DownloadPlacer.unzipAndPlace(context, File(path), system)
+                else DownloadPlacer.place(context, File(path), item.name, system)
+            }
+            toast = result.message
+            if (result.ok) { DownloadEngine.remove(item); scanGames() }
+        }
+    }
+    /** What to do when a download has finished: install an APK, offer to unzip a zip, or put a game file in its console's folder. */
+    fun handleFinished(item: DownloadItem) {
+        val path = item.finalPath ?: return
+        val ext = item.name.substringAfterLast('.', "").lowercase()
+        when {
+            item.kind == DlKind.APK || ext == "apk" -> {
+                ApkInstaller.install(context, File(path))?.let { toast = it }
+            }
+            ext == "zip" -> pendingZip = item
+            else -> {
+                val candidates = DownloadPlacer.candidatesFor(ext)
+                when {
+                    candidates.isEmpty() -> toast = "Saved in Downloads: ${item.name}"
+                    candidates.size == 1 -> placeDownload(item, candidates[0], false)
+                    else -> pendingPlace = PendingPlace(item, candidates, false)
+                }
+            }
+        }
+    }
+    // The download engine starts with the launcher, and tells it when a file has finished.
+    DisposableEffect(Unit) {
+        DownloadEngine.init(context)
+        DownloadEngine.onFinished = { handleFinished(it) }
+        onDispose { DownloadEngine.onFinished = {} }
     }
     /** Opens (or brings to the front) an app's LiveArea page. */
     fun openLiveArea(app: LaunchableApp, from: Offset? = null) {
@@ -537,7 +584,7 @@ fun HomeScreen(homePresses: Int = 0) {
             showIndex = true
         } else if (homePresses > 0) {
             showIndex = false
-            selected = null; showSettings = false; showSearch = false; showDesktop = false; showGames = false; menuFor = null; showQuickMenu = false; showNotifs = false; editMode = false; showBackgrounds = false; dragApp = null
+            selected = null; showSettings = false; showSearch = false; showDesktop = false; showGames = false; showStore = false; menuFor = null; showQuickMenu = false; showNotifs = false; editMode = false; showBackgrounds = false; dragApp = null
             endMove(true)
             pagerState.animateScrollToPage(0)
         }
@@ -574,6 +621,7 @@ fun HomeScreen(homePresses: Int = 0) {
     BackHandler(enabled = showSearch && !showSettings && !menuOpen && !showTutorial) { showSearch = false }
     BackHandler(enabled = showDesktop && !showSearch && !showSettings && !menuOpen && !showTutorial) { showDesktop = false }
     BackHandler(enabled = showGames && !showSearch && !showSettings && !menuOpen && !showTutorial) { showGames = false }
+    BackHandler(enabled = showStore && !showSearch && !showSettings && !menuOpen && !showTutorial) { showStore = false }
     BackHandler(enabled = selected != null && !showDesktop && !showSearch && !showSettings && !menuOpen && !showTutorial) { selected = null }
     BackHandler(enabled = showIndex && !showLock) { showIndex = false }
     // Registered last so it wins: while locked, Back does nothing.
@@ -799,6 +847,20 @@ fun HomeScreen(homePresses: Int = 0) {
             }
         }
         AnimatedVisibility(
+            visible = showStore,
+            enter = fadeIn(tween(260)) + scaleIn(initialScale = 0.94f, animationSpec = spring(dampingRatio = 0.85f, stiffness = 400f)),
+            exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.96f, animationSpec = tween(200)),
+        ) {
+            CompositionLocalProvider(LocalPadLayer provides 1) {
+                StoreScreen(
+                    settings = settings,
+                    onToast = { toast = it },
+                    onOpenNotifications = { showNotifs = true },
+                    onClose = { showStore = false },
+                )
+            }
+        }
+        AnimatedVisibility(
             visible = showGames,
             enter = fadeIn(tween(260)) + scaleIn(initialScale = 0.94f, animationSpec = spring(dampingRatio = 0.85f, stiffness = 400f)),
             exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.96f, animationSpec = tween(200)),
@@ -970,6 +1032,40 @@ fun HomeScreen(homePresses: Int = 0) {
             )
         }
 
+        // A finished zip: unzip it into a console's folder, or keep it as it is.
+        pendingZip?.let { item ->
+            ContextMenu(
+                title = "Unzip ${item.name}?",
+                subtitle = "It was downloaded to the Store's downloads folder",
+                items = listOf(
+                    MenuItem("Unzip into my game folder") {
+                        pendingZip = null
+                        val zipFile = File(item.finalPath ?: "")
+                        val candidates = DownloadPlacer.zipCandidates(zipFile)
+                        when {
+                            candidates.isEmpty() -> toast = "No games found inside that zip"
+                            candidates.size == 1 -> placeDownload(item, candidates[0], true)
+                            else -> pendingPlace = PendingPlace(item, candidates, true)
+                        }
+                    },
+                    MenuItem("Keep the zip as it is") { pendingZip = null; toast = "Kept in Downloads: ${item.name}" },
+                ),
+                onDismiss = { pendingZip = null },
+                layer = 5,
+            )
+        }
+        // A file type several consoles use (iso, bin...): ask which console it is for.
+        pendingPlace?.let { p ->
+            ContextMenu(
+                title = "Which console is ${p.item.name} for?",
+                subtitle = "Pick one and it goes into that console's folder",
+                items = p.candidates.map { sys -> MenuItem(sys.name) { pendingPlace = null; placeDownload(p.item, sys, p.zip) } } +
+                    MenuItem("Leave it in Downloads") { pendingPlace = null },
+                onDismiss = { pendingPlace = null },
+                layer = 5,
+            )
+        }
+
         menuFor?.let { app ->
             val onHome = app.packageName in homeSet
             ContextMenu(
@@ -1075,6 +1171,7 @@ fun HomeScreen(homePresses: Int = 0) {
             showSearch -> listOf("D-pad" to "Move", "A" to "Open", "B" to "Close")
             showDesktop -> listOf("A" to "Launch", "X" to "Options", "Y" to "Add / remove", "L1" to "Folder", "L2" to "Close", "B" to "Back")
             showGames -> listOf("D-pad" to "Move", "A" to "Play", "X" to "Options", "Y" to "Add / remove", "B" to "Back")
+            showStore -> listOf("D-pad" to "Move", "A" to "Select", "B" to "Back")
             editMode && selected == null -> listOf("A" to "Options", "Y" to "Move", "START" to "Background", "B" to "Done")
             selected != null -> listOf("A" to "Start", "X" to "Options", "L1" to "Prev", "R1" to "Next", "B" to "Home")
             else -> listOf("A" to "Open", "X" to "Options", "Y" to "Move", "L1" to "Prev", "R1" to "Next", "L2" to "Desktop", "R2" to "Search", "START" to "Settings")
@@ -1264,3 +1361,6 @@ private fun PageDots(count: Int, current: Int, modifier: Modifier = Modifier) {
         }
     }
 }
+
+/** A finished download waiting for the user to say which console it belongs to. */
+private class PendingPlace(val item: DownloadItem, val candidates: List<GameSystem>, val zip: Boolean)

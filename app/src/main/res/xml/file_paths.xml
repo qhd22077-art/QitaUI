@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Downloaded APKs are handed to Android's installer from here. -->
+    <external-files-path name="downloads" path="downloads/" />
+    <files-path name="internal_downloads" path="downloads/" />
+</paths>
