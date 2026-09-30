@@ -35,8 +35,8 @@ val THEMES = listOf(
     Theme("Neon Grid", Color(0xFF120033), Color(0xFFC2185B), Color(0xFFFF7043), Scene.GRID),
     Theme("Dunes", Color(0xFF3B1552), Color(0xFFE0567A), Color(0xFFFFB25B), Scene.DUNES),
     // The real Vita wallpapers: glossy silk ribbons, and glass symbols over deep blue.
-    Theme("Vita Silk", Color(0xFF52C4EC), Color(0xFF2A64B4), Color(0xFF12257F), Scene.SILK),
-    Theme("Vita Symbols", Color(0xFF031A4E), Color(0xFF0A4FA8), Color(0xFF1C7CD0), Scene.SYMBOLS),
+    Theme("Vita Silk", Color(0xFF52C4EC), Color(0xFF2F7FC0), Color(0xFF13287F), Scene.SILK),
+    Theme("Vita Symbols", Color(0xFF031A4E), Color(0xFF0846A0), Color(0xFF0E64BE), Scene.SYMBOLS),
 )
 
 /** Index of the Vita Silk theme in [THEMES], the look of PS Vita mode. */
