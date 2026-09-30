@@ -110,7 +110,8 @@ data class Settings(
     val vitaMode: Boolean = true,
     val symbolCount: Int = 45,
     val notifColor: Int = 0xFF1D3E8F.toInt(),
-    val glass: Float = 0.75f,
+    val glass: Float = 0.85f,
+    val glassBubbles: Boolean = true,
     val prevTheme: Int = 0,
     val bodyMode: Int = 0,
     val bodyColor: Int = 0xFF4A78D0.toInt(),
@@ -172,7 +173,8 @@ class SettingsStore(private val context: Context) {
         vitaMode = prefs.getBoolean("vitaMode", true),
         symbolCount = prefs.getInt("symbolCount", 45),
         notifColor = prefs.getInt("notifColor", 0xFF1D3E8F.toInt()),
-        glass = prefs.getFloat("glass", 0.75f),
+        glass = prefs.getFloat("glass", 0.85f),
+        glassBubbles = prefs.getBoolean("glassBubbles", true),
         prevTheme = prefs.getInt("prevTheme", 0),
         bodyMode = prefs.getInt("bodyMode", 0),
         bodyColor = prefs.getInt("bodyColor", 0xFF4A78D0.toInt()),
@@ -227,6 +229,7 @@ class SettingsStore(private val context: Context) {
             .putInt("symbolCount", s.symbolCount)
             .putInt("notifColor", s.notifColor)
             .putFloat("glass", s.glass)
+            .putBoolean("glassBubbles", s.glassBubbles)
             .putInt("prevTheme", s.prevTheme)
             .putInt("bodyMode", s.bodyMode)
             .putInt("bodyColor", s.bodyColor)

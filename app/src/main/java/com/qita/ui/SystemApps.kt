@@ -37,8 +37,8 @@ val SYSTEM_IDS: List<String> = SystemAction.values().map { it.id }
  */
 val SYSTEM_APPS: List<LaunchableApp> by lazy {
     listOf(
-        // Settings is a green bubble with a pale toolbox, like the Vita's; the others are black glass with a white pictogram.
-        systemApp(SystemAction.SETTINGS, Color(0xFF3F9A5C), Color(0xFF9BD65A), Color(0xFF2F6E1F)) { drawToolbox(Color(0xFF2B5A1C)) },
+        // Every built-in bubble is black glass with a white pictogram.
+        systemApp(SystemAction.SETTINGS, Color(0xFF3F9A5C)) { drawToolbox() },
         systemApp(SystemAction.STORE, Color(0xFF2E7DD7)) { drawBag() },
         systemApp(SystemAction.DESKTOP, Color(0xFFD9691E)) { drawMonitor() },
     )
@@ -68,7 +68,7 @@ private fun systemApp(
         icon = icon,
         tint = tint,
         action = action,
-        ball = SphereRenderer.render(icon.asAndroidBitmap(), 224, systemBody(action), if (action == SystemAction.SETTINGS) 1f else 0.55f).asImageBitmap(),
+        ball = SphereRenderer.render(icon.asAndroidBitmap(), 224, systemBody(action), 0.55f).asImageBitmap(),
     )
 }
 
@@ -123,4 +123,4 @@ private fun DrawScope.drawMonitor() {
 }
 
 /** The ARGB colour of the glass body behind a built-in bubble's art. */
-fun systemBody(action: SystemAction?): Int = if (action == SystemAction.SETTINGS) 0xFF3A7A26.toInt() else 0xFF0A0B0D.toInt()
+fun systemBody(action: SystemAction?): Int = 0xFF0A0B0D.toInt()

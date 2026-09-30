@@ -162,9 +162,6 @@ fun SettingsPage(
                                     else settings.copy(vitaMode = false, themeIndex = settings.prevTheme),
                                 )
                             }
-                            if (settings.vitaMode) {
-                                SliderRow("set:glass", "◌", "Glass clearness", settings.glass, 0f..1f, 0.05f) { onChange(settings.copy(glass = it)) }
-                            }
                             THEMES.forEachIndexed { i, t ->
                                 MenuRow("set:theme:$i", "◐", t.name, trailing = {
                                     Box(Modifier.size(22.dp).background(Brush.verticalGradient(listOf(t.top, t.bottom)), CircleShape).border(1.5.dp, Color.White, CircleShape))
@@ -200,6 +197,12 @@ fun SettingsPage(
                             MenuRow("set:clearhome", "✕", "Remove all apps from home") { onClearHome() }
                         }
                         "bubbles" -> {
+                            ChoiceRow("set:glassBubbles", "◌", "Bubble style (Android 13+)", listOf("Opaque", "Glass"), if (settings.glassBubbles) 1 else 0) {
+                                onChange(settings.copy(glassBubbles = it == 1))
+                            }
+                            if (settings.glassBubbles) {
+                                SliderRow("set:glass", "◌", "Glass clearness", settings.glass, 0f..1f, 0.05f) { onChange(settings.copy(glass = it)) }
+                            }
                             CheckRow("set:bubble3d", "◍", "Live 3D bubbles (Android 13+)", settings.bubble3d) { onChange(settings.copy(bubble3d = it)) }
                             CheckRow("set:fullart", "◉", "Full-art bubbles (Vita style)", settings.fullArt) { onChange(settings.copy(fullArt = it)) }
                             CheckRow("set:rounded", "▢", "Rounded square bubbles", settings.roundedBubbles) { onChange(settings.copy(roundedBubbles = it)) }

@@ -851,7 +851,11 @@ fun HomeScreen(homePresses: Int = 0) {
             }
         }
 
-        AnimatedVisibility(visible = showLock, enter = fadeIn(tween(250)), exit = fadeOut(tween(200))) {
+        AnimatedVisibility(
+            visible = showLock,
+            enter = fadeIn(tween(320)) + scaleIn(initialScale = 0.97f, animationSpec = tween(400, easing = VitaMotion.Ease)),
+            exit = fadeOut(tween(480, easing = VitaMotion.Ease)) + scaleOut(targetScale = 1.05f, animationSpec = tween(480, easing = VitaMotion.Ease)),
+        ) {
             CompositionLocalProvider(LocalPadLayer provides 7) {
                 LockScreen(settings, onUnlock = { showLock = false })
             }

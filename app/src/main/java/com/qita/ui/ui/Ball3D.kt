@@ -54,7 +54,7 @@ object Ball3D {
         shader.setFloatUniform("t1", 1f, 1f, 1f, 3f)
         shader.setFloatUniform("acc", 0.09f, 0.88f, 1f)
         shader.setFloatUniform("t2", 1f, 1f, 1f, 0f)
-        shader.setFloatUniform("hazy", if (app.action != null && app.action != com.qita.ui.SystemAction.SETTINGS) 0.55f else 1f)
+        shader.setFloatUniform("hazy", if (app.action != null) 0.55f else 1f)
         return Paint(shader, app.action != null)
     }
 
@@ -178,7 +178,7 @@ float4 frontPix(float u, float v, float rr, float cy, float sy, float cp, float 
     col = clamp(col, 0.0, 1.0);
     // Glass: the face is see-through, more so where there is no art, with the rim and the lit edge staying solid.
     float g = t2.w;
-    float clear = clamp(0.30 + 0.50 * artA + 0.9 * f + 1.6 * edgeLine + 2.0 * max(ndh - 0.96, 0.0) * 25.0 * t2.y, 0.0, 1.0);
+    float clear = clamp(0.22 + 0.55 * artA + 0.9 * f + 1.6 * edgeLine + 2.0 * max(ndh - 0.96, 0.0) * 25.0 * t2.y, 0.0, 1.0);
     cov *= mix(1.0, clear, g);
     return float4(col * cov, cov);
 }

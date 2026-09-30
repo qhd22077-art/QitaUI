@@ -63,7 +63,7 @@ fun Settings.look() = Look(
     showClock = showClock,
     barOpacity = barOpacity,
     clockSize = clockSize,
-    glass = if (vitaMode) glass else 0f,
+    glass = if (glassBubbles) glass else 0f,
     symbols = symbolCount,
 )
 
