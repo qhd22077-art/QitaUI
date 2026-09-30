@@ -46,6 +46,12 @@ import kotlin.math.min
  */
 val LocalPadLayer = compositionLocalOf { 0 }
 
+/**
+ * False for content that is on screen but should not take the gamepad highlight: the neighbouring pages that peek in beside
+ * the LiveArea in the middle. Their buttons are left out of navigation, so the highlight never jumps onto (or over) them.
+ */
+val LocalPadEnabled = compositionLocalOf { true }
+
 class PadTarget(val key: Any) {
     var layer = 0
     var bounds: Rect = Rect.Zero
@@ -249,7 +255,7 @@ fun Modifier.padTarget(
     onAdjust: ((Int) -> Unit)? = null,
     onClick: () -> Unit = {},
 ): Modifier = composed {
-    if (key == null) {
+    if (key == null || !LocalPadEnabled.current) {
         Modifier
     } else {
         val layer = LocalPadLayer.current
@@ -321,7 +327,7 @@ fun PadRing() {
     LaunchedEffect(target) {
         if (target != Rect.Zero) {
             if (anim.value == Rect.Zero) anim.snapTo(target)
-            else anim.animateTo(target, spring(dampingRatio = 0.8f, stiffness = 520f))
+            else anim.animateTo(target, spring(dampingRatio = 0.9f, stiffness = 480f))
         }
     }
     val alpha by animateFloatAsState(if (visible) 1f else 0f, tween(160), label = "ringAlpha")
@@ -335,8 +341,8 @@ fun PadRing() {
             val size = Size(rect.width + 2 * p, rect.height + 2 * p)
             val radius = corner?.toPx()?.plus(p) ?: (min(size.width, size.height) / 2f)
             val cr = CornerRadius(radius, radius)
-            drawRoundRect(color.copy(alpha = 0.20f * pulse * alpha), topLeft, size, cr, style = Stroke(width = 18.dp.toPx()))
-            drawRoundRect(color.copy(alpha = 0.45f * pulse * alpha), topLeft, size, cr, style = Stroke(width = 10.dp.toPx()))
+            drawRoundRect(color.copy(alpha = 0.20f * pulse * alpha), topLeft, size, cr, style = Stroke(width = (8.dp + pad * 2f).toPx()))
+            drawRoundRect(color.copy(alpha = 0.45f * pulse * alpha), topLeft, size, cr, style = Stroke(width = (4.dp + pad * 1.2f).toPx()))
             drawRoundRect(color.copy(alpha = alpha), topLeft, size, cr, style = Stroke(width = 4.dp.toPx()))
         }
     }

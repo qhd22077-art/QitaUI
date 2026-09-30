@@ -140,14 +140,17 @@ fun LiveAreaHost(
                         rotationY = signed.coerceIn(-1f, 1f) * 38f
                     },
                 ) {
-                    LiveAreaPage(
-                        app, settings,
-                        launches = counts[app.packageName] ?: 0,
-                        onLaunch = { onLaunch(app) },
-                        onCloseApp = { onClosePage(app) },
-                        onInfo = { onInfo(app) },
-                        peel = peels.getOrPut(app.packageName) { Animatable(0f) },
-                    )
+                    // Only the page in the middle takes the gamepad highlight; the ones peeking in beside it do not.
+                    CompositionLocalProvider(LocalPadEnabled provides (page == pagerState.currentPage)) {
+                        LiveAreaPage(
+                            app, settings,
+                            launches = counts[app.packageName] ?: 0,
+                            onLaunch = { onLaunch(app) },
+                            onCloseApp = { onClosePage(app) },
+                            onInfo = { onInfo(app) },
+                            peel = peels.getOrPut(app.packageName) { Animatable(0f) },
+                        )
+                    }
                 }
             }
         }
@@ -368,7 +371,8 @@ private fun ActionTile(key: String, glyph: String, color: Color, onClick: () -> 
     Box(
         Modifier
             .size(58.dp)
-            .padClickable(key, corner = 8.dp, onClick = onClick)
+            // A slim ring, so it does not spill over the launch gate or the tile beside it.
+            .padClickable(key, corner = 8.dp, pad = 2.dp, onClick = onClick)
             .shadow(6.dp, shape)
             .clip(shape)
             .background(Brush.verticalGradient(listOf(Color.White, Color(0xFFD6DCE6))))

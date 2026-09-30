@@ -206,7 +206,12 @@ fun HomeScreen(homePresses: Int = 0) {
     val livePosition = remember { mutableFloatStateOf(-1f) }
     // The font for every name and label: the one the user picked, else the bundled one (M PLUS 1p, a clean Rodin-like sans).
     var fontVersion by remember { mutableIntStateOf(0) }
-    val builtInFont = remember { FontFamily(Font(R.font.mplus1p_medium, FontWeight.Medium)) }
+    val builtInFont = remember { FontFamily(
+        Font(R.font.mplus1p_light, FontWeight.Light),
+        Font(R.font.mplus1p_regular, FontWeight.Normal),
+        Font(R.font.mplus1p_medium, FontWeight.Medium),
+        Font(R.font.mplus1p_bold, FontWeight.Bold),
+    ) }
     val fileFont = remember(fontVersion) { store.customFontFamily() }
     // 0 built-in, 1 system, 2 serif, 3 monospace, 4 the font file the user picked.
     fun familyOf(choice: Int): FontFamily = when (choice) {

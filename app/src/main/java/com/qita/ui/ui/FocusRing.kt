@@ -21,6 +21,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -100,8 +103,16 @@ fun ContextMenu(title: String, subtitle: String, items: List<MenuItem>, onDismis
             Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).pointerInput(Unit) { detectTapGestures(onTap = { onDismiss() }) },
             contentAlignment = Alignment.Center,
         ) {
+            val enter = remember { androidx.compose.animation.core.Animatable(0f) }
+            LaunchedEffect(Unit) { enter.animateTo(1f, androidx.compose.animation.core.tween(200, easing = VitaMotion.Ease)) }
             Column(
                 Modifier
+                    .graphicsLayer {
+                        alpha = enter.value
+                        val sc = 0.94f + 0.06f * enter.value
+                        scaleX = sc
+                        scaleY = sc
+                    }
                     .width(300.dp)
                     .background(Color(0xFF2B2B2B), RoundedCornerShape(16.dp))
                     .pointerInput(Unit) { detectTapGestures { } }

@@ -37,6 +37,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
@@ -66,6 +68,9 @@ fun NotificationPanel(color: Color, onLaunch: (String) -> Unit, onDismiss: () ->
     val items = Notifications.items
     val granted = Notifications.granted
     var expanded by remember { mutableStateOf(false) }
+    // The panel eases in from the corner it hangs from.
+    val enter = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(Unit) { enter.animateTo(1f, tween(240, easing = VitaMotion.Ease)) }
     // Back first steps out of the big list, then closes the panel.
     BackHandler { if (expanded) expanded = false else onDismiss() }
     val shown = if (expanded) items.toList() else items.take(5)
@@ -83,7 +88,14 @@ fun NotificationPanel(color: Color, onLaunch: (String) -> Unit, onDismiss: () ->
                     .align(if (expanded) Alignment.TopCenter else Alignment.TopEnd)
                     .statusBarsPadding()
                     .padding(top = 22.dp, end = if (expanded) 0.dp else 6.dp)
-                    .then(if (expanded) Modifier.fillMaxWidth(0.8f) else Modifier.width(316.dp)),
+                    .then(if (expanded) Modifier.fillMaxWidth(0.8f) else Modifier.width(316.dp))
+                    .graphicsLayer {
+                        alpha = enter.value
+                        val sc = 0.92f + 0.08f * enter.value
+                        scaleX = sc
+                        scaleY = sc
+                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(if (expanded) 0.5f else 0.9f, 0f)
+                    },
             ) {
                 // The pointer up to the button.
                 Canvas(
