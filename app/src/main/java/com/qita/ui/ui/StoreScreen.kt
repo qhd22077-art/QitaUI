@@ -186,7 +186,7 @@ fun StoreScreen(
         vitaLoading = true
         vitaError = null
         scope.launch {
-            val result = withContext(Dispatchers.IO) { runCatching { VitaDb.load(context, force) } }
+            val result = runCatching { VitaDb.load(context, force) }
             result.onSuccess { vita = it }.onFailure { vitaError = it.message ?: "unknown error" }
             vitaLoading = false
         }
