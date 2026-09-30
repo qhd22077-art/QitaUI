@@ -379,6 +379,7 @@ fun SettingsPage(
                             )
                         }
                         "system" -> {
+                            ChoiceRow("set:orientation", "↻", "Screen orientation", listOf("Landscape", "Portrait", "Auto"), settings.orientation) { onChange(settings.copy(orientation = it)) }
                             CheckRow("set:haptics", "∷", "Vibrate on long-press and highlight", settings.haptics) { onChange(settings.copy(haptics = it)) }
                             CheckRow("set:lock", "▭", "Lock screen when the launcher starts or the screen wakes", settings.lockScreen) { onChange(settings.copy(lockScreen = it)) }
                             MenuRow("set:export", "↥", "Save my settings to a file") { exporter.launch("qitaui-settings.json") }

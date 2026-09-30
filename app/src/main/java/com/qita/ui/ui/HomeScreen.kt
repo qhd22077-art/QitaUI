@@ -263,7 +263,9 @@ fun HomeScreen(homePresses: Int = 0) {
         }
     }
 
-    val layout = LAYOUTS[settings.layoutIndex.coerceIn(LAYOUTS.indices)]
+    // Held upright, the pages use three bubbles across instead of the wide layouts.
+    val upright = rootWidth in 1 until rootHeight
+    val layout = if (upright) com.qita.ui.PORTRAIT_LAYOUT else LAYOUTS[settings.layoutIndex.coerceIn(LAYOUTS.indices)]
     val pageSize = layout.size
     // Only apps the user has added appear on the home screen; the desktop lists everything.
     val shown = remember(apps, home, settings.sortNewest) {
@@ -424,12 +426,19 @@ fun HomeScreen(homePresses: Int = 0) {
             }
         }
     }
+    LaunchedEffect(settings.orientation) { (context as? android.app.Activity)?.requestedOrientation = com.qita.ui.orientationFlag(settings.orientation) }
     // The download engine starts with the launcher, and tells it when a file has finished.
     DisposableEffect(Unit) {
         DownloadEngine.init(context)
         DownloadEngine.onFinished = { handleFinished(it) }
         DownloadEngine.asker = { askReq = it }
         onDispose { DownloadEngine.onFinished = {}; DownloadEngine.asker = null }
+    }
+    /** Turns the launcher between landscape and upright. The choice is kept, so it stays that way. */
+    fun rotate() {
+        val next = when (settings.orientation) { 1 -> 0; 0 -> 1; else -> if (rootWidth < rootHeight) 0 else 1 }
+        settings = settings.copy(orientation = next)
+        store.save(settings)
     }
     /** Opens (or brings to the front) an app's LiveArea page. */
     fun openLiveArea(app: LaunchableApp, from: Offset? = null) {
@@ -893,6 +902,7 @@ fun HomeScreen(homePresses: Int = 0) {
                     onOpenNotifications = { showNotifs = true },
                     folders = gameFolders,
                     onFolders = { gameFolders = it; GameLibrary.saveFolders(context, it) },
+                    onRotate = { rotate() },
                     onClose = { showStore = false },
                 )
             }
@@ -1067,6 +1077,7 @@ fun HomeScreen(homePresses: Int = 0) {
                     MenuItem("Desktop") { showQuickMenu = false; showDesktop = true },
                     MenuItem("Search") { showQuickMenu = false; showSearch = true },
                     MenuItem("Settings") { showQuickMenu = false; showSettings = true },
+                    MenuItem(if (upright) "Rotate to landscape" else "Rotate to portrait") { showQuickMenu = false; rotate() },
                     MenuItem("Cancel") { showQuickMenu = false },
                 ),
                 onDismiss = { showQuickMenu = false },
@@ -1346,8 +1357,9 @@ private fun BubblePager(
                     },
             ) {
                 // The sphere is a quarter of the page height, like the real home screen.
-                val bubble = (minOf(maxHeight * 0.25f, maxWidth * 0.14f) * scale).coerceAtLeast(40.dp)
-                val column = bubble + 56.dp
+                val portraitPage = maxWidth < maxHeight
+                val bubble = ((if (portraitPage) minOf(maxHeight * 0.17f, maxWidth * 0.25f) else minOf(maxHeight * 0.25f, maxWidth * 0.14f)) * scale).coerceAtLeast(40.dp)
+                val column = bubble + (if (portraitPage) 24.dp else 56.dp)
                 val pageHeightPx = constraints.maxHeight.toFloat()
                 if (editAmt() > 0.01f) {
                     // The translucent frame around the page being edited.

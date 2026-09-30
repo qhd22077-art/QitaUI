@@ -62,6 +62,7 @@ class MainActivity : ComponentActivity() {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
         requestTopRefreshRate()
+        requestedOrientation = orientationFlag(SettingsStore(this).load().orientation)
         setContent { HomeScreen(homePresses) }
     }
 

@@ -14,6 +14,9 @@ import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.view.MotionEvent
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
+import androidx.compose.ui.platform.LocalConfiguration
 import android.view.View
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -186,18 +189,29 @@ internal val TitleShadow = TextStyle(shadow = androidx.compose.ui.graphics.Shado
 
 private fun storeBackground() = Brush.verticalGradient(listOf(StoreTop, StoreMid, StoreBottom))
 
-/** The mobile layout (a plain mobile Chrome's identity, page fitted to the screen) or the desktop site (desktop identity, wide page). */
+/** This web view's own Chrome version, as a current Chrome reports it (only the first number, like "120.0.0.0"). */
+private fun chromeToken(context: Context): String =
+    Regex("Chrome/(\\d+)").find(WebSettings.getDefaultUserAgent(context))?.groupValues?.get(1)?.let { "Chrome/$it.0.0.0" } ?: "Chrome/120.0.0.0"
+
+/**
+ * The mobile layout or the desktop site. The identity is the one a real Chrome of the same version would give (the stock web view's
+ * tells, "; wv", "Version/4.0" and a full build number, are left out), because bot checks compare it with what the engine really is.
+ */
 private fun applyWebMode(context: Context, web: WebView, desktop: Boolean) {
     val ws = web.settings
+    val chrome = chromeToken(context)
     if (desktop) {
-        ws.userAgentString = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ws.userAgentString = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) $chrome Safari/537.36"
         ws.useWideViewPort = true
         ws.loadWithOverviewMode = true
     } else {
-        // Many sites turn away the stock web view's identity ("; wv"); introduce it as a plain mobile Chrome.
-        ws.userAgentString = WebSettings.getDefaultUserAgent(context).replace("; wv", "").replace(Regex("Version/\\d+\\.\\d+ "), "")
+        ws.userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) $chrome Mobile Safari/537.36"
         ws.useWideViewPort = false
         ws.loadWithOverviewMode = false
+    }
+    // A request from an embedded web view carries the app's name in "X-Requested-With"; a browser sends no such header.
+    if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
+        WebSettingsCompat.setRequestedWithHeaderOriginAllowList(ws, emptySet())
     }
 }
 
@@ -231,6 +245,7 @@ fun StoreScreen(
     onOpenNotifications: () -> Unit,
     folders: List<com.qita.ui.GameFolder>,
     onFolders: (List<com.qita.ui.GameFolder>) -> Unit,
+    onRotate: () -> Unit,
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -518,6 +533,7 @@ fun StoreScreen(
                     1 -> BrowserTab(
                         web, browsing, pageUrl, progress, ::go, ::openPage, context, onToast, { browsing = false; web.loadUrl("about:blank") },
                         desktop = desktop,
+                        onRotate = onRotate,
                         onDesktop = {
                             desktop = !desktop
                             context.getSharedPreferences("qita_store", Context.MODE_PRIVATE).edit().putBoolean("web_desktop", desktop).apply()
@@ -558,6 +574,7 @@ fun StoreScreen(
                     MenuItem("Downloads") { menu = false; tab = 2 },
                     MenuItem("Notifications") { menu = false; onOpenNotifications() },
                     MenuItem("Catalogue") { menu = false; tab = 0; detail = null },
+                    MenuItem("Rotate screen") { menu = false; onRotate() },
                     MenuItem(if (picFolder) "Change banner folder" else "Choose a banner folder") { menu = false; folderPicker.launch(null) },
                     if (picFolder) MenuItem("Shuffle banner pictures") { menu = false; StoreBanners.shuffle(context); picRev++; onToast("Picked another few pictures") } else null,
                     if (picFolder) MenuItem("Stop using my folder") { menu = false; StoreBanners.clearFolder(context); picFolder = false; picRev++; onToast("Banner folder removed") } else null,
@@ -577,6 +594,7 @@ fun StoreScreen(
 
 @Composable
 private fun TabBar(tab: Int, onTab: (Int) -> Unit, onSearch: () -> Unit, onSettings: () -> Unit) {
+    val compact = LocalConfiguration.current.screenWidthDp < 600
     Row(
         Modifier
             .fillMaxWidth()
@@ -586,7 +604,7 @@ private fun TabBar(tab: Int, onTab: (Int) -> Unit, onSearch: () -> Unit, onSetti
             .drawLine(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
+        if (!compact) Text(
             "QitaUI Store", Modifier.padding(start = 14.dp, end = 10.dp), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold,
             style = TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.35f), Offset(0f, 2f), 3f)),
         )
@@ -601,7 +619,7 @@ private fun TabBar(tab: Int, onTab: (Int) -> Unit, onSearch: () -> Unit, onSetti
                     .background(if (on) TabDark else if (lit) Color.White.copy(alpha = 0.18f) else Color.Transparent),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(label, color = Color.White, fontSize = 19.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
+                Text(label, color = Color.White, fontSize = if (compact) 13.sp else 19.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
             }
         }
         val litSet = padHighlighted("store:settings") || padHovered("store:settings")
@@ -612,7 +630,7 @@ private fun TabBar(tab: Int, onTab: (Int) -> Unit, onSearch: () -> Unit, onSetti
                 .background(if (litSet || tab == 3) TabDark.copy(alpha = 0.9f) else TabDark.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
                 .border(1.dp, Color.White.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
                 .padding(horizontal = 12.dp, vertical = 7.dp),
-            color = Color.White, fontSize = 15.sp, maxLines = 1,
+            color = Color.White, fontSize = if (compact) 12.sp else 15.sp, maxLines = 1,
         )
         val lit = padHighlighted("store:search") || padHovered("store:search")
         Text(
@@ -622,8 +640,8 @@ private fun TabBar(tab: Int, onTab: (Int) -> Unit, onSearch: () -> Unit, onSetti
                 .padClickable("store:search", corner = 8.dp, ring = false, onClick = onSearch)
                 .background(if (lit) TabDark.copy(alpha = 0.9f) else TabDark.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
                 .border(1.dp, Color.White.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
-                .padding(horizontal = 14.dp, vertical = 7.dp),
-            color = Color.White, fontSize = 15.sp, maxLines = 1,
+                .padding(horizontal = if (compact) 8.dp else 14.dp, vertical = 7.dp),
+            color = Color.White, fontSize = if (compact) 12.sp else 15.sp, maxLines = 1,
         )
     }
 }
@@ -806,7 +824,7 @@ private fun Catalogue(
         }
     }
     val onVita = segment == 3
-    val rail = onVita && vitaAll != null && vita.type >= 1 && vitaRows.isNotEmpty()
+    val rail = onVita && vitaAll != null && vita.type >= 1 && vitaRows.isNotEmpty() && LocalConfiguration.current.screenWidthDp >= 600
     val railPad = if (rail) 128.dp else 0.dp
     // Items above the first row: the banners, the sticky bar and (for the Vita list) its filter bar.
     val hasBanners = cfg.style != 2 && banners.isNotEmpty()
@@ -1065,7 +1083,7 @@ internal fun Segmented(options: List<String>, selected: Int, onSelect: (Int) -> 
                     .background(if (on) TabDark else if (lit) Color.White.copy(alpha = 0.18f) else Color.Transparent),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(label, color = Color.White, fontSize = 17.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
+                Text(label, color = Color.White, fontSize = if (LocalConfiguration.current.screenWidthDp < 600) 11.sp else 17.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
             }
             if (i < options.size - 1) Box(Modifier.width(1.dp).fillMaxHeight().background(Color(0xFF172248).copy(alpha = 0.8f)))
         }
@@ -1135,8 +1153,8 @@ private fun DetailPage(
     val others = remember(e.id) { CATALOGUE.filter { it.id != e.id && it.category == e.category }.take(3) }
     Row(Modifier.fillMaxSize().slideIn(80f).padding(start = 18.dp, end = 12.dp, top = 12.dp)) {
         Box(
-            Modifier.size(150.dp).shadow(14.dp, RoundedCornerShape(6.dp)).border(2.dp, Color.White, RoundedCornerShape(6.dp)).clip(RoundedCornerShape(6.dp)),
-        ) { EntryIcon(e, 150.dp) }
+            Modifier.size((if (LocalConfiguration.current.screenWidthDp < 600) 96.dp else 150.dp)).shadow(14.dp, RoundedCornerShape(6.dp)).border(2.dp, Color.White, RoundedCornerShape(6.dp)).clip(RoundedCornerShape(6.dp)),
+        ) { EntryIcon(e, (if (LocalConfiguration.current.screenWidthDp < 600) 96.dp else 150.dp)) }
         Column(Modifier.weight(1f).padding(start = 18.dp).verticalScroll(rememberScrollState()).padding(bottom = 90.dp)) {
             Text(e.name, color = Color.White, fontSize = 30.sp, maxLines = 2)
             Text(e.developer.uppercase(), color = SoftText, fontSize = 17.sp, maxLines = 1)
@@ -1172,7 +1190,7 @@ private fun DetailPage(
             )
         }
         // "You may like": other entries of the same kind.
-        Column(Modifier.width(150.dp).padding(start = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        if (LocalConfiguration.current.screenWidthDp >= 600) Column(Modifier.width(150.dp).padding(start = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("You May Like", color = Color.White, fontSize = 16.sp, modifier = Modifier.padding(bottom = 8.dp))
             others.forEach { o ->
                 Column(
@@ -1204,6 +1222,7 @@ private fun BrowserTab(
     onHome: () -> Unit,
     desktop: Boolean,
     onDesktop: () -> Unit,
+    onRotate: () -> Unit,
 ) {
     var address by remember(url, browsing) { mutableStateOf(if (browsing) url else "") }
     var bookmarks by remember { mutableStateOf(loadBookmarks(context)) }
@@ -1265,6 +1284,7 @@ private fun BrowserTab(
                 BarButton("store:web:up", "▲") { web.pageUp(false) }
                 BarButton("store:web:down", "▼") { web.pageDown(false) }
                 BarButton("store:web:top", "Top") { web.pageUp(true) }
+                BarButton("store:web:rotate", "Rotate") { onRotate() }
                 BarButton("store:web:desk", if (desktop) "Mobile site" else "Desktop site") { onDesktop() }
                 BarButton("store:web:chrome", "Open in Chrome") {
                     if (url.isNotBlank()) runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
@@ -1585,7 +1605,7 @@ private fun VitaRow(hb: VitaHb, download: DownloadItem?, startPad: Dp, onGet: ()
 @Composable
 private fun VitaDetailPage(hb: VitaHb, download: DownloadItem?, others: List<VitaHb>, onDownload: (VitaHb) -> Unit, onOpen: (VitaHb) -> Unit) {
     Row(Modifier.fillMaxSize().slideIn(80f).padding(start = 18.dp, end = 12.dp, top = 12.dp)) {
-        Box(Modifier.size(150.dp).shadow(14.dp, RoundedCornerShape(6.dp)).border(2.dp, Color.White, RoundedCornerShape(6.dp)).clip(RoundedCornerShape(6.dp))) { VitaIcon(hb, 150.dp) }
+        Box(Modifier.size((if (LocalConfiguration.current.screenWidthDp < 600) 96.dp else 150.dp)).shadow(14.dp, RoundedCornerShape(6.dp)).border(2.dp, Color.White, RoundedCornerShape(6.dp)).clip(RoundedCornerShape(6.dp))) { VitaIcon(hb, (if (LocalConfiguration.current.screenWidthDp < 600) 96.dp else 150.dp)) }
         Column(Modifier.weight(1f).padding(start = 18.dp).verticalScroll(rememberScrollState()).padding(bottom = 90.dp)) {
             Text(hb.name, color = Color.White, fontSize = 30.sp, maxLines = 2)
             Text(hb.author.uppercase(), color = SoftText, fontSize = 17.sp, maxLines = 1)
@@ -1613,7 +1633,7 @@ private fun VitaDetailPage(hb: VitaHb, download: DownloadItem?, others: List<Vit
                 color = DimText, fontSize = 14.sp,
             )
         }
-        Column(Modifier.width(150.dp).padding(start = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        if (LocalConfiguration.current.screenWidthDp >= 600) Column(Modifier.width(150.dp).padding(start = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             if (others.isNotEmpty()) Text("You May Like", color = Color.White, fontSize = 16.sp, modifier = Modifier.padding(bottom = 8.dp))
             others.forEach { o ->
                 Column(

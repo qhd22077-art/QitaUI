@@ -65,6 +65,16 @@ class PageLayout(val name: String, val slots: List<Pair<Float, Float>>) {
     }
 }
 
+/** The page layout used when the screen is held upright: three bubbles across, four rows. */
+val PORTRAIT_LAYOUT = PageLayout("Portrait (3x4)", listOf(0.14f, 0.38f, 0.62f, 0.86f).flatMap { y -> (0 until 3).map { c -> (c + 0.5f) / 3 to y } })
+
+/** The Android screen orientation for the setting: 0 landscape, 1 portrait, anything else follows the sensor. */
+fun orientationFlag(orientation: Int): Int = when (orientation) {
+    0 -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    1 -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+    else -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+}
+
 private fun grid(cols: Int, rows: Int): List<Pair<Float, Float>> {
     val ys = if (rows == 3) listOf(0.2f, 0.5f, 0.8f) else listOf(0.3f, 0.7f)
     return ys.flatMap { y -> (0 until cols).map { c -> (c + 0.5f) / cols to y } }
@@ -129,6 +139,8 @@ data class Settings(
     val lockClockPos: Int = 0,
     val symbolCount: Int = 45,
     val notifColor: Int = 0xFF1D3E8F.toInt(),
+    /** 0 landscape, 1 portrait, 2 follows how the device is held. */
+    val orientation: Int = 0,
     val glass: Float = 0.85f,
     val glassBubbles: Boolean = true,
     val prevTheme: Int = 0,
@@ -215,6 +227,7 @@ class SettingsStore(private val context: Context) {
         lockClockPos = prefs.getInt("lockClockPos", 0),
         symbolCount = prefs.getInt("symbolCount", 45),
         notifColor = prefs.getInt("notifColor", 0xFF1D3E8F.toInt()),
+        orientation = prefs.getInt("orientation", 0),
         glass = prefs.getFloat("glass", 0.85f),
         glassBubbles = prefs.getBoolean("glassBubbles", true),
         prevTheme = prefs.getInt("prevTheme", 0),
@@ -289,6 +302,7 @@ class SettingsStore(private val context: Context) {
             .putInt("lockClockPos", s.lockClockPos)
             .putInt("symbolCount", s.symbolCount)
             .putInt("notifColor", s.notifColor)
+            .putInt("orientation", s.orientation)
             .putFloat("glass", s.glass)
             .putBoolean("glassBubbles", s.glassBubbles)
             .putInt("prevTheme", s.prevTheme)

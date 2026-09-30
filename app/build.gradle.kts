@@ -48,6 +48,8 @@ dependencies {
     implementation(composeBom)
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.activity:activity-compose:1.9.3")
+    // Lets the Store's browser stop sending the "X-Requested-With" header that marks a request as coming from an embedded web view.
+    implementation("androidx.webkit:webkit:1.12.1")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
