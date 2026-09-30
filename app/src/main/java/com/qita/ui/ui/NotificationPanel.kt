@@ -115,14 +115,14 @@ fun NotificationPanel(color: Color, onLaunch: (String) -> Unit, onDismiss: () ->
                     ) {
                         when {
                             !granted -> {
-                                InfoRow(rowColor, "notif:access", "Allow notification access", "Tap to open Android's settings and switch QitaUI on.") {
-                                    openAccessSettings(context); onDismiss()
-                                }
-                                Divider()
                                 InfoRow(
-                                    rowColor, "notif:blocked", "Android won't let you switch it on?",
-                                    "Tap to open App info, then ⋮ at the top right, then \"Allow restricted settings\". Go back and try again.",
-                                ) { openAppInfo(context); onDismiss() }
+                                    rowColor, "notif:step1", "1  Unlock the switch",
+                                    "Opens App info. Tap ⋮ at the top right, then \"Allow restricted settings\". Skip this if the switch in step 2 is not greyed out.",
+                                ) { Notifications.openAppInfo(context); onDismiss() }
+                                Divider()
+                                InfoRow(rowColor, "notif:step2", "2  Switch QitaUI on", "Opens the notification access page for QitaUI. Turn it on, then come back.") {
+                                    Notifications.openListenerPage(context); onDismiss()
+                                }
                             }
                             items.isEmpty() -> Box(Modifier.fillMaxWidth().height(64.dp).background(rowColor), contentAlignment = Alignment.Center) {
                                 Text("No notifications", color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)

@@ -108,6 +108,18 @@ data class Settings(
     val debugInput: Boolean = false,
     val lockScreen: Boolean = true,
     val vitaMode: Boolean = true,
+    val lockTapPeel: Boolean = false,
+    val lockClockSize: Float = 1f,
+    val lockClockColor: Int = 0xFFFFFFFF.toInt(),
+    val lockFont: Int = 0,
+    val lockShowDate: Boolean = true,
+    val lockPanelTint: Float = 0.06f,
+    val lockBorder: Float = 0.5f,
+    val lockFrame: Boolean = true,
+    val lockBgMode: Int = 0,
+    val lockTheme: Int = 0,
+    val lockNotifs: Boolean = false,
+    val lockNotifCount: Int = 3,
     val gameCovers: Boolean = true,
     val gamesOnHome: Boolean = true,
     val bgCustom: Boolean = false,
@@ -182,6 +194,18 @@ class SettingsStore(private val context: Context) {
         debugInput = prefs.getBoolean("debugInput", false),
         lockScreen = prefs.getBoolean("lockScreen", true),
         vitaMode = prefs.getBoolean("vitaMode", true),
+        lockTapPeel = prefs.getBoolean("lockTapPeel", false),
+        lockClockSize = prefs.getFloat("lockClockSize", 1f),
+        lockClockColor = prefs.getInt("lockClockColor", 0xFFFFFFFF.toInt()),
+        lockFont = prefs.getInt("lockFont", 0),
+        lockShowDate = prefs.getBoolean("lockShowDate", true),
+        lockPanelTint = prefs.getFloat("lockPanelTint", 0.06f),
+        lockBorder = prefs.getFloat("lockBorder", 0.5f),
+        lockFrame = prefs.getBoolean("lockFrame", true),
+        lockBgMode = prefs.getInt("lockBgMode", 0),
+        lockTheme = prefs.getInt("lockTheme", 0),
+        lockNotifs = prefs.getBoolean("lockNotifs", false),
+        lockNotifCount = prefs.getInt("lockNotifCount", 3),
         gameCovers = prefs.getBoolean("gameCovers", true),
         gamesOnHome = prefs.getBoolean("gamesOnHome", true),
         bgCustom = prefs.getBoolean("bgCustom", false),
@@ -244,6 +268,18 @@ class SettingsStore(private val context: Context) {
             .putBoolean("debugInput", s.debugInput)
             .putBoolean("lockScreen", s.lockScreen)
             .putBoolean("vitaMode", s.vitaMode)
+            .putBoolean("lockTapPeel", s.lockTapPeel)
+            .putFloat("lockClockSize", s.lockClockSize)
+            .putInt("lockClockColor", s.lockClockColor)
+            .putInt("lockFont", s.lockFont)
+            .putBoolean("lockShowDate", s.lockShowDate)
+            .putFloat("lockPanelTint", s.lockPanelTint)
+            .putFloat("lockBorder", s.lockBorder)
+            .putBoolean("lockFrame", s.lockFrame)
+            .putInt("lockBgMode", s.lockBgMode)
+            .putInt("lockTheme", s.lockTheme)
+            .putBoolean("lockNotifs", s.lockNotifs)
+            .putInt("lockNotifCount", s.lockNotifCount)
             .putBoolean("gameCovers", s.gameCovers)
             .putBoolean("gamesOnHome", s.gamesOnHome)
             .putBoolean("bgCustom", s.bgCustom)

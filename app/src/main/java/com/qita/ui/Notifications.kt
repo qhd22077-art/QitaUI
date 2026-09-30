@@ -81,6 +81,38 @@ object Notifications {
         items.addAll(list)
     }
 
+    /** True after App info was opened to unlock the switch: when the user comes back, the launcher opens the notification page itself. */
+    var awaitingStep2 = false
+
+    /** Step 1: App info, where the three dots hold "Allow restricted settings" for apps installed outside the Play Store. */
+    fun openAppInfo(context: Context) {
+        awaitingStep2 = true
+        runCatching {
+            context.startActivity(
+                android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${context.packageName}"))
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+    }
+
+    /** Step 2: this app's own page in the notification access list (Android 11 and newer), else the whole list. */
+    fun openListenerPage(context: Context) {
+        awaitingStep2 = false
+        val detail = android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
+            .putExtra(
+                android.provider.Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
+                android.content.ComponentName(context, QitaNotificationListener::class.java).flattenToString(),
+            )
+            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (runCatching { context.startActivity(detail) }.isFailure) {
+            runCatching {
+                context.startActivity(
+                    android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+        }
+    }
+
     fun clearAll() { runCatching { service?.cancelAllNotifications() } }
 
     /** Dismisses one notification. */

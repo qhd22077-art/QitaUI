@@ -153,6 +153,32 @@ fun HomeScreen(homePresses: Int = 0) {
     var settingsStart by remember { mutableStateOf<String?>(null) }
     var coverTarget by remember { mutableStateOf<String?>(null) }
     val emuInstalled = remember(context) { installedEmulators(context) }
+    var lockWallpaper by remember { mutableStateOf(store.loadWallpaper(-5)) }
+    // Coming back from Android's settings: refresh notification access, and carry on to step 2 after the App info step.
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                Notifications.checkAccess(context)
+                if (Notifications.awaitingStep2) {
+                    Notifications.awaitingStep2 = false
+                    if (!Notifications.granted) Notifications.openListenerPage(context)
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    // A one-time nudge if notifications are not switched on yet.
+    LaunchedEffect(Unit) {
+        Notifications.checkAccess(context)
+        delay(5000)
+        val p = context.getSharedPreferences("qita_settings", Context.MODE_PRIVATE)
+        if (!Notifications.granted && !p.getBoolean("notifHint", false)) {
+            toast = "Open the top-right button to turn on notifications"
+            p.edit().putBoolean("notifHint", true).apply()
+        }
+    }
     var showSearch by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showTutorial by remember { mutableStateOf(!store.tutorialSeen()) }
@@ -849,6 +875,10 @@ fun HomeScreen(homePresses: Int = 0) {
                             toast = "Settings loaded"
                         } else toast = "That file is not a settings file"
                     },
+                    hasLockPicture = lockWallpaper != null,
+                    onLockPicture = { uri -> store.saveWallpaper(uri, -5)?.let { lockWallpaper = it } },
+                    onClearLockPicture = { store.clearWallpaper(-5); lockWallpaper = null },
+                    onPreviewLock = { showSettings = false; settingsStart = null; showLock = true },
                     games = GamesSetup(
                         folders = gameFolders,
                         installed = emuInstalled,
@@ -1003,7 +1033,13 @@ fun HomeScreen(homePresses: Int = 0) {
             exit = fadeOut(tween(480, easing = VitaMotion.Ease)) + scaleOut(targetScale = 1.05f, animationSpec = tween(480, easing = VitaMotion.Ease)),
         ) {
             CompositionLocalProvider(LocalPadLayer provides 7) {
-                LockScreen(settings, wallpaper, onUnlock = { showLock = false })
+                LockScreen(
+                    settings = settings,
+                    wallpaper = wallpaper,
+                    lockWallpaper = lockWallpaper,
+                    fontFor = { choice -> when (choice) { 1 -> familyOf(0); 2 -> familyOf(1); 3 -> familyOf(2); 4 -> familyOf(3); 5 -> familyOf(4); else -> FontFamily.SansSerif } },
+                    onUnlock = { showLock = false },
+                )
             }
         }
 

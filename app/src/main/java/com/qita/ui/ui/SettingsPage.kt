@@ -112,6 +112,10 @@ fun SettingsPage(
     onClearFont: () -> Unit,
     onExport: (Uri) -> Unit,
     onImport: (Uri) -> Unit,
+    hasLockPicture: Boolean,
+    onLockPicture: (Uri) -> Unit,
+    onClearLockPicture: () -> Unit,
+    onPreviewLock: () -> Unit,
     games: GamesSetup,
     startPage: String? = null,
     onClose: () -> Unit,
@@ -128,6 +132,9 @@ fun SettingsPage(
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) onImport(uri)
     }
+    val lockPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) onLockPicture(uri)
+    }
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) games.onAddFolder(uri)
     }
@@ -141,6 +148,7 @@ fun SettingsPage(
         "home" -> "Home Screen"
         "bubbles" -> "Bubbles & Icons"
         "games" -> "Games & Emulators"
+        "lock" -> "Lock Screen"
         "fonts" -> "Fonts & Text"
         "topbar" -> "Top Bar"
         "motion" -> "Motion"
@@ -256,6 +264,34 @@ fun SettingsPage(
                             SliderRow("set:sway", "≈", "Idle sway", settings.sway, 0f..3f, 0.25f) { onChange(settings.copy(sway = it)) }
                             ChoiceRow("set:tapAnim", "↻", "When tapped", listOf("Flip", "Pulse", "Nothing"), settings.tapAnim) { onChange(settings.copy(tapAnim = it)) }
                         }
+                        "lock" -> {
+                            MenuRow("set:lockPreview", "▶", "Preview the lock screen") { onPreviewLock() }
+                            ChoiceRow("set:lockPos", "▭", "Clock position", listOf("Bottom right", "Bottom left", "Top left"), settings.lockClockPos) {
+                                onChange(settings.copy(lockClockPos = it))
+                            }
+                            SliderRow("set:lockSize", "A", "Clock size", settings.lockClockSize, 0.6f..1.6f, 0.1f) { onChange(settings.copy(lockClockSize = it)) }
+                            ChoiceRow("set:lockFont", "Aa", "Clock and date font", LOCK_FONTS, settings.lockFont) { onChange(settings.copy(lockFont = it)) }
+                            SwatchRow("set:lockColor", "●", "Clock and date colour", settings.lockClockColor) { onChange(settings.copy(lockClockColor = it)) }
+                            CheckRow("set:lockDate", "◷", "Show the date", settings.lockShowDate) { onChange(settings.copy(lockShowDate = it)) }
+                            CheckRow("set:lockFrame", "▢", "Show the glass frame", settings.lockFrame) { onChange(settings.copy(lockFrame = it)) }
+                            if (settings.lockFrame) {
+                                SliderRow("set:lockBorder", "○", "Frame brightness", settings.lockBorder, 0f..1f, 0.1f) { onChange(settings.copy(lockBorder = it)) }
+                            }
+                            SliderRow("set:lockTint", "◑", "Panel tint", settings.lockPanelTint, 0f..0.4f, 0.02f) { onChange(settings.copy(lockPanelTint = it)) }
+                            ChoiceRow("set:lockBg", "▣", "Background", listOf("Same as home", "A theme", "My picture"), settings.lockBgMode) { onChange(settings.copy(lockBgMode = it)) }
+                            if (settings.lockBgMode == 1) {
+                                ChoiceRow("set:lockTheme", "◐", "Lock screen theme", THEMES.map { it.name }, settings.lockTheme.coerceIn(THEMES.indices)) { onChange(settings.copy(lockTheme = it)) }
+                            }
+                            if (settings.lockBgMode == 2) {
+                                MenuRow("set:lockPic", "▣", "Choose a picture") { lockPicker.launch("image/*") }
+                                if (hasLockPicture) MenuRow("set:lockPic:rm", "✕", "Remove the picture") { onClearLockPicture() }
+                            }
+                            CheckRow("set:lockNotifs", "✉", "Show notifications on the lock screen", settings.lockNotifs) { onChange(settings.copy(lockNotifs = it)) }
+                            if (settings.lockNotifs) {
+                                SliderRow("set:lockNotifCount", "✉", "How many notifications", settings.lockNotifCount.toFloat(), 1f..5f, 1f) { onChange(settings.copy(lockNotifCount = it.roundToInt())) }
+                            }
+                            CheckRow("set:lockTap", "☝", "Tap the corner to unlock (otherwise peel it)", settings.lockTapPeel) { onChange(settings.copy(lockTapPeel = it)) }
+                        }
                         "games" -> {
                             InfoBox(
                                 "Set up your game library in four steps.\n" +
@@ -340,9 +376,6 @@ fun SettingsPage(
                         }
                         "system" -> {
                             CheckRow("set:haptics", "∷", "Vibrate on long-press and highlight", settings.haptics) { onChange(settings.copy(haptics = it)) }
-                            ChoiceRow("set:lockPos", "▭", "Lock screen clock position", listOf("Bottom right", "Bottom left", "Top left"), settings.lockClockPos) {
-                                onChange(settings.copy(lockClockPos = it))
-                            }
                             CheckRow("set:lock", "▭", "Lock screen when the launcher starts or the screen wakes", settings.lockScreen) { onChange(settings.copy(lockScreen = it)) }
                             MenuRow("set:export", "↥", "Save my settings to a file") { exporter.launch("qitaui-settings.json") }
                             MenuRow("set:import", "↧", "Load settings from a file") { importer.launch("*/*") }
@@ -353,6 +386,7 @@ fun SettingsPage(
                             NavRow("set:nav:theme", "◐", "Theme & Background") { page = "theme" }
                             NavRow("set:nav:home", "⌂", "Home Screen") { page = "home" }
                             NavRow("set:nav:bubbles", "◍", "Bubbles & Icons") { page = "bubbles" }
+                            NavRow("set:nav:lock", "▭", "Lock Screen") { page = "lock" }
                             NavRow("set:nav:games", "G", "Games & Emulators") { page = "games" }
                             NavRow("set:nav:fonts", "Aa", "Fonts & Text") { page = "fonts" }
                             NavRow("set:nav:topbar", "▭", "Top Bar") { page = "topbar" }
@@ -463,6 +497,7 @@ private fun CheckRow(key: String, glyph: String, label: String, checked: Boolean
 }
 
 private val FONT_NAMES = listOf("Built-in", "System", "Serif", "Monospace", "Loaded file")
+private val LOCK_FONTS = listOf("Thin sans", "Built-in", "System", "Serif", "Monospace", "Loaded file")
 
 /** A row that steps through a short list of choices: tap or A goes to the next, left/right on the gamepad steps either way. */
 @Composable
