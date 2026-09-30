@@ -205,22 +205,6 @@ fun StoreScreen(
     var picFolder by remember { mutableStateOf(StoreBanners.folder(context) != null) }
     var cfg by remember { mutableStateOf(BannerCfg.load(context)) }
     fun updateCfg(n: BannerCfg) { cfg = n; BannerCfg.save(context, n) }
-    // The user's own stores, made from links.
-    var stores by remember { mutableStateOf(UserStores.load(context)) }
-    fun updateStores(n: List<UserStore>) { stores = n; UserStores.save(context, n) }
-    var openStoreId by remember { mutableStateOf<String?>(null) }
-    var storeStack by remember { mutableStateOf(emptyList<StoreLevel>()) }
-    fun storeBack() { if (storeStack.size > 1) storeStack = storeStack.dropLast(1) else { storeStack = emptyList(); openStoreId = null } }
-    fun openStore(st: UserStore) {
-        tab = 0; segment = 5; detail = null; vitaDetail = null
-        openStoreId = st.id
-        storeStack = listOf(StoreLevel(st.name, st.url, st.items))
-    }
-    fun getFile(item: ScanItem) {
-        val name = URLUtil.guessFileName(item.url, null, null)
-        DownloadEngine.enqueue(item.url, name, if (name.endsWith(".apk", true)) DlKind.APK else DlKind.FILE)
-        onToast("Downloading $name. Progress is in the notification panel.")
-    }
     LaunchedEffect(picRev, cfg.picCount) { pics = withContext(Dispatchers.IO) { StoreBanners.picks(context, cfg.picCount) } }
     LaunchedEffect(Unit) { if (StoreBanners.ensureSnaps(context) > 0) snapRev++ }
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -248,6 +232,22 @@ fun StoreScreen(
         }
     }
     LaunchedEffect(segment, tab) { if (tab == 0 && vita == null && !vitaLoading) loadVita(false) }
+    // The user's own stores, made from links.
+    var stores by remember { mutableStateOf(UserStores.load(context)) }
+    fun updateStores(n: List<UserStore>) { stores = n; UserStores.save(context, n) }
+    var openStoreId by remember { mutableStateOf<String?>(null) }
+    var storeStack by remember { mutableStateOf(emptyList<StoreLevel>()) }
+    fun storeBack() { if (storeStack.size > 1) storeStack = storeStack.dropLast(1) else { storeStack = emptyList(); openStoreId = null } }
+    fun openStore(st: UserStore) {
+        tab = 0; segment = 5; detail = null; vitaDetail = null
+        openStoreId = st.id
+        storeStack = listOf(StoreLevel(st.name, st.url, st.items))
+    }
+    fun getFile(item: ScanItem) {
+        val name = URLUtil.guessFileName(item.url, null, null)
+        DownloadEngine.enqueue(item.url, name, if (name.endsWith(".apk", true)) DlKind.APK else DlKind.FILE)
+        onToast("Downloading $name. Progress is in the notification panel.")
+    }
 
     // The browser is created once and kept while the user moves between tabs.
     var browsing by remember { mutableStateOf(false) }
@@ -646,6 +646,18 @@ private fun Catalogue(
             if (cfg.emus) CATALOGUE.take(7).forEach { e -> add(BannerArt(e.id, e.name, e.developer, if (art) bannerUrl(e) else null, false, e.color, e.short) { onDetail(e) }) }
         }
     }
+    val onVita = segment == 3
+    val rail = onVita && vitaAll != null && vita.type >= 1 && vitaRows.isNotEmpty()
+    val railPad = if (rail) 128.dp else 0.dp
+    // Items above the first row: the banners, the sticky bar and (for the Vita list) its filter bar.
+    val hasBanners = cfg.style != 2 && banners.isNotEmpty()
+    val headerCount = (if (hasBanners) 1 else 0) + 1 + (if (onVita && vitaAll != null) 1 else 0)
+    val groups = remember(vitaRows) { vitaRows.map { groupOf(it.name) } }
+    val current by remember(groups, headerCount) {
+        derivedStateOf {
+            if (groups.isEmpty()) "" else groups[(state.firstVisibleItemIndex - headerCount).coerceIn(0, groups.size - 1)]
+        }
+    }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             if (searching) {
@@ -667,7 +679,7 @@ private fun Catalogue(
                 state = state,
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 90.dp),
             ) {
-                if (cfg.style != 2 && banners.isNotEmpty()) item(key = "banners") {
+                if (hasBanners) item(key = "banners") {
                     // The strip drifts up slower than the list, so it sits a little behind the rows.
                     Box(Modifier.graphicsLayer { translationY = if (state.firstVisibleItemIndex == 0) state.firstVisibleItemScrollOffset * 0.3f else 0f }) {
                         BannerStrip(banners, railPad, cfg)
