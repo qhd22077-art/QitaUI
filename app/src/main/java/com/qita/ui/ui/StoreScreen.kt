@@ -5,6 +5,14 @@ import android.content.Context
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.URLUtil
+import android.content.Intent
+import android.net.Uri
+import android.os.Message
+import android.webkit.SslErrorHandler
+import android.net.http.SslError
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -174,6 +182,23 @@ internal val TitleShadow = TextStyle(shadow = androidx.compose.ui.graphics.Shado
 
 private fun storeBackground() = Brush.verticalGradient(listOf(StoreTop, StoreMid, StoreBottom))
 
+/** A page shown in place of one that would not load, saying why, with buttons to try again (or, for https, over http or despite the certificate). */
+private fun showPageError(view: WebView, url: String, reason: String, certificate: Boolean) {
+    fun esc(t: String) = android.text.TextUtils.htmlEncode(t)
+    val http = if (url.startsWith("https://")) "http://" + url.removePrefix("https://") else null
+    val extra = buildString {
+        if (certificate) append("<a class=b href=\"qita-insecure://${esc(Uri.encode(url))}\">Open anyway</a>")
+        if (http != null && !certificate) append("<a class=b href=\"${esc(http)}\">Try without https</a>")
+    }
+    val html = "<html><head><meta name=viewport content='width=device-width,initial-scale=1'><style>" +
+        "body{margin:0;padding:28px;background:#14245f;color:#fff;font-family:sans-serif}h2{margin:0 0 8px}" +
+        "p{color:#a6b4e8;word-break:break-all}.b{display:inline-block;margin:10px 10px 0 0;padding:10px 18px;border-radius:8px;" +
+        "background:#f58a3a;color:#fff;text-decoration:none}</style></head><body><h2>This page did not load</h2>" +
+        "<p>${esc(reason.ifBlank { "Something went wrong" })}</p><p>${esc(url)}</p>" +
+        "<a class=b href=\"${esc(url)}\">Try again</a>$extra</body></html>"
+    view.loadDataWithBaseURL(url, html, "text/html", "UTF-8", url)
+}
+
 /**
  * The Store, in the look of the PlayStation Store: a blue sky, a bevelled tab bar (Catalogue, Browser, Downloads) with a Search
  * button, a banner strip and a segmented filter above a list of glossy rows, a detail page with orange Download buttons, and round
@@ -254,23 +279,93 @@ fun StoreScreen(
     var pageUrl by remember { mutableStateOf("") }
     var pageTitle by remember { mutableStateOf("") }
     var progress by remember { mutableStateOf(0) }
+    // Sites the user chose to open although their certificate is not trusted.
+    val allowInsecure = remember { HashSet<String>() }
     val web = remember {
         WebView(context).apply {
             // "this.settings" is the web view's; plain "settings" would be the launcher's own.
-            this.settings.javaScriptEnabled = true
-            this.settings.domStorageEnabled = true
-            this.settings.builtInZoomControls = true
-            this.settings.displayZoomControls = false
+            val ws = this.settings
+            ws.javaScriptEnabled = true
+            ws.domStorageEnabled = true
+            ws.databaseEnabled = true
+            ws.builtInZoomControls = true
+            ws.displayZoomControls = false
+            ws.useWideViewPort = true
+            ws.loadWithOverviewMode = true
+            ws.javaScriptCanOpenWindowsAutomatically = true
+            ws.setSupportMultipleWindows(true)
+            ws.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+            // Many sites turn away the stock web view's identity ("; wv"); introduce it as a plain mobile Chrome.
+            ws.userAgentString = WebSettings.getDefaultUserAgent(context).replace("; wv", "").replace(Regex("Version/\\d+\\.\\d+ "), "")
             CookieManager.getInstance().setAcceptCookie(true)
+            CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
         }
     }
     DisposableEffect(web) {
         web.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) { if (url != null) pageUrl = url }
             override fun onPageFinished(view: WebView?, url: String?) { pageTitle = view?.title.orEmpty(); if (url != null) pageUrl = url }
+
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                val u = request.url
+                when (u.scheme?.lowercase()) {
+                    "http", "https", "about", "data", "blob" -> return false
+                    "qita-insecure" -> {
+                        // "Open anyway" on the certificate warning page.
+                        val target = Uri.decode(u.schemeSpecificPart.removePrefix("//"))
+                        runCatching { allowInsecure.add(Uri.parse(target).host.orEmpty()) }
+                        view.loadUrl(target)
+                        return true
+                    }
+                    "file", "content", "javascript" -> return true
+                    "intent" -> {
+                        // Links that try to open another app: use the page's fallback address if there is one.
+                        runCatching {
+                            val intent = Intent.parseUri(u.toString(), Intent.URI_INTENT_SCHEME)
+                            val fallback = intent.getStringExtra("browser_fallback_url")
+                            if (fallback != null) view.loadUrl(fallback)
+                        }
+                        return true
+                    }
+                    else -> {
+                        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, u).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                        return true
+                    }
+                }
+            }
+
+            override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+                if (request.isForMainFrame) showPageError(view, request.url.toString(), error.description?.toString().orEmpty(), false)
+            }
+
+            override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
+                val host = runCatching { Uri.parse(error.url).host.orEmpty() }.getOrDefault("")
+                if (host in allowInsecure) handler.proceed()
+                else { handler.cancel(); showPageError(view, error.url, "The site's security certificate is not trusted", true) }
+            }
         }
         web.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) { progress = newProgress }
+
+            // Links that open a new window or tab (target="_blank", window.open) load in this same page.
+            override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {
+                val popup = WebView(view.context)
+                popup.settings.javaScriptEnabled = true
+                var done = false
+                fun take(url: String?) {
+                    if (done || url.isNullOrBlank() || url == "about:blank") return
+                    done = true
+                    web.loadUrl(url)
+                    web.post { runCatching { popup.stopLoading(); popup.destroy() } }
+                }
+                popup.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean { take(r.url.toString()); return true }
+                    override fun onPageStarted(v: WebView?, url: String?, favicon: android.graphics.Bitmap?) { take(url) }
+                }
+                (resultMsg.obj as WebView.WebViewTransport).webView = popup
+                resultMsg.sendToTarget()
+                return true
+            }
         }
         web.setDownloadListener { url, userAgent, disposition, mime, _ ->
             val name = URLUtil.guessFileName(url, disposition, mime)
