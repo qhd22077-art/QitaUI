@@ -49,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -172,10 +173,11 @@ fun StoreScreen(
     var progress by remember { mutableStateOf(0) }
     val web = remember {
         WebView(context).apply {
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            settings.builtInZoomControls = true
-            settings.displayZoomControls = false
+            // "this.settings" is the web view's; plain "settings" would be the launcher's own.
+            this.settings.javaScriptEnabled = true
+            this.settings.domStorageEnabled = true
+            this.settings.builtInZoomControls = true
+            this.settings.displayZoomControls = false
             CookieManager.getInstance().setAcceptCookie(true)
         }
     }
@@ -332,11 +334,7 @@ private fun TabBar(tab: Int, onTab: (Int) -> Unit, onSearch: () -> Unit) {
 }
 
 /** A thin dark line along the bottom of the bar, like the real one's edge. */
-private fun Modifier.drawLine(): Modifier = this.then(
-    Modifier.drawBehindLine(),
-)
-
-private fun Modifier.drawBehindLine(): Modifier = androidx.compose.ui.draw.drawBehind {
+private fun Modifier.drawLine(): Modifier = this.drawBehind {
     drawRect(Color.Black.copy(alpha = 0.35f), Offset(0f, size.height - 1.5.dp.toPx()), androidx.compose.ui.geometry.Size(size.width, 1.5.dp.toPx()))
 }
 
