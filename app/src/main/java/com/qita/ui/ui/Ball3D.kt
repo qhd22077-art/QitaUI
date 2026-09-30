@@ -145,12 +145,12 @@ float4 frontPix(float u, float v, float rr, float cy, float sy, float cp, float 
     nb = nb * nb;
     col += float3(0.75, 0.85, 1.0) * (0.40 * nb * (fres * 2.2 + 0.10));
 
-    // Highlights that follow the curve: a small glint, a window reflection on the upper-left rim and a faint one opposite.
+    // Gentle highlights that follow the curve: a small glint and a soft reflection on the upper-left rim, with a faint one opposite.
     float ndh = max(dot(n, Hh), 0.0);
-    float spec = pow(ndh, 60.0) * 0.55;
+    float spec = pow(ndh, 80.0) * 0.28;
     float3 Rv = 2.0 * n.z * n - float3(0.0, 0.0, 1.0);
-    float env = pow(max(dot(Rv, W1), 0.0), 9.0) * 0.30;
-    float env2 = pow(max(dot(Rv, W2), 0.0), 9.0) * 0.10;
+    float env = pow(max(dot(Rv, W1), 0.0), 14.0) * 0.11;
+    float env2 = pow(max(dot(Rv, W2), 0.0), 14.0) * 0.03;
     col += float3(spec + env + env2);
 
     // The bevel: a darker groove just inside a thin lit edge.
@@ -159,7 +159,7 @@ float4 frontPix(float u, float v, float rr, float cy, float sy, float cp, float 
     float edgeLine = smoothstep(0.955, 0.985, rr) * (1.0 - smoothstep(0.985, 1.0, rr));
     float nl = length(n.xy) + 0.0001;
     float facing = 0.35 + 0.65 * max(dot(n.xy / nl, L.xy / 0.72), 0.0);
-    col += float3(0.40 * edgeLine * facing);
+    col += float3(0.24 * edgeLine * facing);
 
     col = mix(col, float3(0.09, 0.88, 1.0), 0.34 * glow);
     col = clamp(col, 0.0, 1.0);

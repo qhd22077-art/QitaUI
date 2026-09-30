@@ -101,13 +101,14 @@ object SphereRenderer {
                 // Subtle highlights that follow the rim: a small glint and a broad soft reflection.
                 val ndh = (nx * half[0] + ny * half[1] + nz * half[2]).coerceAtLeast(0f)
                 val q2 = ndh * ndh; val q4 = q2 * q2; val q8 = q4 * q4; val q16 = q8 * q8; val q32 = q16 * q16
-                val spec = q32 * q16 * q8 * q4 * 0.50f
+                val spec = q32 * q16 * q8 * q4 * 0.28f
                 val rx = 2f * nz * nx
                 val ry = 2f * nz * ny
                 val rz = 2f * nz * nz - 1f
                 val rd = (rx * window[0] + ry * window[1] + rz * window[2]).coerceAtLeast(0f)
                 val e2 = rd * rd; val e4 = e2 * e2
-                val env = e4 * e4 * rd * 0.30f
+                val e8 = e4 * e4
+                val env = e8 * e4 * e2 * 0.11f
                 r += spec + env; g += spec + env; b += spec + env
 
                 // The bevel: a darker groove just inside the lit edge.
@@ -124,7 +125,7 @@ object SphereRenderer {
                 val nlen = sqrt(nx * nx + ny * ny) + 0.0001f
                 val lxy = sqrt(light[0] * light[0] + light[1] * light[1])
                 val facing = 0.35f + 0.65f * ((nx / nlen * light[0] / lxy + ny / nlen * light[1] / lxy).coerceAtLeast(0f))
-                val rim = 0.30f * edgeLine * facing
+                val rim = 0.24f * edgeLine * facing
                 r += rim; g += rim; b += rim
 
                 val ir = (r.coerceIn(0f, 1f) * 255f + 0.5f).toInt()
