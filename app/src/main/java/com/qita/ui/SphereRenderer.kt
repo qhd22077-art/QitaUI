@@ -52,15 +52,15 @@ object SphereRenderer {
 
                 // Inflated profile: the normal tilts gently from the middle and more steeply toward the rim.
                 val rc = minOf(rr, 1f)
-                val rp = rc * rc
+                val rp = rc * rc * rc
                 val nxy = if (rc > 0.0001f) rp / rc else 0f
                 val nx = x * nxy
                 val ny = y * nxy
                 val nz = sqrt((1f - rp * rp).coerceAtLeast(0f))
 
                 // The art lies flat; the dome bends it a little.
-                val dx = x + nx * 0.06f
-                val dy = y + ny * 0.06f
+                val dx = x
+                val dy = y
                 val ux = 0.5f + dx / (2f * ART_RADIUS)
                 val uy = 0.5f + dy / (2f * ART_RADIUS)
                 var cr = 0f; var cg = 0f; var cb = 0f; var ca = 0f
@@ -102,6 +102,12 @@ object SphereRenderer {
                 val facing = ((nx / nl) * light[0] / lxy + (ny / nl) * light[1] / lxy).coerceAtLeast(0f)
                 val lit = 0.26f * f * facing
                 r += lit; g += lit; b += lit
+                // A fine lit edge marks the bevel.
+                val eT = ((rr - 0.955f) / 0.03f).coerceIn(0f, 1f)
+                val eO = ((rr - 0.985f) / 0.015f).coerceIn(0f, 1f)
+                val edgeLine = eT * eT * (3f - 2f * eT) * (1f - eO * eO * (3f - 2f * eO))
+                val edge = 0.22f * edgeLine * facing
+                r += edge; g += edge; b += edge
 
                 // Light bounced up from below.
                 val nb = (nx * bounceDir[0] + ny * bounceDir[1] + nz * bounceDir[2]).coerceAtLeast(0f)
