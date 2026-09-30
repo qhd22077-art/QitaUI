@@ -109,6 +109,7 @@ data class Settings(
     val lockScreen: Boolean = true,
     val vitaMode: Boolean = true,
     val gameCovers: Boolean = true,
+    val gamesOnHome: Boolean = true,
     val bgCustom: Boolean = false,
     val bgTop: Int = 0xFF1B6FCB.toInt(),
     val bgMid: Int = 0xFF1850A8.toInt(),
@@ -182,6 +183,7 @@ class SettingsStore(private val context: Context) {
         lockScreen = prefs.getBoolean("lockScreen", true),
         vitaMode = prefs.getBoolean("vitaMode", true),
         gameCovers = prefs.getBoolean("gameCovers", true),
+        gamesOnHome = prefs.getBoolean("gamesOnHome", true),
         bgCustom = prefs.getBoolean("bgCustom", false),
         bgTop = prefs.getInt("bgTop", 0xFF1B6FCB.toInt()),
         bgMid = prefs.getInt("bgMid", 0xFF1850A8.toInt()),
@@ -243,6 +245,7 @@ class SettingsStore(private val context: Context) {
             .putBoolean("lockScreen", s.lockScreen)
             .putBoolean("vitaMode", s.vitaMode)
             .putBoolean("gameCovers", s.gameCovers)
+            .putBoolean("gamesOnHome", s.gamesOnHome)
             .putBoolean("bgCustom", s.bgCustom)
             .putInt("bgTop", s.bgTop)
             .putInt("bgMid", s.bgMid)

@@ -1,5 +1,6 @@
 package com.qita.ui
 
+import android.content.ClipData
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -60,18 +61,20 @@ class GameFolder(val uri: String, val systemId: String)
 val EMULATORS: List<Emulator> = listOf(
     Emulator("retroarch", "RetroArch", listOf("com.retroarch.aarch64", "com.retroarch", "com.retroarch.ra32")),
     Emulator("ppsspp", "PPSSPP", listOf("org.ppsspp.ppsspp", "org.ppsspp.ppssppgold")),
-    Emulator("dolphin", "Dolphin", listOf("org.dolphinemu.dolphinemu", "org.dolphinemu.mmjr")),
-    Emulator("vita3k", "Vita3K", listOf("org.vita3k.emulator")),
+    Emulator("dolphin", "Dolphin", listOf("org.dolphinemu.dolphinemu")),
+    Emulator("dolphinmmjr", "Dolphin MMJR", listOf("org.mm.jr", "org.dolphinemu.mmjr")),
+    Emulator("vita3k", "Vita3K", listOf("org.vita3k.emulator", "org.vita3k.emulator.ikhoeyZX")),
     Emulator("nethersx2", "NetherSX2 / AetherSX2", listOf("xyz.aethersx2.android")),
     Emulator("duckstation", "DuckStation", listOf("com.github.stenzek.duckstation")),
-    Emulator("citra", "Citra / Lime3DS", listOf("org.citra.citra_emu", "org.citra.citra_emu.canary", "io.github.lime3ds.android", "io.github.borked3ds.android")),
-    Emulator("switch", "Switch (Eden, Yuzu and forks)", listOf("dev.eden.eden_emu", "org.yuzu.yuzu_emu", "org.sudachi.sudachi_emu", "dev.suyu.suyu_emu", "skyline.emu")),
+    Emulator("citra", "Citra / Lime3DS / Azahar", listOf("org.citra.citra_emu", "org.citra.citra_emu.canary", "io.github.lime3ds.android", "org.azahar_emu.azahar", "io.github.borked3ds.android")),
+    Emulator("switch", "Switch (Eden, Yuzu, Skyline)", listOf("dev.eden.eden_emulator", "dev.legacy.eden_emulator", "dev.eden.eden_emu", "org.yuzu.yuzu_emu", "org.sudachi.sudachi_emu", "dev.suyu.suyu_emu", "skyline.emu")),
+    Emulator("kenjinx", "Kenji-NX", listOf("org.kenjinx.android")),
     Emulator("flycast", "Flycast", listOf("com.flycast.emulator")),
-    Emulator("melonds", "melonDS", listOf("me.magnum.melonds")),
+    Emulator("melonds", "melonDS", listOf("me.magnum.melonds", "me.magnum.melondualds")),
     Emulator("drastic", "DraStic", listOf("com.dsemu.drastic")),
-    Emulator("mupen", "Mupen64Plus FZ", listOf("org.mupen64plusae.v3.fzurita")),
+    Emulator("mupen", "Mupen64Plus FZ", listOf("org.mupen64plusae.v3.fzurita", "org.mupen64plusae.v3.fzurita.pro", "org.mupen64plusae.v3.fzurita.amazon")),
     Emulator("gamenative", "GameNative", listOf("app.gamenative")),
-    Emulator("winlator", "Winlator", listOf("com.winlator", "com.winlator.cmod")),
+    Emulator("winlator", "Winlator", listOf("com.winlator.cmod", "com.winlator", "com.winlator.vanilla")),
 )
 
 val SYSTEMS: List<GameSystem> = listOf(
@@ -82,15 +85,19 @@ val SYSTEMS: List<GameSystem> = listOf(
     GameSystem("gba", "Game Boy Advance", "GBA", setOf("gba"), listOf("gba", "gameboyadvance"), "Nintendo - Game Boy Advance", "mgba_libretro_android.so", listOf("retroarch"), 0xFF3A4FA8),
     GameSystem("n64", "Nintendo 64", "N64", setOf("n64", "z64", "v64"), listOf("n64", "nintendo64"), "Nintendo - Nintendo 64", "mupen64plus_next_gles3_libretro_android.so", listOf("retroarch", "mupen"), 0xFF2E8A4F),
     GameSystem("nds", "Nintendo DS", "NDS", setOf("nds", "dsi"), listOf("nds", "ds", "nintendods"), "Nintendo - Nintendo DS", "melonds_libretro_android.so", listOf("melonds", "drastic", "retroarch"), 0xFF7A7F88),
-    GameSystem("3ds", "Nintendo 3DS", "3DS", setOf("3ds", "cci", "cxi", "3dsx"), listOf("3ds", "nintendo3ds"), "Nintendo - Nintendo 3DS", null, listOf("citra"), 0xFFC03A3A),
-    GameSystem("gc", "GameCube", "GC", setOf("gcm", "gcz", "rvz", "iso", "ciso"), listOf("gc", "gamecube", "ngc"), "Nintendo - GameCube", "dolphin_libretro_android.so", listOf("dolphin", "retroarch"), 0xFF5A3A9A),
-    GameSystem("wii", "Wii", "WII", setOf("wbfs", "wad", "iso", "rvz"), listOf("wii"), "Nintendo - Wii", "dolphin_libretro_android.so", listOf("dolphin", "retroarch"), 0xFF3AA0C0),
-    GameSystem("switch", "Nintendo Switch", "NSW", setOf("nsp", "xci", "nca"), listOf("switch", "nsw"), "Nintendo - Nintendo Switch", null, listOf("switch"), 0xFFD03A3A),
+    GameSystem("3ds", "Nintendo 3DS", "3DS", setOf("3ds", "cci", "cxi", "3dsx"), listOf("3ds", "nintendo3ds", "n3ds"), "Nintendo - Nintendo 3DS", null, listOf("citra"), 0xFFC03A3A),
+    GameSystem("gc", "GameCube", "GC", setOf("gcm", "gcz", "rvz", "iso", "ciso"), listOf("gc", "gamecube", "ngc"), "Nintendo - GameCube", "dolphin_libretro_android.so", listOf("dolphin", "dolphinmmjr", "retroarch"), 0xFF5A3A9A),
+    GameSystem("wii", "Wii", "WII", setOf("wbfs", "wad", "iso", "rvz"), listOf("wii"), "Nintendo - Wii", "dolphin_libretro_android.so", listOf("dolphin", "dolphinmmjr", "retroarch"), 0xFF3AA0C0),
+    GameSystem("switch", "Nintendo Switch", "NSW", setOf("nsp", "xci", "nca"), listOf("switch", "nsw"), "Nintendo - Nintendo Switch", null, listOf("switch", "kenjinx"), 0xFFD03A3A),
     GameSystem("ps1", "PlayStation", "PS1", setOf("cue", "chd", "pbp", "bin", "iso", "img", "ecm", "mdf"), listOf("ps1", "psx", "psone", "playstation"), "Sony - PlayStation", "pcsx_rearmed_libretro_android.so", listOf("duckstation", "retroarch"), 0xFF6A6F78),
     GameSystem("ps2", "PlayStation 2", "PS2", setOf("iso", "chd", "cso", "gz", "bin"), listOf("ps2", "playstation2"), "Sony - PlayStation 2", null, listOf("nethersx2"), 0xFF2A4AA0),
     GameSystem("psp", "PlayStation Portable", "PSP", setOf("iso", "cso", "pbp", "elf"), listOf("psp", "playstationportable"), "Sony - PlayStation Portable", "ppsspp_libretro_android.so", listOf("ppsspp", "retroarch"), 0xFF1E3A70),
+    // Each Vita game is a small text file named after the game that holds its title id (as in ES-DE), e.g. "Gravity Rush.psvita".
+    GameSystem("psvita", "PlayStation Vita", "VITA", setOf("psvita"), listOf("psvita", "vita", "psv"), "Sony - PlayStation Vita", null, listOf("vita3k"), 0xFF1A5FB4),
     GameSystem("genesis", "Mega Drive / Genesis", "MD", setOf("md", "smd", "gen", "bin"), listOf("genesis", "megadrive", "md", "gen"), "Sega - Mega Drive - Genesis", "genesis_plus_gx_libretro_android.so", listOf("retroarch"), 0xFF2A2A30),
     GameSystem("dreamcast", "Dreamcast", "DC", setOf("cdi", "gdi", "chd"), listOf("dreamcast", "dc"), "Sega - Dreamcast", "flycast_libretro_android.so", listOf("flycast", "retroarch"), 0xFFD0702A),
+    // PC games run through GameNative (.steam, .epic, .gog, .amazon, .pcgame files holding the game's id) or Winlator (.desktop shortcuts).
+    GameSystem("pc", "PC (Windows)", "PC", setOf("steam", "epic", "gog", "amazon", "pcgame", "desktop"), listOf("pc", "windows", "steam", "gamenative", "winlator"), null, null, listOf("gamenative", "winlator"), 0xFF2A3A5A),
 )
 
 fun systemById(id: String): GameSystem? = SYSTEMS.firstOrNull { it.id == id }
@@ -148,6 +155,13 @@ object GameLibrary {
     fun remove(c: Context, id: String) {
         saveGames(c, games(c).filter { it.id != id })
         coverFile(c, id).delete()
+    }
+
+    /** Ids of games the launcher has already seen, so a game the user took off the home screen is not put back by the next scan. */
+    fun known(c: Context): Set<String> = prefs(c).getStringSet("known_games", emptySet()).orEmpty().toSet()
+
+    fun addKnown(c: Context, ids: Collection<String>) {
+        prefs(c).edit().putStringSet("known_games", known(c) + ids).apply()
     }
 
     fun coverFile(c: Context, id: String): File = File(File(c.filesDir, "covers").apply { mkdirs() }, "$id.png")
@@ -245,7 +259,7 @@ object GameScanner {
     }
 }
 
-/** Opens a game in the emulator that plays its system. */
+/** Opens a game in the emulator that plays its system, the way other frontends (ES-DE, Daijisho) do: one explicit activity per emulator. */
 object GameLauncher {
     /** The emulator (and its installed package) that will play [system]: the user's choice if it is installed, else the first that is. */
     fun emulatorFor(context: Context, system: GameSystem): Pair<Emulator, String>? {
@@ -262,34 +276,98 @@ object GameLauncher {
         return null
     }
 
+    /** The first line of a game's file, for systems where the file only holds an id (Vita title ids, GameNative app ids). */
+    private fun firstLine(context: Context, uri: Uri): String =
+        runCatching { context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readLine() }?.trim().orEmpty() }.getOrDefault("")
+
+    /** A launch for each activity name the emulator is known under, or a message saying why the game cannot be started. */
+    private fun intents(context: Context, emu: Emulator, pkg: String, system: GameSystem, game: Game): Pair<List<Intent>, String?> {
+        val data = Uri.parse(game.uri)
+        val uriText = game.uri
+        val clear = Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        fun make(
+            classes: List<String>,
+            action: String? = null,
+            category: String? = null,
+            asData: Boolean = false,
+            flags: Int = 0,
+            extras: Intent.() -> Unit = {},
+        ): Pair<List<Intent>, String?> = classes.map { cls ->
+            Intent().also { i ->
+                i.component = ComponentName(pkg, cls)
+                if (action != null) i.action = action
+                if (category != null) i.addCategory(category)
+                if (asData) i.data = data
+                i.addFlags(flags)
+                i.extras()
+            }
+        } to null
+        return when (emu.id) {
+            "retroarch" -> {
+                val core = system.core ?: return emptyList<Intent>() to "RetroArch has no core set for ${system.name}"
+                val path = game.path ?: return emptyList<Intent>() to "RetroArch needs the game on internal storage or an SD card"
+                make(listOf("com.retroarch.browser.retroactivity.RetroActivityFuture")) {
+                    putExtra("CONFIGFILE", "/storage/emulated/0/Android/data/$pkg/files/retroarch.cfg")
+                    putExtra("LIBRETRO", "/data/data/$pkg/cores/$core")
+                    putExtra("ROM", path)
+                }
+            }
+            "ppsspp" -> make(listOf("org.ppsspp.ppsspp.PpssppActivity"), Intent.ACTION_VIEW, Intent.CATEGORY_DEFAULT, asData = true)
+            "dolphin" -> make(listOf("org.dolphinemu.dolphinemu.ui.main.TvMainActivity"), Intent.ACTION_MAIN, "android.intent.category.LEANBACK_LAUNCHER") { putExtra("AutoStartFile", uriText) }
+            "dolphinmmjr" -> make(listOf("org.dolphinemu.dolphinemu.ui.main.MainActivity"), Intent.ACTION_VIEW) { putExtra("AutoStartFile", uriText) }
+            "nethersx2" -> make(listOf("xyz.aethersx2.android.EmulationActivity"), Intent.ACTION_MAIN, flags = clear) { putExtra("bootPath", uriText) }
+            "duckstation" -> make(listOf("com.github.stenzek.duckstation.EmulationActivity"), flags = clear) {
+                putExtra("resumeState", false)
+                putExtra("bootPath", uriText)
+            }
+            "citra" -> make(listOf("$pkg.activities.EmulationActivity", "org.citra.citra_emu.activities.EmulationActivity"), asData = true, flags = clear)
+            "switch" ->
+                if (pkg == "skyline.emu") make(listOf("emu.skyline.EmulationActivity"), Intent.ACTION_VIEW, asData = true)
+                else make(listOf("org.yuzu.yuzu_emu.activities.EmulationActivity"), "android.nfc.action.TECH_DISCOVERED", asData = true)
+            "kenjinx" -> make(listOf("org.kenjinx.android.MainActivity"), "org.kenjinx.android.LAUNCH_GAME") { putExtra("bootPath", uriText) }
+            "flycast" -> make(listOf("com.flycast.emulator.MainActivity", "com.reicast.emulator.MainActivity"), Intent.ACTION_VIEW, asData = true)
+            "melonds" -> make(listOf("me.magnum.melonds.ui.emulator.EmulatorActivity"), "me.magnum.melonds.LAUNCH_ROM") { putExtra("uri", uriText) }
+            "drastic" -> make(listOf("com.dsemu.drastic.DraSticActivity"), asData = true, flags = clear)
+            "mupen" -> make(listOf("paulscode.android.mupen64plusae.SplashActivity"), Intent.ACTION_VIEW, asData = true)
+            "vita3k" -> {
+                val id = firstLine(context, data)
+                if (id.isEmpty()) return emptyList<Intent>() to "The file ${game.raw}.psvita is empty. Put the game's title id (like PCSE00120) inside it"
+                make(listOf("org.vita3k.emulator.Emulator")) { putExtra("AppStartParameters", arrayOf("-r", id)) }
+            }
+            "gamenative" -> {
+                val source = when (game.ext) { "steam" -> "STEAM"; "epic" -> "EPIC"; "gog" -> "GOG"; "amazon" -> "AMAZON"; else -> "CUSTOM_GAME" }
+                val id = firstLine(context, data).toIntOrNull()
+                    ?: return emptyList<Intent>() to "The file ${game.raw}.${game.ext} should contain the game's id number"
+                make(listOf("app.gamenative.MainActivity"), "app.gamenative.LAUNCH_GAME") {
+                    putExtra("game_source", source)
+                    putExtra("app_id", id)
+                }
+            }
+            "winlator" -> {
+                val path = game.path ?: return emptyList<Intent>() to "Winlator needs the shortcut on internal storage or an SD card"
+                make(listOf("com.winlator.cmod.XServerDisplayActivity"), flags = clear) { putExtra("shortcut_path", path) }
+            }
+            else -> make(emptyList())
+        }
+    }
+
     /** Starts the game. Returns a message to show the user when something went wrong, or null when it started. */
     fun launch(context: Context, game: Game): String? {
         val system = systemById(game.systemId) ?: return "Unknown system"
         val (emu, pkg) = emulatorFor(context, system) ?: return "No emulator for ${system.name} is installed"
-        val uri = Uri.parse(game.uri)
-        val intent: Intent = when (emu.id) {
-            "retroarch" -> {
-                val core = system.core ?: return "RetroArch has no core set for ${system.name}"
-                val path = game.path ?: return "RetroArch needs the game on internal storage or an SD card"
-                Intent().setComponent(ComponentName(pkg, "com.retroarch.browser.retroactivity.RetroActivityFuture"))
-                    .putExtra("ROM", path)
-                    .putExtra("LIBRETRO", "/data/data/$pkg/cores/$core")
-                    .putExtra("CONFIGFILE", "/storage/emulated/0/Android/data/$pkg/files/retroarch.cfg")
-                    .putExtra("QUITFOCUS", "")
-            }
-            "ppsspp" -> Intent(Intent.ACTION_VIEW).setClassName(pkg, "org.ppsspp.ppsspp.PpssppActivity").setDataAndType(uri, "*/*")
-            else -> Intent(Intent.ACTION_VIEW).setPackage(pkg).setDataAndType(uri, "*/*")
+        val (list, problem) = intents(context, emu, pkg, system, game)
+        if (problem != null) return problem
+        val data = Uri.parse(game.uri)
+        for (intent in list) {
+            // The emulator gets read access to the game file through the intent, without needing its own storage permission.
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            intent.clipData = ClipData.newRawUri("game", data)
+            if (runCatching { context.startActivity(intent) }.isSuccess) return null
         }
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        return try {
-            context.startActivity(intent)
-            null
-        } catch (e: Exception) {
-            // The emulator would not take the game directly: open the emulator itself so the game can be picked there.
-            val open = context.packageManager.getLaunchIntentForPackage(pkg)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            if (open != null && runCatching { context.startActivity(open) }.isSuccess) "${emu.name} would not open this game directly, so it was opened instead"
-            else "Could not start ${emu.name}"
-        }
+        // None of the activity names worked (a version of the emulator that names it differently): open the emulator itself.
+        val open = context.packageManager.getLaunchIntentForPackage(pkg)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return if (open != null && runCatching { context.startActivity(open) }.isSuccess) "${emu.name} would not open this game directly, so it was opened instead"
+        else "Could not start ${emu.name}"
     }
 }
 

@@ -288,6 +288,7 @@ fun SettingsPage(
                                 }
                             }
                             // Steps 3 and 4.
+                            CheckRow("set:gamesonhome", "⌂", "Put new games on the home screen after a scan", settings.gamesOnHome) { onChange(settings.copy(gamesOnHome = it)) }
                             CheckRow("set:gcoverauto", "▦", "Get cover art automatically after a scan", settings.gameCovers) { onChange(settings.copy(gameCovers = it)) }
                             MenuRow("set:gscan", "↻", if (games.busy != null) games.busy else "Scan for games (${games.gameCount} found)") { if (games.busy == null) games.onScan() }
                             MenuRow("set:gcovers", "▦", "Get cover art online for games without one") { if (games.busy == null) games.onCovers() }

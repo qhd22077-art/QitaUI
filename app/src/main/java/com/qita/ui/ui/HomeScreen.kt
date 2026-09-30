@@ -304,6 +304,14 @@ fun HomeScreen(homePresses: Int = 0) {
             val found = withContext(Dispatchers.IO) {
                 GameScanner.scan(context, GameLibrary.folders(context)).also { GameLibrary.saveGames(context, it) }
             }
+            // New games go on the home screen as bubbles, like the Vita's own games; ones seen before (and maybe taken off) do not.
+            val known = GameLibrary.known(context)
+            val fresh = found.filter { it.id !in known }
+            GameLibrary.addKnown(context, fresh.map { it.id })
+            if (settings.gamesOnHome && fresh.isNotEmpty()) {
+                home = home + fresh.map { "qita.game.${it.id}" }.filter { it !in home }
+                store.saveHome(home)
+            }
             reload++
             gamesBusy = null
             toast = "Found ${found.size} game${if (found.size == 1) "" else "s"}"
@@ -848,7 +856,7 @@ fun HomeScreen(homePresses: Int = 0) {
                         gameCount = apps.count { it.game != null },
                         busy = gamesBusy,
                         onAddFolder = { uri ->
-                            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
                             if (gameFolders.none { it.uri == uri.toString() }) {
                                 gameFolders = gameFolders + GameFolder(uri.toString(), "auto")
                                 GameLibrary.saveFolders(context, gameFolders)
