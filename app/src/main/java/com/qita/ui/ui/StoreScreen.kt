@@ -9,7 +9,17 @@ import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.composed
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalDensity
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -237,7 +247,7 @@ fun StoreScreen(
     }
 
     fun downloadVita(hb: VitaHb) {
-        val existing = started["vita:${hb.id}"]
+        val existing = vitaDownload(started, hb)
         when {
             existing != null && existing.state == DlState.DONE -> onToast("Already downloaded. It is in your Download folder.")
             existing != null && existing.state != DlState.FAILED -> onToast("Already downloading. Progress is in the notification panel.")
@@ -293,14 +303,14 @@ fun StoreScreen(
                     0 -> if (vitaDetail != null) {
                         val hb = vitaDetail!!
                         VitaDetailPage(
-                            hb, started["vita:${hb.id}"],
+                            hb, vitaDownload(started, hb),
                             others = vita.orEmpty().filter { it.id != hb.id && it.type == hb.type }.take(3),
                             onDownload = ::downloadVita, onOpen = { vitaDetail = it },
                         )
                     } else Catalogue(
                         segment, { segment = it }, detail, { detail = it }, searching, query, { query = it },
                         started, looking, ::download, ::openPage,
-                        VitaUi(vita, vitaLoading, vitaError, vitaType, { vitaType = it }, { vitaDetail = it }, { loadVita(true) }, { openPage(VitaDb.SITE) }, started),
+                        VitaUi(vita, vitaLoading, vitaError, vitaType, { vitaType = it }, { vitaDetail = it }, ::downloadVita, { loadVita(true) }, { openPage(VitaDb.SITE) }, started),
                     )
                     1 -> BrowserTab(web, browsing, pageUrl, progress, ::go, ::openPage, context, onToast, { browsing = false; web.loadUrl("about:blank") })
                     else -> DownloadsTab(onToast)
@@ -437,6 +447,36 @@ private fun OrangeButton(key: String, label: String, enabled: Boolean = true, on
 // Catalogue
 // ------------------------------------------------------------------------------------------------------------------------
 
+/** Slides a piece in from the right and fades it up when it first appears, so lists and pages move instead of popping. */
+private fun Modifier.slideIn(fromX: Float = 60f): Modifier = composed {
+    val p = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { p.animateTo(1f, tween(260, easing = VitaMotion.Ease)) }
+    graphicsLayer {
+        alpha = p.value
+        translationX = (1f - p.value) * fromX
+    }
+}
+
+private val RAIL_GROUPS = listOf("0-9", "A-D", "E-H", "I-L", "M-P", "Q-T", "U-Z")
+
+private fun groupOf(name: String): String {
+    val c = name.trim().firstOrNull()?.uppercaseChar() ?: return "0-9"
+    return when {
+        c !in 'A'..'Z' -> "0-9"
+        c <= 'D' -> "A-D"
+        c <= 'H' -> "E-H"
+        c <= 'L' -> "I-L"
+        c <= 'P' -> "M-P"
+        c <= 'T' -> "Q-T"
+        else -> "U-Z"
+    }
+}
+
+/**
+ * The catalogue is one long page that scrolls as a whole: a banner strip that moves by itself, a segmented bar that sticks to the
+ * top, then the rows. The Vita list adds the store's letter rail down the left side (A-D, E-H, ...), which jumps to a letter.
+ */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Catalogue(
     segment: Int,
@@ -464,46 +504,154 @@ private fun Catalogue(
         }
         if (query.isBlank()) base else base.filter { it.name.contains(query.trim(), true) || it.developer.contains(query.trim(), true) }
     }
+    val vitaAll = vita.list
+    val vitaRows = remember(vitaAll, query, vita.type) {
+        val rows = vitaAll.orEmpty().filter {
+            (vita.type < 2 || it.type == vita.type - 1) &&
+                (query.isBlank() || it.name.contains(query.trim(), true) || it.author.contains(query.trim(), true))
+        }
+        // "New" keeps the list's own order (newest first); the others run A to Z.
+        if (vita.type == 0) rows else rows.sortedBy { it.name.trim().uppercase() }
+    }
     val state = rememberLazyListState()
-    Column(Modifier.fillMaxSize()) {
-        if (searching) {
-            BasicTextField(
-                value = query, onValueChange = onQuery, singleLine = true,
-                textStyle = TextStyle(color = Color.White, fontSize = 17.sp),
-                cursorBrush = SolidColor(Color.White),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                decorationBox = { inner ->
-                    Box(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.25f), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 9.dp)) {
-                        if (query.isEmpty()) Text("Search the catalogue", color = SoftText, fontSize = 17.sp)
-                        inner()
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val onVita = segment == 3
+    val rail = onVita && vitaAll != null && vita.type >= 1 && vitaRows.isNotEmpty()
+    val railPad = if (rail) 128.dp else 0.dp
+    // Items above the first row: the banners, the sticky bar and (for the Vita list) its filter bar.
+    val headerCount = if (onVita && vitaAll != null) 3 else 2
+    val groups = remember(vitaRows) { vitaRows.map { groupOf(it.name) } }
+    val current by remember(groups, headerCount) {
+        derivedStateOf {
+            if (groups.isEmpty()) "" else groups[(state.firstVisibleItemIndex - headerCount).coerceIn(0, groups.size - 1)]
+        }
+    }
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            if (searching) {
+                BasicTextField(
+                    value = query, onValueChange = onQuery, singleLine = true,
+                    textStyle = TextStyle(color = Color.White, fontSize = 17.sp),
+                    cursorBrush = SolidColor(Color.White),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    decorationBox = { inner ->
+                        Box(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.25f), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 9.dp)) {
+                            if (query.isEmpty()) Text("Search the catalogue", color = SoftText, fontSize = 17.sp)
+                            inner()
+                        }
+                    },
+                )
+            }
+            LazyColumn(
+                Modifier.weight(1f).fillMaxWidth().padScroller { state.animateScrollBy(it) },
+                state = state,
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 90.dp),
+            ) {
+                item(key = "banners") { BannerStrip(railPad, onDetail) }
+                stickyHeader(key = "segments") {
+                    Box(Modifier.fillMaxWidth().background(StoreMid)) {
+                        Segmented(listOf("Featured", "Emulators", "Free games", "Vita homebrew", "All"), segment, onSegment)
                     }
-                },
-            )
+                }
+                if (onVita) {
+                    if (vitaAll == null) {
+                        item(key = "vita-status") { VitaStatus(vita) }
+                    } else {
+                        item(key = "vita-types") { Box(Modifier.padding(start = railPad)) { Segmented(VITA_TYPES, vita.type, vita.onType) } }
+                        items(vitaRows, key = { it.id }) { hb ->
+                            VitaRow(hb, vitaDownload(vita.started, hb), railPad, { vita.onGet(hb) }) { vita.onOpen(hb) }
+                        }
+                    }
+                } else {
+                    items(if (segment == 0) list.take(8) else list, key = { it.id }) { e ->
+                        CatalogueRow(e, started[e.id], looking[e.id] == true, { onDownload(e) }) { onDetail(e) }
+                    }
+                }
+            }
         }
-        // The banner strip: the first few emulators as wide cards.
-        LazyRow(
-            Modifier.fillMaxWidth().padding(top = 10.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            items(CATALOGUE.take(7), key = { it.id }) { e -> Banner(e) { onDetail(e) } }
-        }
-        Segmented(listOf("Featured", "Emulators", "Free games", "Vita homebrew", "All"), segment, onSegment)
-        if (segment == 3) {
-            VitaList(vita, query, Modifier.weight(1f))
-            return@Column
-        }
-        LazyColumn(
-            Modifier.weight(1f).fillMaxWidth().padScroller { state.animateScrollBy(it) },
-            state = state,
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 90.dp),
-        ) {
-            items(if (segment == 0) list.take(8) else list, key = { it.id }) { e ->
-                CatalogueRow(e, started[e.id], looking[e.id] == true) { onDetail(e) }
+        if (rail) {
+            val present = RAIL_GROUPS.filter { it in groups }
+            val at = present.indexOf(current).coerceAtLeast(0)
+            Column(
+                Modifier.align(Alignment.CenterStart).padding(start = 10.dp, bottom = 40.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                present.drop((at - 1).coerceAtLeast(0)).take(4).forEach { g ->
+                    RailTile(g, g == current) {
+                        val index = groups.indexOfFirst { it == g }.coerceAtLeast(0)
+                        scope.launch { state.animateScrollToItem(headerCount + index, -with(density) { 58.dp.roundToPx() }) }
+                    }
+                }
             }
         }
     }
 }
+
+/** One tile of the letter rail: the current group is big, the others small and dim. */
+@Composable
+private fun RailTile(label: String, big: Boolean, onClick: () -> Unit) {
+    val key = "store:rail:$label"
+    val lit = padHighlighted(key) || padHovered(key)
+    val width = if (big) 96.dp else 60.dp
+    val height = if (big) 92.dp else 46.dp
+    Box(
+        Modifier
+            .size(width, height)
+            .padClickable(key, corner = 0.dp, ring = false, onClick = onClick)
+            .background(
+                Brush.verticalGradient(
+                    if (big) listOf(Color(0xFF244B86), Color(0xFF6A90C2)) else listOf(Color(0xFF2B5797), Color(0xFF2B5797)).map { if (lit) it.copy(alpha = 1f) else it.copy(alpha = 0.8f) },
+                ),
+            )
+            .then(if (lit) Modifier.border(2.dp, Color.White) else Modifier),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = if (big) Color.White else Color(0xFFB6C6E6), fontSize = if (big) 34.sp else 20.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+    }
+}
+
+/** The banner strip moves by itself every few seconds (and stops while a finger or the gamepad is scrolling it). */
+@Composable
+private fun BannerStrip(startPad: Dp, onDetail: (StoreEntry?) -> Unit) {
+    val banners = remember { CATALOGUE.take(7) }
+    val strip = rememberLazyListState()
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(3500)
+            if (!strip.isScrollInProgress) strip.animateScrollToItem((strip.firstVisibleItemIndex + 1) % banners.size)
+        }
+    }
+    LazyRow(
+        Modifier.fillMaxWidth().padding(top = 10.dp),
+        state = strip,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 14.dp + startPad, end = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        items(banners, key = { it.id }) { e -> Banner(e) { onDetail(e) } }
+    }
+}
+
+/** A small orange button at the end of a row: one tap starts the download without opening the page. */
+@Composable
+private fun GetButton(key: String, label: String, onClick: () -> Unit) {
+    val lit = padHighlighted(key) || padHovered(key)
+    Text(
+        label,
+        Modifier
+            .padding(end = 14.dp)
+            .padClickable(key, corner = 8.dp, pad = 2.dp, ring = false, onClick = onClick)
+            .background(Brush.verticalGradient(listOf(OrangeTop, OrangeBottom)), RoundedCornerShape(8.dp))
+            .border(if (lit) 2.dp else 1.dp, if (lit) Color.White else Color(0xFFFFC08A), RoundedCornerShape(8.dp))
+            .padding(horizontal = 14.dp, vertical = 7.dp),
+        color = Color.White, fontSize = 16.sp, maxLines = 1,
+    )
+}
+
+/** The download of [hb]: the one started from this screen, or any other in the list for the same file (so it survives leaving the Store). */
+private fun vitaDownload(started: Map<String, DownloadItem>, hb: VitaHb): DownloadItem? =
+    started["vita:${hb.id}"] ?: DownloadEngine.items.firstOrNull { it.url == hb.download }
 
 @Composable
 private fun Banner(e: StoreEntry, onClick: () -> Unit) {
@@ -554,37 +702,41 @@ private fun Segmented(options: List<String>, selected: Int, onSelect: (Int) -> U
     }
 }
 
-/** A catalogue row like the store's: a bevelled square icon, a dim line, a big white title, the developer and the price side. */
+/** A catalogue row like the store's: a bevelled square icon, a dim line, a big white title, the developer and a Download button. */
 @Composable
-private fun CatalogueRow(e: StoreEntry, download: DownloadItem?, looking: Boolean, onClick: () -> Unit) {
+private fun CatalogueRow(e: StoreEntry, download: DownloadItem?, looking: Boolean, onGet: () -> Unit, onClick: () -> Unit) {
     val lit = padHighlighted("store:row:${e.id}") || padHovered("store:row:${e.id}")
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .height(74.dp)
-            .padClickable("store:row:${e.id}", corner = 0.dp, ring = false, onClick = onClick)
-            .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = if (lit) 0.30f else 0.14f), Color.White.copy(alpha = if (lit) 0.16f else 0.04f)))),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        EntryIcon(e, 74.dp)
-        Column(Modifier.weight(1f).padding(start = 14.dp)) {
-            Text(if (e.category == 0) "Emulator" else "Free games", color = SoftText, fontSize = 13.sp, maxLines = 1)
-            Text(e.name, color = Color.White, fontSize = 24.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(e.developer, color = DimText, fontSize = 15.sp, maxLines = 1)
+    Column(Modifier.slideIn()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(74.dp)
+                .padClickable("store:row:${e.id}", corner = 0.dp, ring = false, onClick = onClick)
+                .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = if (lit) 0.30f else 0.14f), Color.White.copy(alpha = if (lit) 0.16f else 0.04f)))),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            EntryIcon(e, 74.dp)
+            Column(Modifier.weight(1f).padding(start = 14.dp)) {
+                Text(if (e.category == 0) "Emulator" else "Free games", color = SoftText, fontSize = 13.sp, maxLines = 1)
+                Text(e.name, color = Color.White, fontSize = 24.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(e.developer, color = DimText, fontSize = 15.sp, maxLines = 1)
+            }
+            GetButton(
+                "store:get:${e.id}",
+                when {
+                    looking -> "Looking…"
+                    download != null && download.state == DlState.RUNNING -> "${(download.fraction.coerceAtLeast(0f) * 100).toInt()}%"
+                    download != null && download.state == DlState.DONE -> "Install"
+                    e.repo != null -> "Download"
+                    else -> "Open"
+                },
+                onGet,
+            )
         }
-        Text(
-            when {
-                looking -> "Looking…"
-                download != null && download.state == DlState.RUNNING -> "${(download.fraction.coerceAtLeast(0f) * 100).toInt()}%"
-                download != null && download.state == DlState.DONE -> "Downloaded"
-                else -> "Free"
-            },
-            Modifier.padding(end = 18.dp), color = Color.White, fontSize = 20.sp,
-        )
+        // The line under each row: dark, then a light one, so the rows look cut into the page.
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Color.Black.copy(alpha = 0.25f)))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(RowLine.copy(alpha = 0.55f)))
     }
-    // The line under each row: dark, then a light one, so the rows look cut into the page.
-    Box(Modifier.fillMaxWidth().height(1.dp).background(Color.Black.copy(alpha = 0.25f)))
-    Box(Modifier.fillMaxWidth().height(1.dp).background(RowLine.copy(alpha = 0.55f)))
 }
 
 /** The square picture of an entry: its colour with its short name, and a dark bottom band like the store's "PSP GAME" label. */
@@ -610,7 +762,7 @@ private fun DetailPage(
     onDetail: (StoreEntry?) -> Unit,
 ) {
     val others = remember(e.id) { CATALOGUE.filter { it.id != e.id && it.category == e.category }.take(3) }
-    Row(Modifier.fillMaxSize().padding(start = 18.dp, end = 12.dp, top = 12.dp)) {
+    Row(Modifier.fillMaxSize().slideIn(80f).padding(start = 18.dp, end = 12.dp, top = 12.dp)) {
         Box(
             Modifier.size(150.dp).border(2.dp, Color.White, RoundedCornerShape(6.dp)).clip(RoundedCornerShape(6.dp)),
         ) { EntryIcon(e, 150.dp) }
@@ -831,6 +983,15 @@ private fun DownloadsTab(onToast: (String) -> Unit) {
                     }
                 },
             )
+            val clipboard = LocalClipboardManager.current
+            OrangeButton("store:dl:paste", "Paste & get") {
+                val t = clipboard.getText()?.text?.trim().orEmpty()
+                if (t.startsWith("http://") || t.startsWith("https://")) {
+                    val name = URLUtil.guessFileName(t, null, null)
+                    DownloadEngine.enqueue(t, name, if (name.endsWith(".apk", true)) DlKind.APK else DlKind.FILE)
+                    onToast("Downloading $name")
+                } else onToast("Copy a full link that starts with http first")
+            }
             OrangeButton("store:dl:add", "Download") {
                 val t = link.trim()
                 if (t.startsWith("http://") || t.startsWith("https://")) {
@@ -946,43 +1107,27 @@ private class VitaUi(
     val type: Int,
     val onType: (Int) -> Unit,
     val onOpen: (VitaHb) -> Unit,
+    val onGet: (VitaHb) -> Unit,
     val onRetry: () -> Unit,
     val onSite: () -> Unit,
     val started: Map<String, DownloadItem>,
 )
 
-private val VITA_TYPES = listOf("All", "Games", "Ports", "Emulators", "Tools")
+private val VITA_TYPES = listOf("New", "A-Z", "Games", "Ports", "Emulators", "Tools")
 
+/** What shows in place of the Vita list while it loads, or when it could not be loaded. */
 @Composable
-private fun VitaList(v: VitaUi, query: String, modifier: Modifier) {
-    val all = v.list
-    if (all == null) {
-        Column(modifier.fillMaxWidth().padding(30.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            if (v.error == null) {
-                Text(if (v.loading) "Loading the Vita homebrew list…" else "Opening the Vita homebrew list…", color = SoftText, fontSize = 17.sp, textAlign = TextAlign.Center)
-            } else {
-                Text("Couldn't load the Vita homebrew list (${v.error}).", color = Color.White, fontSize = 16.sp, textAlign = TextAlign.Center)
-                Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OrangeButton("store:vita:retry", "Try again", onClick = v.onRetry)
-                    OrangeButton("store:vita:site", "Open VitaDB", onClick = v.onSite)
-                }
+private fun VitaStatus(v: VitaUi) {
+    Column(Modifier.fillMaxWidth().padding(30.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        if (v.error == null) {
+            Text(if (v.loading) "Loading the Vita homebrew list…" else "Opening the Vita homebrew list…", color = SoftText, fontSize = 17.sp, textAlign = TextAlign.Center)
+        } else {
+            Text("Couldn't load the Vita homebrew list (${v.error}).", color = Color.White, fontSize = 16.sp, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OrangeButton("store:vita:retry", "Try again", onClick = v.onRetry)
+                OrangeButton("store:vita:site", "Open VitaDB", onClick = v.onSite)
             }
-        }
-        return
-    }
-    val rows = remember(all, query, v.type) {
-        all.filter { (v.type == 0 || it.type == v.type) && (query.isBlank() || it.name.contains(query.trim(), true) || it.author.contains(query.trim(), true)) }
-    }
-    val state = rememberLazyListState()
-    Column(modifier.fillMaxWidth()) {
-        Segmented(VITA_TYPES, v.type, v.onType)
-        LazyColumn(
-            Modifier.weight(1f).fillMaxWidth().padScroller { state.animateScrollBy(it) },
-            state = state,
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 90.dp),
-        ) {
-            items(rows, key = { it.id }) { hb -> VitaRow(hb, v.started["vita:${hb.id}"]) { v.onOpen(hb) } }
         }
     }
 }
@@ -999,39 +1144,42 @@ private fun VitaIcon(hb: VitaHb, size: Dp) {
 }
 
 @Composable
-private fun VitaRow(hb: VitaHb, download: DownloadItem?, onClick: () -> Unit) {
+private fun VitaRow(hb: VitaHb, download: DownloadItem?, startPad: Dp, onGet: () -> Unit, onClick: () -> Unit) {
     val key = "store:vita:${hb.id}"
     val lit = padHighlighted(key) || padHovered(key)
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .height(74.dp)
-            .padClickable(key, corner = 0.dp, ring = false, onClick = onClick)
-            .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = if (lit) 0.30f else 0.14f), Color.White.copy(alpha = if (lit) 0.16f else 0.04f)))),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        VitaIcon(hb, 74.dp)
-        Column(Modifier.weight(1f).padding(start = 14.dp)) {
-            Text(hb.date.ifEmpty { "Vita homebrew" }, color = SoftText, fontSize = 13.sp, maxLines = 1)
-            Text(hb.name, color = Color.White, fontSize = 24.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(hb.author, color = DimText, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Column(Modifier.padding(start = startPad).slideIn()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(74.dp)
+                .padClickable(key, corner = 0.dp, ring = false, onClick = onClick)
+                .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = if (lit) 0.30f else 0.14f), Color.White.copy(alpha = if (lit) 0.16f else 0.04f)))),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            VitaIcon(hb, 74.dp)
+            Column(Modifier.weight(1f).padding(start = 14.dp)) {
+                Text(hb.date.ifEmpty { "Vita homebrew" }, color = SoftText, fontSize = 13.sp, maxLines = 1)
+                Text(hb.name, color = Color.White, fontSize = 24.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(hb.author, color = DimText, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            GetButton(
+                "store:vget:${hb.id}",
+                when {
+                    download != null && download.state == DlState.RUNNING -> "${(download.fraction.coerceAtLeast(0f) * 100).toInt()}%"
+                    download != null && download.state == DlState.DONE -> "Downloaded"
+                    else -> "Download"
+                },
+                onGet,
+            )
         }
-        Text(
-            when {
-                download != null && download.state == DlState.RUNNING -> "${(download.fraction.coerceAtLeast(0f) * 100).toInt()}%"
-                download != null && download.state == DlState.DONE -> "Downloaded"
-                else -> "Free"
-            },
-            Modifier.padding(end = 18.dp), color = Color.White, fontSize = 20.sp,
-        )
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Color.Black.copy(alpha = 0.25f)))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(RowLine.copy(alpha = 0.55f)))
     }
-    Box(Modifier.fillMaxWidth().height(1.dp).background(Color.Black.copy(alpha = 0.25f)))
-    Box(Modifier.fillMaxWidth().height(1.dp).background(RowLine.copy(alpha = 0.55f)))
 }
 
 @Composable
 private fun VitaDetailPage(hb: VitaHb, download: DownloadItem?, others: List<VitaHb>, onDownload: (VitaHb) -> Unit, onOpen: (VitaHb) -> Unit) {
-    Row(Modifier.fillMaxSize().padding(start = 18.dp, end = 12.dp, top = 12.dp)) {
+    Row(Modifier.fillMaxSize().slideIn(80f).padding(start = 18.dp, end = 12.dp, top = 12.dp)) {
         Box(Modifier.size(150.dp).border(2.dp, Color.White, RoundedCornerShape(6.dp)).clip(RoundedCornerShape(6.dp))) { VitaIcon(hb, 150.dp) }
         Column(Modifier.weight(1f).padding(start = 18.dp).verticalScroll(rememberScrollState()).padding(bottom = 90.dp)) {
             Text(hb.name, color = Color.White, fontSize = 30.sp, maxLines = 2)
