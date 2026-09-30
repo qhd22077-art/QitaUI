@@ -22,7 +22,13 @@ import java.net.URL
 
 /** Downloads small pictures (icons) and keeps the last few in memory. */
 object RemoteImages {
-    private val cache = LruCache<String, Bitmap>(40)
+    // Sized in bytes, not pictures: banner images are big and icons small.
+    private val cache = object : LruCache<String, Bitmap>(24 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
+    }
+
+    /** Light mode keeps fewer pictures in memory. */
+    fun setLight(light: Boolean) { cache.resize(if (light) 8 * 1024 * 1024 else 24 * 1024 * 1024) }
     private val failed = HashSet<String>()
 
     fun cached(url: String): Bitmap? = cache.get(url)

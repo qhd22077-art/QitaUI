@@ -97,7 +97,13 @@ object PageScanner {
         conn.setRequestProperty("Accept", "text/html,*/*")
         if (conn.responseCode !in 200..299) { conn.disconnect(); throw IOException("HTTP ${conn.responseCode}") }
         val base = conn.url.toString()
-        val body = conn.inputStream.use { ins -> ins.readNBytes(2_000_000).toString(Charsets.UTF_8) }
+        // At most 2 MB of the page (InputStream.readNBytes needs Android 13, so read by hand).
+        val body = conn.inputStream.use { ins ->
+            val out = java.io.ByteArrayOutputStream()
+            val buf = ByteArray(16 * 1024)
+            while (out.size() < 2_000_000) { val n = ins.read(buf); if (n < 0) break; out.write(buf, 0, n) }
+            out.toString("UTF-8")
+        }
         conn.disconnect()
         return base to body
     }

@@ -98,6 +98,7 @@ import com.qita.ui.AppRepository
 import com.qita.ui.Command
 import java.io.File
 import com.qita.ui.GameSystem
+import com.qita.ui.findMainActivity
 import com.qita.ui.DownloadPlacer
 import com.qita.ui.DownloadItem
 import com.qita.ui.DownloadEngine
@@ -682,9 +683,13 @@ fun HomeScreen(homePresses: Int = 0) {
     val hintPad by animateDpAsState(if (Controller.padActive) 46.dp else 0.dp, tween(220), label = "hintPad")
 
     // One looping clock drives the idle sway of every 3D bubble.
-    val ballClock = rememberInfiniteTransition(label = "ballClock").animateFloat(
-        0f, 6.2832f, infiniteRepeatable(tween(9000, easing = LinearEasing)), label = "ballClockValue",
-    )
+    val ballClock = rememberLoopClock(9000, settings.lightMode)
+    // Light mode: the system picks the refresh rate instead of asking for the fastest, and image caches are smaller.
+    val activity = context.findMainActivity()
+    LaunchedEffect(settings.lightMode) {
+        activity?.setTopRefreshRate(!settings.lightMode)
+        RemoteImages.setLight(settings.lightMode)
+    }
     CompositionLocalProvider(
         LocalFullArt provides settings.fullArt,
         LocalBall3D provides settings.bubble3d,
@@ -695,6 +700,7 @@ fun HomeScreen(homePresses: Int = 0) {
     ) {
     Box(Modifier.fillMaxSize().onSizeChanged { rootWidth = it.width; rootHeight = it.height; PadNav.viewport = Rect(0f, 0f, it.width.toFloat(), it.height.toFloat()) }) {
         BubbleBackground(
+            paused = { showDesktop || showGames || showStore || showSettings },
             top = settings.theme.top, mid = settings.theme.mid, bottom = settings.theme.bottom, particles = settings.particles,
             wallpaper = when (pageBg[bgPage]) {
                 null -> wallpaper
@@ -1341,7 +1347,7 @@ private fun BubblePager(
             Modifier.fillMaxSize().padScroller { pagerState.animateScrollBy(it) },
             // The page edit view zooms out: the pages shrink inside a margin, so the frame and neighbours show.
             contentPadding = PaddingValues(horizontal = (44.dp * editAmt()).coerceAtLeast(0.dp), vertical = (22.dp * editAmt()).coerceAtLeast(0.dp)),
-            beyondViewportPageCount = pages.size,
+            beyondViewportPageCount = minOf(pages.size, if (settings.lightMode) 1 else 3),
         ) { index ->
             val pageApps = pages.getOrElse(index) { emptyList() }
             BoxWithConstraints(

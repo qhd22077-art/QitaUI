@@ -40,16 +40,19 @@ class MainActivity : ComponentActivity() {
     private var sawDpadKey = false
     private var injecting = false
 
-    /** Asks for the display's fastest mode at the current resolution, so 90/120 Hz screens are used fully. */
+    /**
+     * With [top] the display's fastest mode at the current resolution is asked for, so 90/120 Hz screens are used fully; without it
+     * the system's own choice applies (light mode, which saves battery).
+     */
     @Suppress("DEPRECATION")
-    private fun requestTopRefreshRate() {
+    fun setTopRefreshRate(top: Boolean) {
         runCatching {
             val display = windowManager.defaultDisplay
             val current = display.mode
-            val best = display.supportedModes
+            val best = if (!top) null else display.supportedModes
                 .filter { it.physicalWidth == current.physicalWidth && it.physicalHeight == current.physicalHeight }
                 .maxByOrNull { it.refreshRate }
-            if (best != null) window.attributes = window.attributes.apply { preferredDisplayModeId = best.modeId }
+            window.attributes = window.attributes.apply { preferredDisplayModeId = best?.modeId ?: 0 }
         }
     }
 
@@ -61,8 +64,9 @@ class MainActivity : ComponentActivity() {
             hide(WindowInsetsCompat.Type.systemBars())
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
-        requestTopRefreshRate()
-        requestedOrientation = orientationFlag(SettingsStore(this).load().orientation)
+        val saved = SettingsStore(this).load()
+        setTopRefreshRate(!saved.lightMode)
+        requestedOrientation = orientationFlag(saved.orientation)
         setContent { HomeScreen(homePresses) }
     }
 
@@ -293,4 +297,14 @@ class MainActivity : ComponentActivity() {
             if (dir != 0) Controller.commands.tryEmit(Command.Page(dir))
         }
     }
+}
+
+/** The launcher's activity behind a Compose context (which may be wrapped), or null. */
+fun android.content.Context.findMainActivity(): MainActivity? {
+    var c: android.content.Context? = this
+    while (c is android.content.ContextWrapper) {
+        if (c is MainActivity) return c
+        c = c.baseContext
+    }
+    return null
 }

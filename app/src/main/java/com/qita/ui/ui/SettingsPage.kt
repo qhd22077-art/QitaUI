@@ -353,6 +353,7 @@ fun SettingsPage(
                             CheckRow("set:battery2", "⚡", "Show battery level", settings.showBattery) { onChange(settings.copy(showBattery = it)) }
                         }
                         "motion" -> {
+                            CheckRow("set:light", "◌", "Light mode (30 fps, fewer symbols, no blur, less memory and battery)", settings.lightMode) { onChange(settings.copy(lightMode = it)) }
                             CheckRow("set:reduce", "■", "Reduce motion (still background, no sway or flip)", settings.reduceMotion) { onChange(settings.copy(reduceMotion = it)) }
                             SliderRow("set:sceneSpeed2", "≋", "Background animation speed", settings.sceneSpeed, 0.3f..2.5f, 0.1f) { onChange(settings.copy(sceneSpeed = it)) }
                             SliderRow("set:sway2", "≈", "Bubble idle sway", settings.sway, 0f..3f, 0.25f) { onChange(settings.copy(sway = it)) }

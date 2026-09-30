@@ -1,14 +1,47 @@
 package com.qita.ui.ui
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.spring
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.delay
+
+/**
+ * A looping clock from 0 to 2π as State, to be read while drawing so that only the drawing is redone each tick. Normally it runs at
+ * the screen's rate; in [light] mode it ticks 30 times a second, which halves the work of everything that follows it.
+ */
+@Composable
+fun rememberLoopClock(periodMs: Int, light: Boolean): androidx.compose.runtime.State<Float> =
+    if (light) rememberSlowClock(periodMs)
+    else rememberInfiniteTransition(label = "loop").animateFloat(
+        0f, 6.2831855f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(periodMs, easing = androidx.compose.animation.core.LinearEasing)),
+        label = "loopValue",
+    )
+
+@Composable
+private fun rememberSlowClock(periodMs: Int): androidx.compose.runtime.State<Float> {
+    val phase = remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    LaunchedEffect(periodMs) {
+        var last = 0L
+        while (true) {
+            androidx.compose.runtime.withFrameNanos { now ->
+                if (last == 0L) last = now
+                val dt = now - last
+                if (dt >= 33_000_000L) {
+                    phase.floatValue = (phase.floatValue + dt / 1_000_000f / periodMs * 6.2831855f) % 6.2831855f
+                    last = now
+                }
+            }
+        }
+    }
+    return phase
+}
 
 /** The motion vocabulary of the launcher: one set of curves and springs so everything moves alike. */
 object VitaMotion {

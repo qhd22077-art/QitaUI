@@ -49,6 +49,8 @@ fun BubbleBackground(
     scroll: () -> Float = { 0f },
     /** When set, the scene and its colours come from here, read while drawing, so they can follow a swipe. */
     scene: (() -> SceneMix)? = null,
+    /** While true (another full screen covers this one) the scene stops moving and costs nothing. Read while drawing. */
+    paused: () -> Boolean = { false },
 ) {
     val topColor by animateColorAsState(top, tween(600), label = "top")
     val midColor by animateColorAsState(mid, tween(600), label = "mid")
@@ -60,28 +62,27 @@ fun BubbleBackground(
             SceneCanvas(
                 scene ?: { Triple(topColor, midColor, bottomColor).let { SceneMix(Scene.WAVES, Scene.WAVES, 0f, it, it) } },
                 scroll,
+                paused,
             )
         }
         if (dim > 0f) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dim)))
-        if (particles) Particles(particleCount)
+        if (particles && !LocalLook.current.light) Particles(particleCount)
     }
 }
 
 /** Draws the animated scene (or a cross-fade of two while swiping) from [mix], read only while drawing. */
 @Composable
-private fun SceneCanvas(mix: () -> SceneMix, scroll: () -> Float) {
+private fun SceneCanvas(mix: () -> SceneMix, scroll: () -> Float, paused: () -> Boolean) {
     val look = LocalLook.current
-    val running by rememberInfiniteTransition(label = "scene").animateFloat(
-        0f, (2 * PI).toFloat(),
-        infiniteRepeatable(tween((26_000 / look.sceneSpeed.coerceIn(0.2f, 3f)).toInt(), easing = LinearEasing), RepeatMode.Restart),
-        label = "phase",
-    )
-    // With reduced motion the scene stands still.
-    val phase = if (look.reduceMotion) 1.9f else running
+    // Read only while drawing, so the scene is redrawn each tick without recomposing anything.
+    val running = rememberLoopClock((26_000 / look.sceneSpeed.coerceIn(0.2f, 3f)).toInt(), look.light)
+    val frozen = remember { floatArrayOf(1.9f) }
     val cache = remember { SceneCache() }
     cache.symbolCount = look.symbols
     val layerPaint = remember { Paint() }
     Canvas(Modifier.fillMaxSize()) {
+        // With reduced motion the scene stands still; while covered by another screen it keeps its last frame.
+        val phase = if (look.reduceMotion) 1.9f else if (paused()) frozen[0] else running.value.also { frozen[0] = it }
         val m = mix()
         val page = scroll()
         if (m.a == m.b || m.t < 0.02f) {

@@ -995,7 +995,8 @@ private fun ArtBanner(b: BannerArt, glare: Boolean) {
         }
         if (b.image == null) fallback()
         else if (b.portrait) {
-            RemoteImage(b.image, Modifier.fillMaxSize().blur(16.dp).graphicsLayer { alpha = 0.65f }) { }
+            // Light mode: no blur (it is costly), a darkened copy of the picture instead.
+            RemoteImage(b.image, Modifier.fillMaxSize().then(if (LocalLook.current.light) Modifier else Modifier.blur(16.dp)).graphicsLayer { alpha = 0.65f }) { }
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.25f)))
             RemoteImage(
                 b.image,
@@ -1033,7 +1034,7 @@ private fun BannerStrip(banners: List<BannerArt>, startPad: Dp, cfg: BannerCfg) 
         contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 14.dp + startPad, end = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        items(banners, key = { it.id }) { b -> ArtBanner(b, cfg.glare) }
+        items(banners, key = { it.id }) { b -> ArtBanner(b, cfg.glare && !LocalLook.current.light) }
     }
 }
 

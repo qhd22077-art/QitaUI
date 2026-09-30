@@ -49,7 +49,8 @@ object AppRepository {
                     packageName = it.activityInfo.packageName,
                     icon = bitmap.asImageBitmap(),
                     tint = tint,
-                    ball = SphereRenderer.render(bitmap, 224, lightBody(tint)).asImageBitmap(),
+                    // On Android 13+ the ball is shaded live, so the pre-rendered picture (a fifth of a megabyte per app) is not made.
+                    ball = if (com.qita.ui.ui.Ball3D.supported) null else SphereRenderer.render(bitmap, 224, lightBody(tint)).asImageBitmap(),
                     installTime = info?.firstInstallTime ?: 0L,
                     version = info?.versionName.orEmpty(),
                     category = it.activityInfo.applicationInfo.category,

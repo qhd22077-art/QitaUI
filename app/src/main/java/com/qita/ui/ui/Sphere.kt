@@ -22,6 +22,9 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import com.qita.ui.SphereRenderer
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.StrokeCap
@@ -65,7 +68,8 @@ fun Sphere(
     val look = LocalLook.current
     val body = remember(app.icon, look.bodyMode, look.bodyColor) { bodyFor(app, look) }
     val paint = if (live3d) remember(app.icon) { Ball3D.create(app, body) } else null
-    val ball = if (round && paint == null) app.ball else null
+    // The pre-rendered ball: made here, once, only if a bubble really needs it (3D off, or before Android 13).
+    val ball = if (round && paint == null) (app.ball ?: remember(app.icon, app.tint) { SphereRenderer.render(app.icon.asAndroidBitmap(), 224, com.qita.ui.lightBody(app.tint)).asImageBitmap() }) else null
     val light = lerp(app.tint, Color.White, 0.42f)
     val dark = lerp(app.tint, Color.Black, 0.38f)
     Box(

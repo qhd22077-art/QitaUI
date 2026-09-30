@@ -141,6 +141,8 @@ data class Settings(
     val notifColor: Int = 0xFF1D3E8F.toInt(),
     /** 0 landscape, 1 portrait, 2 follows how the device is held. */
     val orientation: Int = 0,
+    /** Saves memory and battery: 30 fps backgrounds, fewer symbols, no blur, smaller caches, no 120 Hz. */
+    val lightMode: Boolean = false,
     val glass: Float = 0.85f,
     val glassBubbles: Boolean = true,
     val prevTheme: Int = 0,
@@ -228,6 +230,7 @@ class SettingsStore(private val context: Context) {
         symbolCount = prefs.getInt("symbolCount", 45),
         notifColor = prefs.getInt("notifColor", 0xFF1D3E8F.toInt()),
         orientation = prefs.getInt("orientation", 0),
+        lightMode = prefs.getBoolean("lightMode", false),
         glass = prefs.getFloat("glass", 0.85f),
         glassBubbles = prefs.getBoolean("glassBubbles", true),
         prevTheme = prefs.getInt("prevTheme", 0),
@@ -303,6 +306,7 @@ class SettingsStore(private val context: Context) {
             .putInt("symbolCount", s.symbolCount)
             .putInt("notifColor", s.notifColor)
             .putInt("orientation", s.orientation)
+            .putBoolean("lightMode", s.lightMode)
             .putFloat("glass", s.glass)
             .putBoolean("glassBubbles", s.glassBubbles)
             .putInt("prevTheme", s.prevTheme)
