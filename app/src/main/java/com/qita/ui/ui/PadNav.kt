@@ -27,6 +27,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -60,6 +63,8 @@ class PadTarget(val key: Any) {
     var pad: Dp = 5.dp
     /** False for items that show their own selection look (such as the Settings rows). */
     var ring = true
+    /** True for buttons that sit on top of other things (the tiles hanging over a LiveArea): other items' highlights are not drawn over them. */
+    var overlay = false
     var app: LaunchableApp? = null
     var onClick: () -> Unit = {}
     /** Left/right adjusts instead of moving (sliders). */
@@ -253,6 +258,7 @@ fun Modifier.padTarget(
     bring: Boolean = true,
     ring: Boolean = true,
     onAdjust: ((Int) -> Unit)? = null,
+    overlay: Boolean = false,
     onClick: () -> Unit = {},
 ): Modifier = composed {
     if (key == null || !LocalPadEnabled.current) {
@@ -265,6 +271,7 @@ fun Modifier.padTarget(
         target.app = app
         target.pad = pad
         target.ring = ring
+        target.overlay = overlay
         target.onClick = onClick
         target.onAdjust = onAdjust
         DisposableEffect(target) {
@@ -291,9 +298,10 @@ fun Modifier.padClickable(
     pad: Dp = 5.dp,
     ring: Boolean = true,
     onAdjust: ((Int) -> Unit)? = null,
+    overlay: Boolean = false,
     onClick: () -> Unit,
 ): Modifier = this
-    .padTarget(key = key, corner = corner, app = app, pad = pad, ring = ring, onAdjust = onAdjust, onClick = onClick)
+    .padTarget(key = key, corner = corner, app = app, pad = pad, ring = ring, onAdjust = onAdjust, overlay = overlay, onClick = onClick)
     .clickable(onClick = onClick)
 
 /** Lets the gamepad scroll this list when the highlight reaches its edge. Place it before the scroll modifier. */
@@ -341,9 +349,21 @@ fun PadRing() {
             val size = Size(rect.width + 2 * p, rect.height + 2 * p)
             val radius = corner?.toPx()?.plus(p) ?: (min(size.width, size.height) / 2f)
             val cr = CornerRadius(radius, radius)
-            drawRoundRect(color.copy(alpha = 0.20f * pulse * alpha), topLeft, size, cr, style = Stroke(width = (8.dp + pad * 2f).toPx()))
-            drawRoundRect(color.copy(alpha = 0.45f * pulse * alpha), topLeft, size, cr, style = Stroke(width = (4.dp + pad * 1.2f).toPx()))
-            drawRoundRect(color.copy(alpha = alpha), topLeft, size, cr, style = Stroke(width = 4.dp.toPx()))
+            // Buttons that sit on top of others (the tiles over a LiveArea) stay clear of everyone else's highlight.
+            val cur = PadNav.current
+            val covers = if (hoverShown) emptyList() else PadNav.targets.values.filter { it.overlay && it.key != cur && it.bounds != Rect.Zero }.map { it.bounds }
+            clipOutRects(covers, 0) {
+                drawRoundRect(color.copy(alpha = 0.20f * pulse * alpha), topLeft, size, cr, style = Stroke(width = (8.dp + pad * 2f).toPx()))
+                drawRoundRect(color.copy(alpha = 0.45f * pulse * alpha), topLeft, size, cr, style = Stroke(width = (4.dp + pad * 1.2f).toPx()))
+                drawRoundRect(color.copy(alpha = alpha), topLeft, size, cr, style = Stroke(width = 4.dp.toPx()))
+            }
         }
     }
+}
+
+/** Draws [block] with every rectangle in [rects] (from [index] on) cut out of the drawing area. */
+private fun DrawScope.clipOutRects(rects: List<Rect>, index: Int, block: DrawScope.() -> Unit) {
+    if (index >= rects.size) { block(); return }
+    val r = rects[index]
+    clipRect(r.left, r.top, r.right, r.bottom, ClipOp.Difference) { clipOutRects(rects, index + 1, block) }
 }

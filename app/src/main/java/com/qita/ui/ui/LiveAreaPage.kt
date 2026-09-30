@@ -372,7 +372,7 @@ private fun ActionTile(key: String, glyph: String, color: Color, onClick: () -> 
         Modifier
             .size(58.dp)
             // A slim ring, so it does not spill over the launch gate or the tile beside it.
-            .padClickable(key, corner = 8.dp, pad = 2.dp, onClick = onClick)
+            .padClickable(key, corner = 8.dp, pad = 2.dp, overlay = true, onClick = onClick)
             .shadow(6.dp, shape)
             .clip(shape)
             .background(Brush.verticalGradient(listOf(Color.White, Color(0xFFD6DCE6))))
