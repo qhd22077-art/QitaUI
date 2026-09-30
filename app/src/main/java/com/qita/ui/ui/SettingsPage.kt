@@ -231,6 +231,7 @@ fun SettingsPage(
                         "topbar" -> {
                             CheckRow("set:showClock", "◷", "Show the clock", settings.showClock) { onChange(settings.copy(showClock = it)) }
                             SliderRow("set:clockSize", "A", "Clock size", settings.clockSize, 0.7f..1.5f, 0.05f) { onChange(settings.copy(clockSize = it)) }
+                            SwatchRow("set:notifColor", "●", "Notification button and panel colour", settings.notifColor) { onChange(settings.copy(notifColor = it)) }
                             SliderRow("set:barOpacity", "◑", "Bar opacity", settings.barOpacity, 0.2f..1f, 0.1f) { onChange(settings.copy(barOpacity = it)) }
                             CheckRow("set:24h2", "◷", "24-hour clock", settings.use24h) { onChange(settings.copy(use24h = it)) }
                             CheckRow("set:battery2", "⚡", "Show battery level", settings.showBattery) { onChange(settings.copy(showBattery = it)) }

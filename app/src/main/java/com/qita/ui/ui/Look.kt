@@ -67,7 +67,7 @@ fun Settings.look() = Look(
 
 /** The swatches offered wherever a colour is picked. */
 val SWATCHES: List<Int> = listOf(
-    0xFF40E0E0, 0xFF4A78D0, 0xFF5CC85A, 0xFFF0B030, 0xFFF0782C, 0xFFE0567A, 0xFFA060E0, 0xFFFFFFFF, 0xFF101216,
+    0xFF1D3E8F, 0xFF40E0E0, 0xFF4A78D0, 0xFF5CC85A, 0xFFF0B030, 0xFFF0782C, 0xFFE0567A, 0xFFA060E0, 0xFFFFFFFF, 0xFF101216,
 ).map { it.toInt() }
 
 /** The glass colour behind transparent parts of [app]'s art, for the chosen colour mode. */

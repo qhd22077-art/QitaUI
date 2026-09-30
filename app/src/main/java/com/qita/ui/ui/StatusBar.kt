@@ -1,6 +1,8 @@
 package com.qita.ui.ui
 
 import android.content.Context
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.foundation.combinedClickable
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.ConnectivityManager
@@ -150,17 +152,25 @@ fun StatusBar(
 
 /** The big translucent sphere in the top-right corner. Here it opens the launcher menu. */
 @Composable
-fun CornerSphere(onClick: () -> Unit, modifier: Modifier = Modifier) {
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+fun CornerSphere(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    color: Color = Color(0xFF1D3E8F),
+    /** Number of notifications, shown as a small badge; 0 shows none. */
+    count: Int = 0,
+    onLongClick: () -> Unit = {},
+) {
     Box(
         modifier
             .size(68.dp)
             .padTarget("bar:menu", corner = null, pad = 4.dp, bring = false, onClick = onClick)
             .clip(CircleShape)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .drawBehind {
                 drawRect(
                     Brush.radialGradient(
-                        listOf(Color(0xFFE3EEFF).copy(alpha = 0.90f), Color(0xFF6E9BE8).copy(alpha = 0.80f), Color(0xFF2D55B0).copy(alpha = 0.80f)),
+                        listOf(lerp(color, Color.White, 0.55f).copy(alpha = 0.92f), color.copy(alpha = 0.92f), lerp(color, Color.Black, 0.35f).copy(alpha = 0.95f)),
                         center = Offset(size.width * 0.38f, size.height * 0.32f),
                         radius = size.width * 0.85f,
                     ),
@@ -176,6 +186,17 @@ fun CornerSphere(onClick: () -> Unit, modifier: Modifier = Modifier) {
                 .clip(CircleShape)
                 .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.6f), Color.Transparent))),
         )
+        if (count > 0) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 14.dp, bottom = 12.dp)
+                    .size(18.dp)
+                    .clip(CircleShape)
+                    .background(Color.White),
+                contentAlignment = Alignment.Center,
+            ) { Text(if (count > 9) "9+" else count.toString(), color = color, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+        }
     }
 }
 

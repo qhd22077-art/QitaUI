@@ -99,6 +99,7 @@ import com.qita.ui.Command
 import com.qita.ui.CrashReporter
 import com.qita.ui.Controller
 import com.qita.ui.CursorLayer
+import com.qita.ui.Notifications
 import com.qita.ui.LAYOUTS
 import com.qita.ui.PAGE_PHOTO
 import com.qita.ui.PageLayout
@@ -136,6 +137,7 @@ fun HomeScreen(homePresses: Int = 0) {
     var showSettings by remember { mutableStateOf(false) }
     var showTutorial by remember { mutableStateOf(!store.tutorialSeen()) }
     var showQuickMenu by remember { mutableStateOf(false) }
+    var showNotifs by remember { mutableStateOf(false) }
     var showLock by remember { mutableStateOf(settings.lockScreen) }
     var editMode by remember { mutableStateOf(false) }
     var liveOrigin by remember { mutableStateOf(TransformOrigin.Center) }
@@ -206,7 +208,7 @@ fun HomeScreen(homePresses: Int = 0) {
     // The page whose photo (if any) is shown: the nearest one while swiping.
     val bgPage by remember { derivedStateOf { (pagerState.currentPage + pagerState.currentPageOffsetFraction).roundToInt().coerceAtLeast(0) } }
 
-    val menuOpen = menuFor != null || showQuickMenu
+    val menuOpen = menuFor != null || showQuickMenu || showNotifs
     val anyOverlay = showLock || showDesktop || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null
 
     fun addToHome(app: LaunchableApp) {
@@ -423,7 +425,7 @@ fun HomeScreen(homePresses: Int = 0) {
             showIndex = true
         } else if (homePresses > 0) {
             showIndex = false
-            selected = null; showSettings = false; showSearch = false; showDesktop = false; menuFor = null; showQuickMenu = false; editMode = false; showBackgrounds = false; dragApp = null
+            selected = null; showSettings = false; showSearch = false; showDesktop = false; menuFor = null; showQuickMenu = false; showNotifs = false; editMode = false; showBackgrounds = false; dragApp = null
             endMove(true)
             pagerState.animateScrollToPage(0)
         }
@@ -454,7 +456,7 @@ fun HomeScreen(homePresses: Int = 0) {
     BackHandler(enabled = editMode) { editMode = false }
     BackHandler(enabled = showBackgrounds && !menuOpen) { showBackgrounds = false }
     BackHandler(enabled = crashTrace != null && !showLock) { CrashReporter.clear(context); crashTrace = null }
-    BackHandler(enabled = menuOpen && crashTrace == null) { menuFor = null; showQuickMenu = false }
+    BackHandler(enabled = menuOpen && !showNotifs && crashTrace == null) { menuFor = null; showQuickMenu = false }
     BackHandler(enabled = showTutorial && !menuOpen) { showTutorial = false; store.setTutorialSeen() }
     BackHandler(enabled = showSettings && !menuOpen && !showTutorial) { showSettings = false }
     BackHandler(enabled = showSearch && !showSettings && !menuOpen && !showTutorial) { showSearch = false }
@@ -652,7 +654,10 @@ fun HomeScreen(homePresses: Int = 0) {
                 )
             }
             CornerSphere(
-                onClick = { showQuickMenu = true },
+                onClick = { showNotifs = true },
+                onLongClick = { showQuickMenu = true },
+                color = Color(settings.notifColor),
+                count = Notifications.items.size,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .offset(x = 24.dp, y = (-22).dp)
@@ -774,6 +779,14 @@ fun HomeScreen(homePresses: Int = 0) {
                     onDone = { showBackgrounds = false },
                 )
             }
+        }
+
+        if (showNotifs) {
+            NotificationPanel(
+                color = Color(settings.notifColor),
+                onLaunch = { pkg -> apps.firstOrNull { it.packageName == pkg }?.let { launchApp(it) } },
+                onDismiss = { showNotifs = false },
+            )
         }
 
         if (showQuickMenu) {
