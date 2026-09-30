@@ -13,6 +13,8 @@ import android.net.http.SslError
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
+import android.view.MotionEvent
+import android.view.View
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -104,6 +106,8 @@ import com.qita.ui.DownloadItem
 import com.qita.ui.ReleaseResolver
 import com.qita.ui.Settings
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.foundation.horizontalScroll
 import com.qita.ui.VitaHb
 import com.qita.ui.VitaDb
 import kotlinx.coroutines.Dispatchers
@@ -181,6 +185,21 @@ private val PRESETS = listOf(
 internal val TitleShadow = TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.45f), Offset(0f, 2f), 4f))
 
 private fun storeBackground() = Brush.verticalGradient(listOf(StoreTop, StoreMid, StoreBottom))
+
+/** The mobile layout (a plain mobile Chrome's identity, page fitted to the screen) or the desktop site (desktop identity, wide page). */
+private fun applyWebMode(context: Context, web: WebView, desktop: Boolean) {
+    val ws = web.settings
+    if (desktop) {
+        ws.userAgentString = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ws.useWideViewPort = true
+        ws.loadWithOverviewMode = true
+    } else {
+        // Many sites turn away the stock web view's identity ("; wv"); introduce it as a plain mobile Chrome.
+        ws.userAgentString = WebSettings.getDefaultUserAgent(context).replace("; wv", "").replace(Regex("Version/\\d+\\.\\d+ "), "")
+        ws.useWideViewPort = false
+        ws.loadWithOverviewMode = false
+    }
+}
 
 /** A page shown in place of one that would not load, saying why, with buttons to try again (or, for https, over http or despite the certificate). */
 private fun showPageError(view: WebView, url: String, reason: String, certificate: Boolean) {
@@ -304,6 +323,7 @@ fun StoreScreen(
     var progress by remember { mutableStateOf(0) }
     // Sites the user chose to open although their certificate is not trusted.
     val allowInsecure = remember { HashSet<String>() }
+    var desktop by remember { mutableStateOf(context.getSharedPreferences("qita_store", Context.MODE_PRIVATE).getBoolean("web_desktop", false)) }
     val web = remember {
         WebView(context).apply {
             // "this.settings" is the web view's; plain "settings" would be the launcher's own.
@@ -313,13 +333,23 @@ fun StoreScreen(
             ws.databaseEnabled = true
             ws.builtInZoomControls = true
             ws.displayZoomControls = false
-            ws.useWideViewPort = true
-            ws.loadWithOverviewMode = true
             ws.javaScriptCanOpenWindowsAutomatically = true
             ws.setSupportMultipleWindows(true)
             ws.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-            // Many sites turn away the stock web view's identity ("; wv"); introduce it as a plain mobile Chrome.
-            ws.userAgentString = WebSettings.getDefaultUserAgent(context).replace("; wv", "").replace(Regex("Version/\\d+\\.\\d+ "), "")
+            applyWebMode(context, this, desktop)
+            // So the page can be scrolled and tapped: a real hardware layer, tiles drawn ahead of the scroll, nested scrolling on,
+            // and no parent (the Store's own touch handling) is allowed to take a drag away.
+            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            setLayerType(View.LAYER_TYPE_HARDWARE, null)
+            overScrollMode = View.OVER_SCROLL_NEVER
+            isNestedScrollingEnabled = true
+            isFocusable = true
+            isFocusableInTouchMode = true
+            ws.setOffscreenPreRaster(true)
+            setOnTouchListener { v, e ->
+                if (e.actionMasked == MotionEvent.ACTION_DOWN) v.parent?.requestDisallowInterceptTouchEvent(true)
+                false
+            }
             CookieManager.getInstance().setAcceptCookie(true)
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
         }
@@ -485,7 +515,17 @@ fun StoreScreen(
                         started, looking, ::download, ::openPage, pics, snapRev, cfg, stores, ::openStore, { tab = 3 },
                         VitaUi(vita, vitaLoading, vitaError, vitaType, { vitaType = it }, { vitaDetail = it }, ::downloadVita, { loadVita(true) }, { openPage(VitaDb.SITE) }, started),
                     )
-                    1 -> BrowserTab(web, browsing, pageUrl, progress, ::go, ::openPage, context, onToast, { browsing = false; web.loadUrl("about:blank") })
+                    1 -> BrowserTab(
+                        web, browsing, pageUrl, progress, ::go, ::openPage, context, onToast, { browsing = false; web.loadUrl("about:blank") },
+                        desktop = desktop,
+                        onDesktop = {
+                            desktop = !desktop
+                            context.getSharedPreferences("qita_store", Context.MODE_PRIVATE).edit().putBoolean("web_desktop", desktop).apply()
+                            applyWebMode(context, web, desktop)
+                            if (browsing) web.reload()
+                            onToast(if (desktop) "Desktop site" else "Mobile site")
+                        },
+                    )
                     2 -> DownloadsTab(onToast)
                     else -> StoreSettings(
                         stores, ::updateStores, cfg, ::updateCfg, picFolder, onToast,
@@ -1162,9 +1202,28 @@ private fun BrowserTab(
     context: Context,
     onToast: (String) -> Unit,
     onHome: () -> Unit,
+    desktop: Boolean,
+    onDesktop: () -> Unit,
 ) {
     var address by remember(url, browsing) { mutableStateOf(if (browsing) url else "") }
     var bookmarks by remember { mutableStateOf(loadBookmarks(context)) }
+    // The right stick scrolls the page (in cursor mode the pointer loop already turns it into a mouse wheel).
+    LaunchedEffect(browsing) {
+        if (!browsing) return@LaunchedEffect
+        var last = 0L
+        while (true) {
+            withFrameNanos { now ->
+                val dt = if (last == 0L) 0f else ((now - last) / 1_000_000_000f).coerceAtMost(0.05f)
+                last = now
+                val v = com.qita.ui.Controller.scrollY
+                val a = kotlin.math.abs(v)
+                if (!com.qita.ui.Controller.cursorMode && a > 0.15f) {
+                    val n = (a - 0.15f) / 0.85f
+                    web.scrollBy(0, (kotlin.math.sign(v) * n * n * 1800f * dt * context.resources.displayMetrics.density).toInt())
+                }
+            }
+        }
+    }
     Column(Modifier.fillMaxSize()) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -1193,6 +1252,23 @@ private fun BrowserTab(
                     bookmarks = (bookmarks.filter { it.second != url } + (web.title.orEmpty().ifBlank { url } to url))
                     saveBookmarks(context, bookmarks)
                     onToast("Bookmarked")
+                }
+            }
+        }
+        if (browsing) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 6.dp).horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                BarButton("store:web:back", "◀") { if (web.canGoBack()) web.goBack() }
+                BarButton("store:web:fwd", "▶") { if (web.canGoForward()) web.goForward() }
+                BarButton("store:web:up", "▲") { web.pageUp(false) }
+                BarButton("store:web:down", "▼") { web.pageDown(false) }
+                BarButton("store:web:top", "Top") { web.pageUp(true) }
+                BarButton("store:web:desk", if (desktop) "Mobile site" else "Desktop site") { onDesktop() }
+                BarButton("store:web:chrome", "Open in Chrome") {
+                    if (url.isNotBlank()) runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                        .onFailure { onToast("No other browser found") }
                 }
             }
         }
