@@ -1090,7 +1090,7 @@ fun HomeScreen(homePresses: Int = 0) {
                 r, gameFolders,
                 onConfirm = { plan ->
                     askReq = null
-                    r.onItem(DownloadEngine.enqueue(r.url, r.name, r.kind, r.cookie, r.userAgent, plan))
+                    r.onItem(DownloadEngine.enqueue(r.url, r.name, r.kind, r.cookie, r.userAgent, plan, r.referer))
                     toast = "Downloading ${r.name}. Progress is in the notification panel."
                 },
                 onCancel = { askReq = null },

@@ -43,6 +43,7 @@ class DownloadRequest(
     val kind: DlKind,
     val cookie: String?,
     val userAgent: String?,
+    val referer: String?,
     val onItem: (DownloadItem) -> Unit,
 )
 
@@ -91,6 +92,8 @@ class DownloadItem(
     internal var job: Job? = null
     /** The user's answers, if they were asked before it began. */
     var plan: DownloadPlan? = null
+    /** The page the download was started from; some servers refuse a request without it. */
+    var referer: String? = null
 
     val fraction: Float get() = if (total > 0) (bytes.toFloat() / total).coerceIn(0f, 1f) else -1f
 
@@ -143,6 +146,7 @@ object DownloadEngine {
                     o.optString("cookie").ifEmpty { null }, o.optString("ua").ifEmpty { null },
                     o.optLong("started"), File(dir(app!!), o.getString("id") + ".part"),
                 )
+                item.referer = o.optString("ref").ifEmpty { null }
                 if (o.has("plan_folder") || o.has("plan_unzip")) item.plan = DownloadPlan(o.optBoolean("plan_unzip"), o.optString("plan_folder").ifEmpty { null }, o.optBoolean("plan_del", true))
                 item.total = o.optLong("total", -1)
                 item.finalPath = o.optString("final").ifEmpty { null }
@@ -161,7 +165,7 @@ object DownloadEngine {
             arr.put(
                 JSONObject().put("id", it.id).put("url", it.url).put("name", it.name).put("kind", it.kind.name)
                     .put("cookie", it.cookie ?: "").put("ua", it.userAgent ?: "").put("started", it.startedAt)
-                    .put("total", it.total).put("final", it.finalPath ?: "").put("state", it.state.name).put("error", it.error ?: "")
+                    .put("total", it.total).put("final", it.finalPath ?: "").put("state", it.state.name).put("error", it.error ?: "").put("ref", it.referer ?: "")
                     .also { o -> it.plan?.let { p -> o.put("plan_unzip", p.unzip).put("plan_folder", p.folderUri ?: "").put("plan_del", p.deleteZip) } },
             )
         }
@@ -169,11 +173,12 @@ object DownloadEngine {
     }
 
     /** Starts a download and returns it. [name] is cleaned of characters a file name cannot hold. */
-    fun enqueue(url: String, name: String, kind: DlKind = DlKind.FILE, cookie: String? = null, userAgent: String? = null, plan: DownloadPlan? = null): DownloadItem {
+    fun enqueue(url: String, name: String, kind: DlKind = DlKind.FILE, cookie: String? = null, userAgent: String? = null, plan: DownloadPlan? = null, referer: String? = null): DownloadItem {
         val context = app ?: error("DownloadEngine.init was not called")
         val id = java.lang.Long.toHexString(System.nanoTime())
         val item = DownloadItem(id, url, cleanName(name), kind, cookie, userAgent, System.currentTimeMillis(), File(dir(context), "$id.part"))
         item.plan = plan
+        item.referer = referer
         items.add(0, item)
         persist()
         start(item)
@@ -187,14 +192,14 @@ object DownloadEngine {
      * The way the Store starts a download. APKs go straight to the installer's route. Anything else first asks the user (unzip?
      * which folder? keep the zip?), unless they switched the questions off, when their last answers are used.
      */
-    fun request(url: String, name: String, kind: DlKind = DlKind.FILE, cookie: String? = null, userAgent: String? = null, onItem: (DownloadItem) -> Unit = {}) {
+    fun request(url: String, name: String, kind: DlKind = DlKind.FILE, cookie: String? = null, userAgent: String? = null, referer: String? = null, onItem: (DownloadItem) -> Unit = {}) {
         val context = app ?: error("DownloadEngine.init was not called")
         val apk = kind == DlKind.APK || name.endsWith(".apk", true)
         val ask = asker
         if (apk || ask == null || !DownloadPrefs.ask(context)) {
-            onItem(enqueue(url, name, kind, cookie, userAgent, if (apk) null else DownloadPrefs.quietPlan(context)))
+            onItem(enqueue(url, name, kind, cookie, userAgent, if (apk) null else DownloadPrefs.quietPlan(context), referer))
         } else {
-            ask(DownloadRequest(url, name, kind, cookie, userAgent, onItem))
+            ask(DownloadRequest(url, name, kind, cookie, userAgent, referer, onItem))
         }
     }
 
@@ -231,26 +236,44 @@ object DownloadEngine {
 
     private suspend fun run(item: DownloadItem) {
         try {
-            var url = item.url
+            var url = fixUrl(item.url)
             var redirects = 0
-            val existing = item.partFile.length()
+            var existing = item.partFile.length()
+            var useCookie = true
+            var useRange = true
             while (true) {
                 val conn = URL(url).openConnection() as HttpURLConnection
                 conn.instanceFollowRedirects = false
                 conn.connectTimeout = 15000
                 conn.readTimeout = 20000
-                item.userAgent?.let { conn.setRequestProperty("User-Agent", it) }
-                item.cookie?.let { conn.setRequestProperty("Cookie", it) }
-                if (existing > 0) conn.setRequestProperty("Range", "bytes=$existing-")
+                // A browser's headers: servers turn away the plain "Java" identity and requests with no Accept.
+                conn.setRequestProperty("User-Agent", item.userAgent ?: BROWSER_UA)
+                conn.setRequestProperty("Accept", "*/*")
+                conn.setRequestProperty("Accept-Language", "en-US,en;q=0.9")
+                (item.referer ?: originOf(item.url))?.let { conn.setRequestProperty("Referer", it) }
+                if (useCookie) item.cookie?.let { conn.setRequestProperty("Cookie", it) }
+                if (existing > 0 && useRange) conn.setRequestProperty("Range", "bytes=$existing-")
                 val code = conn.responseCode
                 if (code in 300..399) {
                     val next = conn.getHeaderField("Location") ?: throw IOException("Bad redirect")
                     conn.disconnect()
-                    url = URL(URL(url), next).toString()
+                    url = fixUrl(URL(URL(url), next).toString())
                     if (++redirects > 6) throw IOException("Too many redirects")
                     continue
                 }
-                if (code != 200 && code != 206) { conn.disconnect(); throw IOException("Server said $code") }
+                // A refused request is tried again without the parts that most often cause it: a stale partial file's Range,
+                // then the cookie.
+                if ((code == 400 || code == 416) && existing > 0 && useRange) {
+                    conn.disconnect(); useRange = false; item.partFile.delete(); existing = 0; continue
+                }
+                if (code == 400 && useCookie && item.cookie != null) { conn.disconnect(); useCookie = false; continue }
+                if (code != 200 && code != 206) {
+                    val note = runCatching { conn.responseMessage }.getOrNull().orEmpty()
+                    val body = runCatching { conn.errorStream?.bufferedReader()?.use { it.readText().take(400) } }.getOrNull().orEmpty()
+                        .replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " ").trim().take(90)
+                    conn.disconnect()
+                    throw IOException("Server said $code" + (if (note.isNotBlank()) " ($note)" else "") + (if (body.isNotBlank()) ": $body" else ""))
+                }
                 val resumed = code == 206 && existing > 0
                 val length = conn.contentLengthLong
                 item.total = if (length >= 0) length + (if (resumed) existing else 0L) else -1L
@@ -297,6 +320,25 @@ object DownloadEngine {
             item.error = e.message ?: "failed"
             persist()
         }
+    }
+
+    private const val BROWSER_UA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+
+    private fun originOf(url: String): String? = runCatching { URL(url).let { it.protocol + "://" + it.host + "/" } }.getOrNull()
+
+    /**
+     * Makes a link safe to send: spaces, brackets, quotes and non-ASCII letters in it (a file name such as "Game (USA) [!].zip"
+     * straight from a page) are percent-encoded, which servers insist on and answer "400 Bad Request" to otherwise. Characters that
+     * are already encoded are left alone.
+     */
+    fun fixUrl(url: String): String {
+        val keep = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#@!$&'()*+,;=%"
+        val sb = StringBuilder()
+        for (ch in url.trim()) {
+            if (keep.indexOf(ch) >= 0) sb.append(ch)
+            else ch.toString().toByteArray(Charsets.UTF_8).forEach { sb.append('%').append("%02X".format(it.toInt() and 0xFF)) }
+        }
+        return sb.toString()
     }
 
     private fun unique(dir: File, name: String): File {

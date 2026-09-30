@@ -438,7 +438,7 @@ fun StoreScreen(
         web.setDownloadListener { url, userAgent, disposition, mime, _ ->
             val name = URLUtil.guessFileName(url, disposition, mime)
             val kind = if (name.endsWith(".apk", true)) DlKind.APK else DlKind.FILE
-            DownloadEngine.request(url, name, kind, CookieManager.getInstance().getCookie(url), userAgent)
+            DownloadEngine.request(url, name, kind, CookieManager.getInstance().getCookie(url), userAgent, web.url)
         }
         onDispose { web.stopLoading(); web.destroy() }
     }
