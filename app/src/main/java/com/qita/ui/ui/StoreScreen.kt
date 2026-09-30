@@ -20,6 +20,9 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import com.qita.ui.GameLibrary
+import com.qita.ui.StoreBanners
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
@@ -191,6 +194,21 @@ fun StoreScreen(
     // The download started from each catalogue entry, so its button can show progress.
     val started = remember { mutableStateMapOf<String, DownloadItem>() }
     val looking = remember { mutableStateMapOf<String, Boolean>() }
+    // Banner pictures: from the user's own folder (changing weekly), and screenshots of their games.
+    var pics by remember { mutableStateOf(emptyList<String>()) }
+    var picRev by remember { mutableStateOf(0) }
+    var snapRev by remember { mutableStateOf(0) }
+    var picFolder by remember { mutableStateOf(StoreBanners.folder(context) != null) }
+    LaunchedEffect(picRev) { pics = withContext(Dispatchers.IO) { StoreBanners.picks(context) } }
+    LaunchedEffect(Unit) { if (StoreBanners.ensureSnaps(context) > 0) snapRev++ }
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            StoreBanners.setFolder(context, uri)
+            picFolder = true
+            picRev++
+            onToast("Banner folder set. A few of its pictures will show in the Store, a different few each week.")
+        }
+    }
     // The Vita homebrew list, loaded the first time its tab is opened.
     var vita by remember { mutableStateOf<List<VitaHb>?>(null) }
     var vitaLoading by remember { mutableStateOf(false) }
@@ -317,7 +335,7 @@ fun StoreScreen(
                         )
                     } else Catalogue(
                         segment, { segment = it }, detail, { detail = it }, searching, query, { query = it },
-                        started, looking, ::download, ::openPage,
+                        started, looking, ::download, ::openPage, pics, snapRev,
                         VitaUi(vita, vitaLoading, vitaError, vitaType, { vitaType = it }, { vitaDetail = it }, ::downloadVita, { loadVita(true) }, { openPage(VitaDb.SITE) }, started),
                     )
                     1 -> BrowserTab(web, browsing, pageUrl, progress, ::go, ::openPage, context, onToast, { browsing = false; web.loadUrl("about:blank") })
@@ -339,10 +357,13 @@ fun StoreScreen(
             com.qita.ui.ui.ContextMenu(
                 title = "Store",
                 subtitle = "${DownloadEngine.items.count { it.state == DlState.RUNNING }} downloading",
-                items = listOf(
+                items = listOfNotNull(
                     MenuItem("Downloads") { menu = false; tab = 2 },
                     MenuItem("Notifications") { menu = false; onOpenNotifications() },
                     MenuItem("Catalogue") { menu = false; tab = 0; detail = null },
+                    MenuItem(if (picFolder) "Change banner folder" else "Choose a banner folder") { menu = false; folderPicker.launch(null) },
+                    if (picFolder) MenuItem("Shuffle banner pictures") { menu = false; StoreBanners.shuffle(context); picRev++; onToast("Picked another few pictures") } else null,
+                    if (picFolder) MenuItem("Stop using my folder") { menu = false; StoreBanners.clearFolder(context); picFolder = false; picRev++; onToast("Banner folder removed") } else null,
                     MenuItem("Close the Store") { menu = false; onClose() },
                     MenuItem("Cancel") { menu = false },
                 ),
@@ -521,6 +542,8 @@ private fun Catalogue(
     looking: Map<String, Boolean>,
     onDownload: (StoreEntry) -> Unit,
     onOpenPage: (String) -> Unit,
+    pics: List<String>,
+    snapRev: Int,
     vita: VitaUi,
 ) {
     if (detail != null) {
@@ -549,14 +572,23 @@ private fun Catalogue(
     val density = LocalDensity.current
     val appContext = LocalContext.current
     // Covers of the user's own games, already fetched for the Games screen.
-    val myGames = remember { runCatching { GameLibrary.games(appContext).filter { GameLibrary.coverFile(appContext, it.id).exists() } }.getOrDefault(emptyList()) }
-    val banners = remember(vitaAll, myGames) {
+    val myGames = remember(snapRev) {
+        runCatching {
+            GameLibrary.games(appContext).filter { GameLibrary.coverFile(appContext, it.id).exists() || StoreBanners.snapFile(appContext, it.id).exists() }
+        }.getOrDefault(emptyList())
+    }
+    val banners = remember(vitaAll, myGames, pics) {
         buildList {
+            // The user's own pictures come first.
+            pics.forEachIndexed { i, path -> add(BannerArt("p$i", "", "", path, false, 0xFF203060, "", null)) }
             vitaAll?.filter { it.type == 1 && it.iconUrl != null }?.take(5)?.forEach { hb ->
                 add(BannerArt("v${hb.id}", hb.name, "Vita homebrew  ·  ${hb.author}", hb.iconUrl, true, 0xFF1A5FB4, "VITA") { vita.onOpen(hb) })
             }
-            myGames.take(4).forEach { g ->
-                add(BannerArt("g${g.id}", g.title, "From your library", GameLibrary.coverFile(appContext, g.id).path, true, 0xFF203060, "GAME", null))
+            myGames.take(5).forEach { g ->
+                val snap = StoreBanners.snapFile(appContext, g.id)
+                // A screenshot fills the banner; a box cover is shown whole over a blurred copy of itself.
+                if (snap.exists()) add(BannerArt("g${g.id}", g.title, "From your library", snap.path, false, 0xFF203060, "GAME", null))
+                else add(BannerArt("g${g.id}", g.title, "From your library", GameLibrary.coverFile(appContext, g.id).path, true, 0xFF203060, "GAME", null))
             }
             CATALOGUE.take(7).forEach { e -> add(BannerArt(e.id, e.name, e.developer, bannerUrl(e), false, e.color, e.short) { onDetail(e) }) }
         }
@@ -714,11 +746,11 @@ private fun ArtBanner(b: BannerArt) {
             RemoteImage(b.image, Modifier.fillMaxSize()) { fallback() }
         }
         // A dark band at the foot for the words, and a pale diagonal glare across the corner.
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f)), 120f, 300f)))
+        if (b.title.isNotBlank()) Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f)), 120f, 300f)))
         Canvas(Modifier.fillMaxSize()) {
             drawRect(Brush.linearGradient(listOf(Color.White.copy(alpha = 0.30f), Color.Transparent), Offset.Zero, Offset(size.width * 0.65f, size.height * 0.9f)))
         }
-        Column(Modifier.align(Alignment.BottomStart).padding(start = if (b.portrait && b.image != null) 96.dp else 14.dp, end = 10.dp, bottom = 9.dp)) {
+        if (b.title.isNotBlank()) Column(Modifier.align(Alignment.BottomStart).padding(start = if (b.portrait && b.image != null) 96.dp else 14.dp, end = 10.dp, bottom = 9.dp)) {
             Text(b.title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, style = TitleShadow)
             Text(b.sub, color = SoftText, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
