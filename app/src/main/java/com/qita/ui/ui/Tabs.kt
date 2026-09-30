@@ -1,6 +1,17 @@
 package com.qita.ui.ui
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.composed
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -78,6 +89,7 @@ fun TabStrip(
                     .onGloballyPositioned { offsets[i] = it.positionInParent().x }
                     .shadow(if (on) 5.dp else 2.dp, shape)
                     .padClickable(key, corner = 14.dp, pad = 3.dp, ring = false) { onSelect(i) }
+                    .litEdge(lit, 14.dp)
                     .background(
                         if (on) Brush.verticalGradient(selectedFill) else Brush.verticalGradient(listOf(idleFill.copy(alpha = if (lit) 0.85f else 0.6f), idleFill.copy(alpha = if (lit) 0.6f else 0.35f))),
                         shape,
@@ -96,4 +108,24 @@ fun TabStrip(
             }
         }
     }
+}
+
+/** Makes a button that is lit (by the gamepad or the pointer) stand out: it swells a little and gets a soft white glow around it. */
+fun Modifier.litEdge(lit: Boolean, corner: Dp = 10.dp): Modifier = composed {
+    val k by animateFloatAsState(if (lit) 1f else 0f, tween(120), label = "litEdge")
+    this
+        .graphicsLayer {
+            val scale = 1f + 0.05f * k
+            scaleX = scale
+            scaleY = scale
+        }
+        .drawBehind {
+            if (k > 0.01f) {
+                val grow = 3.dp.toPx()
+                drawRoundRect(
+                    Color.White.copy(alpha = 0.25f * k), Offset(-grow, -grow), Size(size.width + 2 * grow, size.height + 2 * grow),
+                    CornerRadius(corner.toPx() + grow), style = Stroke(width = 4.dp.toPx()),
+                )
+            }
+        }
 }

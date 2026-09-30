@@ -142,6 +142,8 @@ fun StoreSettings(
     var tidy by remember { mutableStateOf(UserStores.aiTidy(context)) }
     var group by remember { mutableStateOf(UserStores.aiGroup(context)) }
     var askBefore by remember { mutableStateOf(DownloadPrefs.ask(context)) }
+    var wifiOnly by remember { mutableStateOf(DownloadPrefs.wifiOnly(context)) }
+    var parallel by remember { mutableStateOf(DownloadPrefs.maxParallel(context)) }
     fun saveOptions() = UserStores.setAiOptions(context, links, dmode, extra, tidy, group)
     var name by remember { mutableStateOf("") }
     var link by remember { mutableStateOf("") }
@@ -298,6 +300,18 @@ fun StoreSettings(
         item {
             SettingRow("Ask before each download", "Unzip it? Which folder? Keep the zip afterwards? (APKs are not asked.) Off uses your last answers.") {
                 SmallAction("store:dl:ask", if (askBefore) "On" else "Off") { askBefore = !askBefore; DownloadPrefs.setAsk(context, askBefore) }
+            }
+        }
+        item {
+            SettingRow("Wi-Fi only", "On mobile data a download waits until Wi-Fi is back.") {
+                SmallAction("store:dl:wifi", if (wifiOnly) "On" else "Off") { wifiOnly = !wifiOnly; DownloadPrefs.setWifiOnly(context, wifiOnly) }
+            }
+        }
+        item {
+            SettingRow("Downloads at once", "More start together; the rest wait their turn.") {
+                SmallAction("store:dl:par:less", "-") { parallel = (parallel - 1).coerceAtLeast(1); DownloadPrefs.setMaxParallel(context, parallel) }
+                Text("$parallel", color = Color.White, fontSize = 16.sp)
+                SmallAction("store:dl:par:more", "+") { parallel = (parallel + 1).coerceAtMost(6); DownloadPrefs.setMaxParallel(context, parallel) }
             }
         }
         }
@@ -478,6 +492,7 @@ private fun ChoiceChip(key: String, label: String, selected: Boolean, onClick: (
         label,
         Modifier
             .padClickable(key, corner = 8.dp, pad = 2.dp, ring = false, onClick = onClick)
+            .litEdge(lit, 8.dp)
             .background(if (selected) Brush.verticalGradient(listOf(OrangeTop, OrangeBottom)) else Brush.verticalGradient(listOf(TabDark.copy(alpha = if (lit) 0.95f else 0.6f), TabDark.copy(alpha = if (lit) 0.95f else 0.6f))), RoundedCornerShape(8.dp))
             .border(if (lit) 2.dp else 1.dp, Color.White.copy(alpha = if (lit || selected) 0.95f else 0.5f), RoundedCornerShape(8.dp))
             .padding(horizontal = 12.dp, vertical = 7.dp),

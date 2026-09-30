@@ -158,6 +158,8 @@ fun HomeScreen(homePresses: Int = 0) {
     var showStore by remember { mutableStateOf(false) }
     // The games library: folders, which emulator plays what, and a status line while scanning or fetching cover art.
     var gameFolders by remember { mutableStateOf(GameLibrary.folders(context)) }
+    var gameFavs by remember { mutableStateOf(GameLibrary.favourites(context)) }
+    var gamePlayed by remember { mutableStateOf(GameLibrary.lastPlayed(context)) }
     var gameChoices by remember { mutableStateOf(SYSTEMS.mapNotNull { s -> GameLibrary.emulatorChoice(context, s.id)?.let { s.id to it } }.toMap()) }
     var gamesBusy by remember { mutableStateOf<String?>(null) }
     var settingsStart by remember { mutableStateOf<String?>(null) }
@@ -308,6 +310,7 @@ fun HomeScreen(homePresses: Int = 0) {
             null -> {
                 val game = app.game
                 if (game != null) {
+                    gamePlayed = GameLibrary.markPlayed(context, game.id)
                     GameLauncher.launch(context, game)?.let { toast = it }
                 } else {
                     AppRepository.launch(context, app)
@@ -932,6 +935,8 @@ fun HomeScreen(homePresses: Int = 0) {
                     onSetup = { settingsStart = "games"; showSettings = true },
                     onScan = { scanGames() },
                     scanning = gamesBusy,
+                    favourites = gameFavs,
+                    played = gamePlayed,
                     onClose = { showGames = false },
                 )
             }
@@ -1151,6 +1156,7 @@ fun HomeScreen(homePresses: Int = 0) {
                         menuFor = null
                         if (onHome) removeFromHome(app) else addToHome(app)
                     },
+                    MenuItem(if (app.game!!.id in gameFavs) "Remove from favourites" else "Add to favourites") { menuFor = null; gameFavs = GameLibrary.toggleFavourite(context, app.game!!.id) },
                     MenuItem("Choose a cover picture") { menuFor = null; coverTarget = app.game!!.id; coverPicker.launch("image/*") },
                     MenuItem("Get cover art online") { menuFor = null; fetchCovers(app.game) },
                     MenuItem("Remove from library") {

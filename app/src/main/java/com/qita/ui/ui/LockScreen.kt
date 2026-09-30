@@ -259,11 +259,13 @@ fun LockPreview(settings: Settings, modifier: Modifier = Modifier) {
             .border(1.dp, Color.White.copy(alpha = 0.6f), RoundedCornerShape(12.dp)),
     ) {
         val panelRadius = with(LocalDensity.current) { 8.dp.toPx() }
+        // Read here: inside the nested Box, "maxHeight" would be taken from the wrong scope.
+        val previewHeight = maxHeight.value
         Box(
             Modifier.fillMaxSize().padding(8.dp).drawBehind { drawLockPanel(settings.lockPanelTint, settings.lockFrame, settings.lockBorder, settings.lockBevel, panelRadius) },
         ) {
-            val clockSize = (maxHeight.value * 0.27f * settings.lockClockSize).sp
-            val dateSize = (maxHeight.value * 0.075f * settings.lockClockSize).sp
+            val clockSize = (previewHeight * 0.27f * settings.lockClockSize).sp
+            val dateSize = (previewHeight * 0.075f * settings.lockClockSize).sp
             val color = Color(settings.lockClockColor)
             val pos = settings.lockClockPos
             Column(

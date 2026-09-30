@@ -187,6 +187,12 @@ private val PRESETS = listOf(
 
 internal val TitleShadow = TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.45f), Offset(0f, 2f), 4f))
 
+/** Which emulator of the launcher's list (by id) each Store entry with a GitHub project is. */
+private val EMULATOR_OF_ENTRY = mapOf(
+    "vita3k" to "vita3k", "azahar" to "citra", "eden" to "switch", "flycast" to "flycast", "melonds" to "melonds",
+    "mupen" to "mupen", "gamenative" to "gamenative", "winlator" to "winlator",
+)
+
 private fun storeBackground() = Brush.verticalGradient(listOf(StoreTop, StoreMid, StoreBottom))
 
 /** This web view's own Chrome version, as a current Chrome reports it (only the first number, like "120.0.0.0"). */
@@ -256,6 +262,9 @@ fun StoreScreen(
     var searching by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var menu by remember { mutableStateOf(false) }
+    // The check for newer versions of installed emulators: null = not asked, an empty text = checking.
+    var updateLines by remember { mutableStateOf<List<Pair<String, StoreEntry?>>?>(null) }
+    var updateChecking by remember { mutableStateOf(false) }
     // The download started from each catalogue entry, so its button can show progress.
     val started = remember { mutableStateMapOf<String, DownloadItem>() }
     val looking = remember { mutableStateMapOf<String, Boolean>() }
@@ -490,6 +499,32 @@ fun StoreScreen(
         }
     }
 
+    fun checkUpdates() {
+        if (updateChecking) return
+        updateChecking = true
+        onToast("Checking installed emulators…")
+        scope.launch {
+            val lines = withContext(Dispatchers.IO) {
+                val out = ArrayList<Pair<String, StoreEntry?>>()
+                var checked = 0
+                for (entry in CATALOGUE) {
+                    val repo = entry.repo ?: continue
+                    val emu = com.qita.ui.EMULATORS.firstOrNull { it.id == EMULATOR_OF_ENTRY[entry.id] } ?: continue
+                    val pkg = com.qita.ui.installedPackage(context, emu) ?: continue
+                    val installed = runCatching { context.packageManager.getPackageInfo(pkg, 0).versionName }.getOrNull().orEmpty()
+                    val latest = ReleaseResolver.latestTag(repo) ?: continue
+                    checked++
+                    if (ReleaseResolver.isNewer(installed, latest)) out.add("Update ${entry.name}: $installed to $latest" to entry)
+                }
+                if (out.isEmpty()) out.add((if (checked == 0) "No installed emulator could be checked" else "All $checked installed emulators are up to date") to null)
+                out
+            }
+            updateChecking = false
+            updateLines = lines
+        }
+    }
+
+    BackHandler(enabled = updateLines != null) { updateLines = null }
     BackHandler(enabled = menu) { menu = false }
     BackHandler(enabled = !menu && tab == 3) { tab = 0 }
     BackHandler(enabled = !menu && tab == 0 && openStoreId != null && vitaDetail == null) { storeBack() }
@@ -566,6 +601,15 @@ fun StoreScreen(
             modifier = Modifier.align(Alignment.BottomEnd).padding(end = 6.dp, bottom = 6.dp),
             key = "store:more", dots = true,
         )
+        updateLines?.let { lines ->
+            com.qita.ui.ui.ContextMenu(
+                title = "Emulator updates",
+                subtitle = "From each project's GitHub releases",
+                items = lines.map { (text, entry) -> MenuItem(text) { updateLines = null; if (entry != null) download(entry) } } + MenuItem("Close") { updateLines = null },
+                onDismiss = { updateLines = null },
+                layer = 5,
+            )
+        }
         if (menu) {
             com.qita.ui.ui.ContextMenu(
                 title = "Store",
@@ -575,6 +619,7 @@ fun StoreScreen(
                     MenuItem("Notifications") { menu = false; onOpenNotifications() },
                     MenuItem("Catalogue") { menu = false; tab = 0; detail = null },
                     MenuItem("Rotate screen") { menu = false; onRotate() },
+                    MenuItem("Check emulator updates") { menu = false; checkUpdates() },
                     MenuItem(if (picFolder) "Change banner folder" else "Choose a banner folder") { menu = false; folderPicker.launch(null) },
                     if (picFolder) MenuItem("Shuffle banner pictures") { menu = false; StoreBanners.shuffle(context); picRev++; onToast("Picked another few pictures") } else null,
                     if (picFolder) MenuItem("Stop using my folder") { menu = false; StoreBanners.clearFolder(context); picFolder = false; picRev++; onToast("Banner folder removed") } else null,
@@ -1366,6 +1411,7 @@ private fun BarButton(key: String, label: String, onClick: () -> Unit) {
         label,
         Modifier
             .padClickable(key, corner = 8.dp, pad = 2.dp, ring = false, onClick = onClick)
+            .litEdge(lit, 8.dp)
             .background(if (lit) TabDark else TabDark.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
             .border(1.dp, Color.White.copy(alpha = if (lit) 0.9f else 0.45f), RoundedCornerShape(8.dp))
             .padding(horizontal = 14.dp, vertical = 8.dp),
@@ -1428,6 +1474,16 @@ private fun DownloadsTab(onToast: (String) -> Unit) {
                 } else onToast("Paste a full link that starts with http")
             }
         }
+        if (list.any { it.state == DlState.FAILED || it.state == DlState.PAUSED }) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SmallAction("store:dl:retry", "Retry failed and paused") {
+                    list.filter { it.state == DlState.FAILED || it.state == DlState.PAUSED }.forEach { DownloadEngine.resume(it) }
+                }
+                if (list.any { it.state == DlState.DONE }) SmallAction("store:dl:clearall", "Clear finished") {
+                    list.filter { it.state == DlState.DONE }.forEach { DownloadEngine.remove(it) }
+                }
+            }
+        }
         Box(Modifier.fillMaxWidth().height(1.dp).background(RowLine.copy(alpha = 0.5f)))
         if (list.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
@@ -1479,6 +1535,7 @@ internal fun SmallAction(key: String, label: String, onClick: () -> Unit) {
         label,
         Modifier
             .padClickable(key, corner = 8.dp, pad = 2.dp, ring = false, onClick = onClick)
+            .litEdge(lit, 8.dp)
             .background(if (lit) TabDark else TabDark.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
             .border(1.dp, Color.White.copy(alpha = if (lit) 0.9f else 0.5f), RoundedCornerShape(8.dp))
             .padding(horizontal = 12.dp, vertical = 6.dp),

@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -60,6 +61,14 @@ object DownloadPrefs {
         }.apply()
     }
 
+    /** Download only on Wi-Fi (or a wired network); on mobile data a download waits. */
+    fun wifiOnly(c: Context): Boolean = prefs(c).getBoolean("wifi_only", false)
+    fun setWifiOnly(c: Context, on: Boolean) { prefs(c).edit().putBoolean("wifi_only", on).apply() }
+
+    /** How many downloads transfer at once; the rest wait their turn. */
+    fun maxParallel(c: Context): Int = prefs(c).getInt("max_parallel", 3).coerceIn(1, 6)
+    fun setMaxParallel(c: Context, n: Int) { prefs(c).edit().putInt("max_parallel", n.coerceIn(1, 6)).apply() }
+
     fun lastUnzip(c: Context) = prefs(c).getBoolean("last_unzip", true)
     fun lastDeleteZip(c: Context) = prefs(c).getBoolean("last_delzip", true)
     fun lastFolder(c: Context): String? = prefs(c).getString("last_folder", null)?.ifEmpty { null }
@@ -94,6 +103,9 @@ class DownloadItem(
     var plan: DownloadPlan? = null
     /** The page the download was started from; some servers refuse a request without it. */
     var referer: String? = null
+    /** True while bytes are actually being fetched; false while it waits for its turn or for Wi-Fi. */
+    var active by mutableStateOf(false)
+    var waitNote by mutableStateOf("")
 
     val fraction: Float get() = if (total > 0) (bytes.toFloat() / total).coerceIn(0f, 1f) else -1f
 
@@ -102,7 +114,7 @@ class DownloadItem(
         DlState.PAUSED -> "Paused" + if (total > 0) "  (${mb(bytes)} / ${mb(total)})" else ""
         DlState.FAILED -> "Failed: ${error ?: "unknown error"}"
         DlState.DONE -> "Done  (${mb(bytes)})"
-        DlState.RUNNING -> {
+        DlState.RUNNING -> if (!active) (waitNote.ifEmpty { "Waiting for its turn" }) else {
             val left = if (speed > 1f && total > 0) ((total - bytes) / speed).toLong() else -1L
             val eta = when {
                 left < 0 -> "Downloading"
@@ -234,8 +246,29 @@ object DownloadEngine {
         persist()
     }
 
+    private fun onWifi(): Boolean {
+        val context = app ?: return true
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val caps = runCatching { cm.getNetworkCapabilities(cm.activeNetwork) }.getOrNull() ?: return false
+        return caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET)
+    }
+
+    /** Waits for a free place among the downloads (and for Wi-Fi, if the user wants that), then marks this one as transferring. */
+    private suspend fun awaitTurn(item: DownloadItem) {
+        val context = app ?: return
+        while (true) {
+            currentCoroutineContext().ensureActive()
+            val wifiOk = !DownloadPrefs.wifiOnly(context) || onWifi()
+            val others = items.count { it !== item && it.active }
+            if (wifiOk && others < DownloadPrefs.maxParallel(context)) { item.waitNote = ""; item.active = true; return }
+            item.waitNote = if (!wifiOk) "Waiting for Wi-Fi" else "Waiting for its turn"
+            delay(1000)
+        }
+    }
+
     private suspend fun run(item: DownloadItem) {
         try {
+            awaitTurn(item)
             var url = fixUrl(item.url)
             var redirects = 0
             var existing = item.partFile.length()
@@ -311,11 +344,14 @@ object DownloadEngine {
             item.finalPath = out.path
             item.bytes = out.length()
             item.state = DlState.DONE
+            item.active = false
             persist()
             withContext(Dispatchers.Main) { onFinished(item) }
         } catch (e: CancellationException) {
+            item.active = false
             throw e
         } catch (e: Exception) {
+            item.active = false
             item.state = DlState.FAILED
             item.error = e.message ?: "failed"
             persist()
@@ -370,6 +406,24 @@ object ReleaseResolver {
             }
         }
         return null
+    }
+
+    /** The newest release's tag name of [repo] (for example "v0.2.1"), or null. Blocks. */
+    fun latestTag(repo: String): String? = runCatching {
+        JSONObject(get("https://api.github.com/repos/$repo/releases/latest")).optString("tag_name").ifBlank { null }
+    }.getOrNull()
+
+    /** Whether version [latest] is newer than [installed], comparing their numbers (2.1.10 is newer than 2.1.9). False when unsure. */
+    fun isNewer(installed: String, latest: String): Boolean {
+        val a = Regex("\\d+").findAll(installed).map { it.value.toLongOrNull() ?: 0L }.toList()
+        val b = Regex("\\d+").findAll(latest).map { it.value.toLongOrNull() ?: 0L }.toList()
+        if (a.isEmpty() || b.isEmpty()) return false
+        for (i in 0 until maxOf(a.size, b.size)) {
+            val x = a.getOrElse(i) { 0L }
+            val y = b.getOrElse(i) { 0L }
+            if (y != x) return y > x
+        }
+        return false
     }
 
     private fun get(url: String): String {

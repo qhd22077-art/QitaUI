@@ -164,6 +164,28 @@ object GameLibrary {
         prefs(c).edit().putStringSet("known_games", known(c) + ids).apply()
     }
 
+    /** Games the user starred, to be listed first and under their own tab. */
+    fun favourites(c: Context): Set<String> = prefs(c).getStringSet("fav_games", emptySet()).orEmpty().toSet()
+
+    fun toggleFavourite(c: Context, id: String): Set<String> {
+        val set = favourites(c).toMutableSet()
+        if (!set.add(id)) set.remove(id)
+        prefs(c).edit().putStringSet("fav_games", set).apply()
+        return set
+    }
+
+    /** When each game was last started (game id to time in milliseconds). */
+    fun lastPlayed(c: Context): Map<String, Long> = runCatching {
+        val o = JSONObject(prefs(c).getString("played", "{}").orEmpty())
+        o.keys().asSequence().associateWith { o.getLong(it) }
+    }.getOrDefault(emptyMap())
+
+    fun markPlayed(c: Context, id: String): Map<String, Long> {
+        val map = lastPlayed(c) + (id to System.currentTimeMillis())
+        prefs(c).edit().putString("played", JSONObject(map).toString()).apply()
+        return map
+    }
+
     fun coverFile(c: Context, id: String): File = File(File(c.filesDir, "covers").apply { mkdirs() }, "$id.png")
 
     /** Every game as a bubble, built off the main thread. */

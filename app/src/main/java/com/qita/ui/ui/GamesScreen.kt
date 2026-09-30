@@ -59,18 +59,38 @@ fun GamesScreen(
     onScan: () -> Unit,
     /** A status line while a scan (or cover download) is running, else null. */
     scanning: String?,
+    /** Ids of starred games, and when each game was last started. */
+    favourites: Set<String>,
+    played: Map<String, Long>,
     onClose: () -> Unit,
 ) {
     var tab by remember { mutableStateOf("all") }
+    var searching by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    // 0 by name, 1 by when it was last played, 2 by console.
+    var sort by remember { mutableStateOf(0) }
     val gridState = rememberLazyGridState()
     // The consoles that have games, in the order of the system list.
     val present = remember(games) { SYSTEMS.filter { s -> games.any { it.game?.systemId == s.id } } }
-    val shown = remember(games, emulators, tab) {
-        when (tab) {
+    val shown = remember(games, emulators, tab, query, sort, favourites, played) {
+        val base = when (tab) {
             "all" -> games
             "emu" -> emulators
+            "fav" -> games.filter { it.game?.id in favourites }
             else -> games.filter { it.game?.systemId == tab }
         }
+        val found = if (query.isBlank()) base else base.filter { it.label.contains(query.trim(), true) }
+        if (tab == "emu") found else found.sortedWith(
+            compareByDescending<LaunchableApp> { it.game?.id in favourites }
+                .thenComparator { a, b ->
+                    when (sort) {
+                        1 -> (played[b.game?.id] ?: 0L).compareTo(played[a.game?.id] ?: 0L)
+                        2 -> (a.game?.systemId ?: "").compareTo(b.game?.systemId ?: "")
+                        else -> 0
+                    }
+                }
+                .thenBy { it.label.lowercase() },
+        )
     }
     val theme = settings.theme
 
@@ -89,6 +109,7 @@ fun GamesScreen(
                 Text("Games", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Medium)
                 LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     item { Chip("games:tab:all", "All ${games.size}", tab == "all") { tab = "all" } }
+                    if (favourites.isNotEmpty()) item { Chip("games:tab:fav", "★ ${games.count { it.game?.id in favourites }}", tab == "fav") { tab = "fav" } }
                     items(present) { s ->
                         Chip("games:tab:${s.id}", s.short, tab == s.id) { tab = s.id }
                     }
@@ -96,6 +117,29 @@ fun GamesScreen(
                 }
                 Chip("games:scan", if (scanning != null) "Scanning…" else "Scan", scanning != null, onClick = { if (scanning == null) onScan() })
                 Chip("games:setup", "Setup", false, onClick = onSetup)
+            }
+            // Search and sort.
+            Row(
+                Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Chip("games:search", if (searching) "Search ✕" else "Search", searching) { searching = !searching; if (!searching) query = "" }
+                Chip("games:sort", "Sort: " + listOf("A-Z", "Recent", "Console")[sort], false) { sort = (sort + 1) % 3 }
+                if (searching) {
+                    androidx.compose.foundation.text.BasicTextField(
+                        value = query, onValueChange = { query = it }, singleLine = true,
+                        textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 15.sp),
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.White),
+                        modifier = Modifier.weight(1f),
+                        decorationBox = { inner ->
+                            Box(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.28f), RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 6.dp)) {
+                                if (query.isEmpty()) Text("Type a game's name", color = Color.White.copy(alpha = 0.6f), fontSize = 15.sp)
+                                inner()
+                            }
+                        },
+                    )
+                }
             }
             Box(Modifier.fillMaxWidth().height(1.dp).padding(horizontal = 20.dp).background(Color.White.copy(alpha = 0.35f)))
             if (shown.isEmpty()) {
@@ -149,15 +193,16 @@ private fun Chip(key: String, label: String, selected: Boolean, onClick: () -> U
     val accent = LocalLook.current.accent
     // The fill eases between states instead of snapping.
     val fill by androidx.compose.animation.animateColorAsState(
-        if (selected) accent.copy(alpha = 0.85f) else Color.White.copy(alpha = if (lit) 0.35f else 0.18f),
+        if (selected) accent.copy(alpha = 0.85f) else Color.White.copy(alpha = if (lit) 0.45f else 0.18f),
         androidx.compose.animation.core.tween(160), label = "chip",
     )
     Text(
         label,
         Modifier
             .padClickable(key, corner = 14.dp, ring = false, onClick = onClick)
+            .litEdge(lit, 14.dp)
             .background(fill, RoundedCornerShape(14.dp))
-            .border(1.dp, Color.White.copy(alpha = if (lit) 1f else 0.6f), RoundedCornerShape(14.dp))
+            .border(if (lit) 2.dp else 1.dp, Color.White.copy(alpha = if (lit) 1f else 0.6f), RoundedCornerShape(14.dp))
             .padding(horizontal = 12.dp, vertical = 5.dp),
         color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium,
     )
