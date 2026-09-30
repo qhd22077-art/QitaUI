@@ -562,6 +562,13 @@ fun HomeScreen(homePresses: Int = 0) {
             exit = fadeOut(tween(220)) + scaleOut(targetScale = 0.12f, transformOrigin = liveOrigin, animationSpec = tween(280)),
         ) {
             CompositionLocalProvider(LocalPadLayer provides 1) {
+                Box(
+                    Modifier.fillMaxSize().graphicsLayer {
+                        // The page starts tipped back and swings flat as it opens.
+                        cameraDistance = 14f * density
+                        rotationX = -(1f - liveOpen) * 18f
+                    },
+                ) {
                 LiveAreaHost(
                     pages = openPages,
                     current = openPages.indexOfFirst { it.packageName == selected?.packageName },
@@ -573,6 +580,7 @@ fun HomeScreen(homePresses: Int = 0) {
                     onClosePage = { closePage(it) },
                     onInfo = { if (it.action == null) AppRepository.showInfo(context, it) },
                 )
+                }
             }
         }
         AnimatedVisibility(
@@ -908,11 +916,15 @@ private fun BubblePager(
                     .fillMaxSize()
                     // Pages shrink and fade slightly as they slide away.
                     .graphicsLayer {
-                        val distance = ((pagerState.currentPage - index) + pagerState.currentPageOffsetFraction).absoluteValue.coerceIn(0f, 1f)
+                        val signed = (pagerState.currentPage - index) + pagerState.currentPageOffsetFraction
+                        val distance = signed.absoluteValue.coerceIn(0f, 1f)
                         val s = 1f - 0.08f * distance
                         scaleX = s
                         scaleY = s
                         alpha = 1f - 0.55f * distance
+                        // A page leaving upwards leans its top away, one arriving from below leans in: like a drum turning.
+                        cameraDistance = 14f * density
+                        rotationX = -signed.coerceIn(-1f, 1f) * 26f
                     },
             ) {
                 // The sphere is a quarter of the page height, like the real home screen.
@@ -960,6 +972,7 @@ private fun BubblePager(
                             onDragCancel = onDragCancel,
                             onPositioned = { onPositioned(app.packageName, it) },
                             // Bubbles roll as the page scrolls, the lower rows a little more than the upper ones.
+                            depth = fy,
                             scrollRoll = {
                                 ((pagerState.currentPage + pagerState.currentPageOffsetFraction) - index).coerceIn(-2f, 2f) * (1.6f + (fy - 0.5f) * 1.2f)
                             },

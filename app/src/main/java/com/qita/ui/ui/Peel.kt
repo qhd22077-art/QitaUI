@@ -117,6 +117,15 @@ internal fun PeelBack(fold: Float, tint: Color, radius: Float = 0f) {
                 Offset(mid.x, mid.y), Offset(w - f, f),
             ),
         )
+        // The flap is a rolled sheet: bright at the fold, then a shaded curve toward its tip.
+        drawPath(
+            flap,
+            Brush.linearGradient(
+                0f to Color.White.copy(alpha = 0.35f), 0.30f to Color.Transparent,
+                0.70f to Color.Black.copy(alpha = 0.10f), 1f to Color.Black.copy(alpha = 0.28f),
+                start = Offset(mid.x, mid.y), end = Offset(w - f, f),
+            ),
+        )
         // Gloss along the fold, and a faint shine across the flap.
         val foldLine = Path().apply {
             moveTo(w - f, 0f)

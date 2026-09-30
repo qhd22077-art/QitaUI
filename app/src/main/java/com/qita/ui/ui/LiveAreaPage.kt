@@ -121,6 +121,9 @@ fun LiveAreaHost(
                         scaleY = s
                         alpha = 1f - 0.85f * distance
                         translationX = signed.coerceIn(-1f, 1f) * size.width * 0.05f
+                        // Cover-flow: the neighbours turn to face the middle and sink back in depth.
+                        cameraDistance = 14f * density
+                        rotationY = signed.coerceIn(-1f, 1f) * 38f
                     },
                 ) {
                     LiveAreaPage(

@@ -91,6 +91,8 @@ fun Bubble(
     onPositioned: (Rect) -> Unit = {},
     /** How far the bubble is rolled by scrolling (radians of pitch), read while drawing. */
     scrollRoll: () -> Float = { 0f },
+    /** 0 (far, top row) .. 1 (near, bottom row): nearer bubbles are a little bigger with a longer shadow. */
+    depth: Float = 0.5f,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -182,7 +184,7 @@ fun Bubble(
                 }
             }
             .graphicsLayer {
-                val s = scale * (0.6f + 0.4f * appear.value)
+                val s = scale * (0.6f + 0.4f * appear.value) * (0.94f + 0.12f * depth)
                 scaleX = s
                 scaleY = s
                 rotationZ = wiggle?.value ?: 0f
@@ -219,7 +221,7 @@ fun Bubble(
                 shape = shape,
                 glow = { glow },
                 roll = roll,
-                elevation = if (lit) (12 + 6 * pulse).dp else 7.dp,
+                elevation = if (lit) (12 + 6 * pulse).dp else (5 + 5 * depth).dp,
                 spot = if (moving) MoveCyan else Color(0xFF0A2A6A),
                 rim = if (moving) Brush.linearGradient(listOf(MoveCyan, MoveCyan)) else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.95f), Color.White.copy(alpha = 0.35f))),
                 rimWidth = if (moving) 4.dp else 2.dp,
