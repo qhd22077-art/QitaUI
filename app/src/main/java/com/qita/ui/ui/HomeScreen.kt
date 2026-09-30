@@ -857,7 +857,7 @@ fun HomeScreen(homePresses: Int = 0) {
             exit = fadeOut(tween(480, easing = VitaMotion.Ease)) + scaleOut(targetScale = 1.05f, animationSpec = tween(480, easing = VitaMotion.Ease)),
         ) {
             CompositionLocalProvider(LocalPadLayer provides 7) {
-                LockScreen(settings, onUnlock = { showLock = false })
+                LockScreen(settings, wallpaper, onUnlock = { showLock = false })
             }
         }
 

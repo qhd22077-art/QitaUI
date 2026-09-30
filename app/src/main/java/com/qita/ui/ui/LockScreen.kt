@@ -11,7 +11,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.offset
-import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import kotlinx.coroutines.launch
@@ -56,18 +58,19 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * The Vita lock screen, as on the real console: a bright blue sky with soft light streaks, a huge thin white clock with the
- * date under it, "Peel to unlock" at the bottom and a curled corner at the top right. Peel the corner away (or tap it, or
- * double-tap anywhere, or press the confirm button) to reveal the home screen. This is in-app only: Android does not let a
- * launcher replace the phone's real lock screen, so it is visual and not a security lock.
+ * The Vita lock screen, as on the console: the wallpaper with a framed translucent panel inset from the edges, the date
+ * and a big clock at the bottom left, the faint PlayStation symbols at the bottom right and a small curled corner at
+ * the top right. Peel the corner away (or tap it, or double-tap anywhere, or press the confirm button) to reveal the
+ * home screen. This is in-app only: Android does not let a launcher replace the phone's real lock screen, so it is
+ * visual and not a security lock.
  */
 @Composable
-fun LockScreen(settings: Settings, onUnlock: () -> Unit) {
+fun LockScreen(settings: Settings, wallpaper: ImageBitmap?, onUnlock: () -> Unit) {
     val density = LocalDensity.current
     val peel = remember { Animatable(0f) }
     var pageWidth by remember { mutableStateOf(1) }
-    val baseFold = with(density) { 56.dp.toPx() }
-    val radius = with(density) { 14.dp.toPx() }
+    val baseFold = with(density) { 40.dp.toPx() }
+    val radius = with(density) { 10.dp.toPx() }
     var now by remember { mutableStateOf(Date()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -75,17 +78,9 @@ fun LockScreen(settings: Settings, onUnlock: () -> Unit) {
             delay(5_000)
         }
     }
-    // The clock and date ease in; the hint follows a little later.
+    // The clock and date ease in.
     val enter = remember { Animatable(0f) }
-    val hintIn = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        launch { enter.animateTo(1f, tween(480, easing = VitaMotion.Ease)) }
-        delay(260)
-        hintIn.animateTo(1f, tween(400))
-    }
-    val nudge by rememberInfiniteTransition(label = "lockNudge").animateFloat(
-        -1f, 1f, infiniteRepeatable(tween(1100, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "nudge",
-    )
+    LaunchedEffect(Unit) { enter.animateTo(1f, tween(480, easing = VitaMotion.Ease)) }
 
     Column(
         Modifier
@@ -96,9 +91,14 @@ fun LockScreen(settings: Settings, onUnlock: () -> Unit) {
     ) {
         StatusBar(settings.use24h, settings.showBattery, showHome = false)
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            // The wallpaper stays put; only the clock sheet peels away.
-            LockSky()
-            Box(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {
+            // The wallpaper stays put; only the framed panel peels away.
+            val theme = settings.theme
+            val sky = Triple(theme.top, theme.mid, theme.bottom)
+            BubbleBackground(
+                top = theme.top, mid = theme.mid, bottom = theme.bottom, wallpaper = wallpaper,
+                scene = { SceneMix(theme.scene, theme.scene, 0f, sky, sky) },
+            )
+            Box(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp)) {
                 BoxWithConstraints(
                     Modifier
                         .fillMaxSize()
@@ -106,56 +106,43 @@ fun LockScreen(settings: Settings, onUnlock: () -> Unit) {
                         .graphicsLayer {
                             shape = PeelShape(baseFold + peel.value, radius)
                             clip = true
-                        },
+                        }
+                        .background(Color.Black.copy(alpha = 0.16f))
+                        .vitaPanel(10.dp, 0.30f),
                 ) {
-                    val clockSize = (maxHeight.value * 0.36f).sp
+                    val clockSize = (maxHeight.value * 0.30f).sp
                     val dateSize = (maxHeight.value * 0.075f).sp
-                    val hintSize = (maxHeight.value * 0.062f).sp
                     // The content fades as the sheet peels, so nothing is cut off abruptly.
                     val fade = { (1f - peel.value / (pageWidth * 0.35f)).coerceIn(0f, 1f) }
+                    // The faint PlayStation symbols in the lower right corner.
+                    Canvas(
+                        Modifier
+                            .align(Alignment.BottomEnd)
+                            .size(width = maxWidth * 0.52f, height = maxHeight * 0.26f)
+                            .graphicsLayer { alpha = enter.value * fade() },
+                    ) { drawSymbolRow() }
                     Column(
                         Modifier
-                            .align(Alignment.Center)
-                            .offset(y = (-maxHeight.value * 0.06f).dp)
+                            .align(Alignment.BottomStart)
+                            .padding(start = 18.dp, bottom = 10.dp)
                             .graphicsLayer {
                                 alpha = enter.value * fade()
-                                val sc = 0.94f + 0.06f * enter.value
-                                scaleX = sc; scaleY = sc
+                                translationY = (1f - enter.value) * 12.dp.toPx()
                             },
-                        horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        val time = SimpleDateFormat(if (settings.use24h) "HH:mm" else "h:mm", Locale.getDefault()).format(now)
-                        Box(contentAlignment = Alignment.Center) {
-                            // A soft glow: the same text, wider and blurred (the blur shows on Android 12 and newer).
-                            Text(
-                                time, Modifier.blur(14.dp), color = Color.White.copy(alpha = 0.55f), fontSize = clockSize,
-                                fontWeight = FontWeight.ExtraLight, style = TextStyle(letterSpacing = 4.sp),
-                            )
-                            Text(
-                                time, color = Color.White, fontSize = clockSize, fontWeight = FontWeight.ExtraLight,
-                                style = TextStyle(letterSpacing = 4.sp),
-                            )
-                        }
                         Text(
-                            SimpleDateFormat("EEEE, MMMM d", Locale.getDefault()).format(now),
-                            color = Color.White, fontSize = dateSize, fontWeight = FontWeight.Light,
+                            SimpleDateFormat("MMMM d (EEEE)", Locale.getDefault()).format(now),
+                            color = Color.White, fontSize = dateSize,
                         )
-                    }
-                    Row(
-                        Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 14.dp)
-                            .graphicsLayer { alpha = hintIn.value * fade() },
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(18.dp),
-                    ) {
-                        Text("◀", Modifier.offset(x = (nudge * 4f).dp), color = HintBlue, fontSize = hintSize)
-                        Text("Peel to unlock", color = HintBlue, fontSize = hintSize, fontWeight = FontWeight.Light)
-                        Text("▶", Modifier.offset(x = (-nudge * 4f).dp), color = HintBlue, fontSize = hintSize)
+                        Text(
+                            SimpleDateFormat(if (settings.use24h) "HH:mm" else "h:mm", Locale.getDefault()).format(now),
+                            color = Color.White, fontSize = clockSize, fontWeight = FontWeight.Normal,
+                            style = TextStyle(letterSpacing = 1.sp),
+                        )
                     }
                 }
 
-                PeelBack(baseFold + peel.value, Color(0xFF0A3FD0), radius)
+                PeelBack(baseFold + peel.value, Color(0xFF1E5AE0), radius)
 
                 // Above everything else in the panel, so nothing can cover it.
                 PeelCorner(
@@ -173,38 +160,27 @@ fun LockScreen(settings: Settings, onUnlock: () -> Unit) {
     }
 }
 
-private val HintBlue = Color(0xFFA8DCFF)
-
-/** The lock screen's sky: a bright blue gradient with long soft streaks of light that drift slowly. */
-@Composable
-private fun LockSky() {
-    val phase by rememberInfiniteTransition(label = "lockSky").animateFloat(
-        0f, 6.2832f, infiniteRepeatable(tween(18_000, easing = LinearEasing)), label = "skyPhase",
+/** △ ○ × □ side by side as thin pale outlines, cut off by the panel's lower edge as on the console. */
+private fun DrawScope.drawSymbolRow() {
+    val slot = size.width / 4f
+    val r = minOf(slot * 0.42f, size.height * 0.9f)
+    val stroke = Stroke(width = r * 0.16f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+    val color = Color.White.copy(alpha = 0.28f)
+    val cy = size.height * 0.62f
+    // Triangle
+    var cx = slot * 0.5f
+    drawPath(
+        Path().apply { moveTo(cx, cy - r); lineTo(cx + r * 0.95f, cy + r * 0.8f); lineTo(cx - r * 0.95f, cy + r * 0.8f); close() },
+        color, style = stroke,
     )
-    val streak = remember { Path() }
-    Canvas(Modifier.fillMaxSize()) {
-        val w = size.width
-        val h = size.height
-        drawRect(
-            Brush.verticalGradient(
-                0f to Color(0xFF0030C8), 0.42f to Color(0xFF0A78F0), 0.72f to Color(0xFF40B4FF), 1f to Color(0xFFA0E2FF),
-            ),
-        )
-        // (start y, control y1, control y2, end y, strength) as fractions of the height.
-        val streaks = listOf(
-            floatArrayOf(0.80f, 0.92f, 0.60f, 0.46f, 1.0f),
-            floatArrayOf(0.88f, 0.86f, 0.80f, 0.66f, 0.7f),
-            floatArrayOf(0.36f, 0.42f, 0.56f, 0.44f, 0.45f),
-        )
-        for ((i, s) in streaks.withIndex()) {
-            val sway = 0.018f * kotlin.math.sin(phase + i * 1.7f)
-            streak.rewind()
-            streak.moveTo(-w * 0.05f, (s[0] + sway) * h)
-            streak.cubicTo(w * 0.32f, (s[1] - sway) * h, w * 0.62f, (s[2] + sway) * h, w * 1.05f, (s[3] - sway) * h)
-            val k = s[4]
-            drawPath(streak, Color.White.copy(alpha = 0.10f * k), style = Stroke(width = h * 0.16f, cap = StrokeCap.Round))
-            drawPath(streak, Color.White.copy(alpha = 0.18f * k), style = Stroke(width = h * 0.07f, cap = StrokeCap.Round))
-            drawPath(streak, Color.White.copy(alpha = 0.55f * k), style = Stroke(width = h * 0.012f, cap = StrokeCap.Round))
-        }
-    }
+    // Circle
+    cx = slot * 1.5f
+    drawCircle(color, radius = r * 0.92f, center = Offset(cx, cy), style = stroke)
+    // Cross
+    cx = slot * 2.5f
+    drawLine(color, Offset(cx - r * 0.8f, cy - r * 0.8f), Offset(cx + r * 0.8f, cy + r * 0.8f), stroke.width, StrokeCap.Round)
+    drawLine(color, Offset(cx + r * 0.8f, cy - r * 0.8f), Offset(cx - r * 0.8f, cy + r * 0.8f), stroke.width, StrokeCap.Round)
+    // Square
+    cx = slot * 3.5f
+    drawRoundRect(color, Offset(cx - r * 0.8f, cy - r * 0.8f), androidx.compose.ui.geometry.Size(r * 1.6f, r * 1.6f), androidx.compose.ui.geometry.CornerRadius(r * 0.08f), style = stroke)
 }
