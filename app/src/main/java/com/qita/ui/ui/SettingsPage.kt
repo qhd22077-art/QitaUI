@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -141,6 +142,9 @@ fun SettingsPage(
     var page by remember { mutableStateOf<String?>(startPage) }
     // Back steps out of a page first, then closes Settings (this handler is registered after Home's, so it wins).
     BackHandler(enabled = page != null) { page = null }
+    // Back closes an open choice list first.
+    BackHandler(enabled = optionPicker.value != null) { optionPicker.value = null }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { optionPicker.value = null } }
     val scroll = rememberScrollState()
     LaunchedEffect(page) { scroll.scrollTo(0) }
     val title = when (page) {
@@ -399,6 +403,7 @@ fun SettingsPage(
                 }
             }
         }
+        optionPicker.value?.let { p -> OptionPicker(p) { optionPicker.value = null } }
         BackButton(
             onClick = { if (page != null) page = null else onClose() },
             modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 8.dp),
@@ -508,7 +513,66 @@ private fun ChoiceRow(key: String, glyph: String, label: String, options: List<S
         key, glyph, label,
         trailing = { Text(options[i], color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Medium) },
         onAdjust = { dir -> onIndex((i + dir + n) % n) },
-    ) { onIndex((i + 1) % n) }
+    ) {
+        // A long list (the consoles, the themes) opens as a picker; a short one just steps to the next choice.
+        if (n > 6) optionPicker.value = OptionPick(label, options, i, onIndex) else onIndex((i + 1) % n)
+    }
+}
+
+/** A list of choices shown in the picker. */
+private class OptionPick(val title: String, val options: List<String>, val selected: Int, val onPick: (Int) -> Unit)
+
+/** The choice list currently open, if any. There is only ever one Settings page, so one shared holder does. */
+private val optionPicker = mutableStateOf<OptionPick?>(null)
+
+/** A scrollable list of every choice with the current one marked; tap or press A on one to pick it. */
+@Composable
+private fun OptionPicker(pick: OptionPick, onDismiss: () -> Unit) {
+    val scroll = rememberScrollState()
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val accent = LocalLook.current.accent
+    LaunchedEffect(pick) {
+        // Start with the current choice in view and highlighted.
+        scroll.scrollTo(with(density) { (pick.selected * 46).dp.toPx() }.toInt())
+        kotlinx.coroutines.delay(60)
+        PadNav.select("pick:${pick.selected}")
+    }
+    androidx.compose.runtime.CompositionLocalProvider(LocalPadLayer provides 4) {
+        Box(
+            Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).pointerInput(Unit) { detectTapGestures(onTap = { onDismiss() }) },
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                Modifier
+                    .width(340.dp)
+                    .heightIn(max = 320.dp)
+                    .background(Color(0xFF2B2B2B), RoundedCornerShape(16.dp))
+                    .pointerInput(Unit) { detectTapGestures { } }
+                    .padding(14.dp),
+            ) {
+                Text(pick.title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
+                Column(
+                    Modifier.weight(1f, fill = false).padScroller { scroll.animateScrollBy(it) }.verticalScroll(scroll),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    pick.options.forEachIndexed { i, name ->
+                        val on = i == pick.selected
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padClickable("pick:$i") { pick.onPick(i); onDismiss() }
+                                .background(if (on) accent.copy(alpha = 0.40f) else Color.White.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
+                                .padding(horizontal = 14.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(name, Modifier.weight(1f), color = Color.White, fontSize = 15.sp)
+                            if (on) Text("✓", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /** A row of colour swatches; the chosen one has a white ring. Left/right on the gamepad steps through them. */
