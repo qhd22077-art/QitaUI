@@ -213,7 +213,13 @@ fun DesktopScreen(
                     onShowApps = { showQuick = false; showGrid = !showGrid },
                 )
                 Box(Modifier.weight(1f).fillMaxHeight().padding(12.dp)) {
-                    if (winVisible) {
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = winVisible,
+                        enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(180)) +
+                            androidx.compose.animation.scaleIn(initialScale = 0.96f, animationSpec = androidx.compose.animation.core.tween(220)),
+                        exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(140)) +
+                            androidx.compose.animation.scaleOut(targetScale = 0.96f, animationSpec = androidx.compose.animation.core.tween(160)),
+                    ) {
                         val sizeMod = if (maximized) Modifier.fillMaxSize()
                         else Modifier.fillMaxWidth(0.8f).fillMaxHeight(0.94f).offset { IntOffset(winOffset.x.roundToInt(), winOffset.y.roundToInt()) }
                         Column(sizeMod.shadow(14.dp, RoundedCornerShape(10.dp)).background(WinBody, RoundedCornerShape(10.dp))) {
@@ -245,7 +251,7 @@ fun DesktopScreen(
                                         .padScroller { sidebarScroll.animateScrollBy(it) }
                                         .verticalScroll(sidebarScroll)
                                         .padding(8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp),
                                 ) {
                                     Text("Places", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp, top = 4.dp, bottom = 4.dp))
                                     Place.entries.forEach { p ->
@@ -253,7 +259,7 @@ fun DesktopScreen(
                                             p.label,
                                             Modifier
                                                 .fillMaxWidth()
-                                                .padClickable("place:${p.name}", corner = 6.dp) { place = p }
+                                                .padClickable("place:${p.name}", corner = 6.dp, pad = 2.dp) { place = p }
                                                 .background(if (p == place) Orange.copy(alpha = 0.35f) else Color.Transparent, RoundedCornerShape(6.dp))
                                                 .padding(horizontal = 8.dp, vertical = 6.dp),
                                             color = Text1, fontSize = 13.sp,
@@ -288,6 +294,7 @@ fun DesktopScreen(
                                     LazyColumn(
                                         Modifier.weight(1f).fillMaxWidth().padScroller { listState.animateScrollBy(it) },
                                         state = listState,
+                                        verticalArrangement = Arrangement.spacedBy(3.dp),
                                     ) {
                                         items(listed, key = { it.packageName }) { app ->
                                             AppRow(
@@ -355,6 +362,7 @@ private fun AppGrid(
     Box(
         Modifier
             .fillMaxSize()
+            .easeIn(from = 0.98f, millis = 200)
             .background(Aubergine.copy(alpha = 0.94f))
             .pointerInput(Unit) { detectTapGestures(onTap = { onClose() }) },
     ) {
@@ -378,12 +386,13 @@ private fun AppGrid(
                 state = gridState,
                 modifier = Modifier.padding(top = 16.dp).padScroller { gridState.animateScrollBy(it) },
                 verticalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 gridItems(results, key = { it.packageName }) { app ->
                     Column(
                         Modifier
                             .animateItem()
-                            .padTarget("grid:${app.packageName}", corner = 12.dp, app = app) { onLaunch(app) }
+                            .padTarget("grid:${app.packageName}", corner = 12.dp, app = app, pad = 2.dp) { onLaunch(app) }
                             .combinedClickable(onClick = { onLaunch(app) }, onLongClick = { onLongPress(app) })
                             .padding(6.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -405,19 +414,20 @@ private fun QuickPanel(onDismiss: () -> Unit, items: List<Pair<String, () -> Uni
             Modifier
                 .align(Alignment.TopEnd)
                 .padding(top = 36.dp, end = 8.dp)
+                .easeIn(originX = 1f, originY = 0f, from = 0.94f, millis = 200)
                 .width(240.dp)
                 .shadow(12.dp, RoundedCornerShape(12.dp))
                 .background(Color(0xFF2B2B2B), RoundedCornerShape(12.dp))
                 .pointerInput(Unit) { detectTapGestures { } }
                 .padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             items.forEachIndexed { i, (label, action) ->
                 Text(
                     label,
                     Modifier
                         .fillMaxWidth()
-                        .padClickable("quick:$i", corner = 8.dp) { onDismiss(); action() }
+                        .padClickable("quick:$i", corner = 8.dp, pad = 2.dp) { onDismiss(); action() }
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     color = Text1, fontSize = 14.sp,
                 )
@@ -486,7 +496,7 @@ private fun DockItem(
         Box(
             Modifier
                 .size(48.dp)
-                .padTarget(key, corner = 12.dp, app = app, onClick = onClick)
+                .padTarget(key, corner = 12.dp, app = app, pad = 3.dp, onClick = onClick)
                 .combinedClickable(onClick = onClick, onLongClick = onLongClick)
                 .padding(4.dp),
             contentAlignment = Alignment.Center,
@@ -536,7 +546,7 @@ private fun AppRow(
     Row(
         modifier
             .fillMaxWidth()
-            .padTarget("row:${app.packageName}", corner = 8.dp, app = app) { onLaunch(app) }
+            .padTarget("row:${app.packageName}", corner = 8.dp, app = app, pad = 2.dp) { onLaunch(app) }
             .combinedClickable(onClick = { onLaunch(app) }, onLongClick = { onLongPress(app) })
             .padding(horizontal = 6.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -573,11 +583,12 @@ private fun WindowButton(key: String, symbol: String, bg: Color, onClick: () -> 
 
 @Composable
 private fun SortChip(key: String, label: String, selected: Boolean, onClick: () -> Unit) {
+    val fill by androidx.compose.animation.animateColorAsState(if (selected) Orange else Color(0x33FFFFFF), androidx.compose.animation.core.tween(160), label = "chip")
     Text(
         label,
         Modifier
             .padClickable(key, corner = null, onClick = onClick)
-            .background(if (selected) Orange else Color(0x33FFFFFF), RoundedCornerShape(50))
+            .background(fill, RoundedCornerShape(50))
             .padding(horizontal = 12.dp, vertical = 6.dp),
         color = Color.White, fontSize = 12.sp,
     )
@@ -587,7 +598,7 @@ private fun SortChip(key: String, label: String, selected: Boolean, onClick: () 
 private fun SideAction(label: String, onClick: () -> Unit) {
     Text(
         label,
-        Modifier.fillMaxWidth().padClickable("side:$label", corner = 6.dp, onClick = onClick).padding(horizontal = 8.dp, vertical = 6.dp),
+        Modifier.fillMaxWidth().padClickable("side:$label", corner = 6.dp, pad = 2.dp, onClick = onClick).padding(horizontal = 8.dp, vertical = 6.dp),
         color = Color(0xFFF4A582), fontSize = 13.sp,
     )
 }

@@ -44,3 +44,19 @@ fun Modifier.staggerIn(index: Int, fromX: Float = 0f, scaleFrom: Float = 1f): Mo
         scaleY = s
     }
 }
+
+/**
+ * Fades an element in and grows it slightly from [originX], [originY] (0..1 of its size) when it first appears, so panels and
+ * overlays ease in instead of popping into place.
+ */
+fun Modifier.easeIn(originX: Float = 0.5f, originY: Float = 0.5f, from: Float = 0.94f, millis: Int = 220): Modifier = composed {
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { progress.animateTo(1f, androidx.compose.animation.core.tween(millis, easing = VitaMotion.Ease)) }
+    graphicsLayer {
+        alpha = progress.value
+        val s = from + (1f - from) * progress.value
+        scaleX = s
+        scaleY = s
+        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(originX, originY)
+    }
+}

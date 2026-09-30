@@ -112,8 +112,9 @@ fun GamesScreen(
                         .padScroller { gridState.animateScrollBy(it) }
                         .padding(horizontal = 16.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 14.dp, bottom = 96.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    // Names can run to two lines, so the rows need room.
+                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(shown, key = { it.packageName }) { app ->
                         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
@@ -142,11 +143,16 @@ fun GamesScreen(
 private fun Chip(key: String, label: String, selected: Boolean, onClick: () -> Unit) {
     val lit = padHighlighted(key) || padHovered(key)
     val accent = LocalLook.current.accent
+    // The fill eases between states instead of snapping.
+    val fill by androidx.compose.animation.animateColorAsState(
+        if (selected) accent.copy(alpha = 0.85f) else Color.White.copy(alpha = if (lit) 0.35f else 0.18f),
+        androidx.compose.animation.core.tween(160), label = "chip",
+    )
     Text(
         label,
         Modifier
             .padClickable(key, corner = 14.dp, ring = false, onClick = onClick)
-            .background(if (selected) accent.copy(alpha = 0.85f) else Color.White.copy(alpha = if (lit) 0.35f else 0.18f), RoundedCornerShape(14.dp))
+            .background(fill, RoundedCornerShape(14.dp))
             .border(1.dp, Color.White.copy(alpha = if (lit) 1f else 0.6f), RoundedCornerShape(14.dp))
             .padding(horizontal = 12.dp, vertical = 5.dp),
         color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium,
