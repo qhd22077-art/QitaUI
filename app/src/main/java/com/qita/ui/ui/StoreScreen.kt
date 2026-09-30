@@ -74,6 +74,9 @@ import com.qita.ui.DownloadEngine
 import com.qita.ui.DownloadItem
 import com.qita.ui.ReleaseResolver
 import com.qita.ui.Settings
+import androidx.compose.runtime.LaunchedEffect
+import com.qita.ui.VitaHb
+import com.qita.ui.VitaDb
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -118,8 +121,15 @@ private val CATALOGUE: List<StoreEntry> = listOf(
     StoreEntry("flycast", "Flycast", "Flyinghead", "Sega Dreamcast, Naomi and Atomiswave.", 0, "DC", 0xFFD0702A, "flyinghead/flycast", "https://github.com/flyinghead/flycast"),
     StoreEntry("melonds", "melonDS", "Rafael Caetano", "Nintendo DS games.", 0, "NDS", 0xFF7A7F88, "rafaelvcaetano/melonDS-android", "https://github.com/rafaelvcaetano/melonDS-android"),
     StoreEntry("duckstation", "DuckStation", "Stenzek", "PlayStation 1 games.", 0, "PS1", 0xFF6A6F78, null, "https://www.duckstation.org"),
+    StoreEntry("scummvm", "ScummVM", "ScummVM Team", "Play classic adventure games on your phone. Its downloads page also lists games their authors released as freeware.", 0, "SVM", 0xFF8A5A2A, null, "https://www.scummvm.org/downloads/"),
+    StoreEntry("redream", "Redream", "Redream", "Sega Dreamcast games.", 0, "DC", 0xFFC0602A, null, "https://redream.io/download"),
+    StoreEntry("mupen", "Mupen64Plus FZ", "Francisco Zurita", "Nintendo 64 games.", 0, "N64", 0xFF2E8A4F, "fzurita/mupen64plus-ae", "https://github.com/fzurita/mupen64plus-ae"),
+    StoreEntry("cores", "RetroArch cores", "Libretro", "The official download page for RetroArch's cores and updates.", 0, "CORE", 0xFF3A3A4A, null, "https://buildbot.libretro.com/"),
     StoreEntry("gamenative", "GameNative", "GameNative", "Windows games from your own Steam, Epic and GOG libraries.", 0, "PC", 0xFF2A3A5A, "utkarshdalal/GameNative", "https://github.com/utkarshdalal/GameNative"),
     StoreEntry("winlator", "Winlator", "Bruno Sousa", "Run Windows programs on Android.", 0, "WIN", 0xFF2A4AA0, "brunodev85/winlator", "https://github.com/brunodev85/winlator"),
+    StoreEntry("scummfree", "ScummVM freeware games", "ScummVM", "Beneath a Steel Sky, Flight of the Amazon Queen, Lure of the Temptress, Dreamweb and Drascula were released as freeware by their authors. The downloads page links to each.", 1, "SCUM", 0xFF8A5A2A, null, "https://www.scummvm.org/downloads/"),
+    StoreEntry("iapd", "Public-domain software", "Internet Archive", "Search the Internet Archive for public-domain software. Only download what is free to share.", 1, "IA", 0xFF5A4A3A, null, "https://archive.org/search?query=public+domain+games&and%5B%5D=mediatype%3A%22software%22"),
+    StoreEntry("iafree", "Freeware games", "Internet Archive", "Search the Internet Archive for games released as freeware by their makers. Only download what is free to share.", 1, "FW", 0xFF4A5A6A, null, "https://archive.org/search?query=freeware+games&and%5B%5D=mediatype%3A%22software%22"),
     StoreEntry("itchfree", "Free games on itch.io", "itch.io", "Thousands of free indie games and demos.", 1, "FREE", 0xFFB03A5A, null, "https://itch.io/games/free"),
     StoreEntry("itchhome", "Homebrew games", "itch.io", "Games made by fans for old consoles, free to download.", 1, "HB", 0xFF3A8A5A, null, "https://itch.io/games/tag-homebrew"),
     StoreEntry("libretro", "Libretro content", "Libretro", "Free games, demos and homebrew for RetroArch.", 1, "LIB", 0xFF5A5A8A, null, "https://docs.libretro.com/guides/download-content/"),
@@ -165,6 +175,23 @@ fun StoreScreen(
     // The download started from each catalogue entry, so its button can show progress.
     val started = remember { mutableStateMapOf<String, DownloadItem>() }
     val looking = remember { mutableStateMapOf<String, Boolean>() }
+    // The Vita homebrew list, loaded the first time its tab is opened.
+    var vita by remember { mutableStateOf<List<VitaHb>?>(null) }
+    var vitaLoading by remember { mutableStateOf(false) }
+    var vitaError by remember { mutableStateOf<String?>(null) }
+    var vitaType by remember { mutableStateOf(0) }
+    var vitaDetail by remember { mutableStateOf<VitaHb?>(null) }
+    fun loadVita(force: Boolean) {
+        if (vitaLoading) return
+        vitaLoading = true
+        vitaError = null
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { VitaDb.load(context, force) } }
+            result.onSuccess { vita = it }.onFailure { vitaError = it.message ?: "unknown error" }
+            vitaLoading = false
+        }
+    }
+    LaunchedEffect(segment, tab) { if (tab == 0 && segment == 3 && vita == null && !vitaLoading) loadVita(false) }
 
     // The browser is created once and kept while the user moves between tabs.
     var browsing by remember { mutableStateOf(false) }
@@ -209,6 +236,18 @@ fun StoreScreen(
         openPage(url)
     }
 
+    fun downloadVita(hb: VitaHb) {
+        val existing = started["vita:${hb.id}"]
+        when {
+            existing != null && existing.state == DlState.DONE -> onToast("Already downloaded. It is in your Download folder.")
+            existing != null && existing.state != DlState.FAILED -> onToast("Already downloading. Progress is in the notification panel.")
+            else -> {
+                started["vita:${hb.id}"] = DownloadEngine.enqueue(hb.download, "${hb.name} ${hb.version}".trim() + ".vpk", DlKind.FILE)
+                onToast("Downloading ${hb.name}. Progress is in the notification panel.")
+            }
+        }
+    }
+
     fun download(entry: StoreEntry) {
         val repo = entry.repo
         if (repo == null) { openPage(entry.page); return }
@@ -235,6 +274,7 @@ fun StoreScreen(
     }
 
     BackHandler(enabled = menu) { menu = false }
+    BackHandler(enabled = !menu && tab == 0 && vitaDetail != null) { vitaDetail = null }
     BackHandler(enabled = !menu && tab == 0 && detail != null) { detail = null }
     BackHandler(enabled = !menu && tab == 1 && browsing && web.canGoBack()) { web.goBack() }
     BackHandler(enabled = !menu && tab == 1 && browsing && !web.canGoBack()) { browsing = false }
@@ -247,12 +287,20 @@ fun StoreScreen(
         }
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             StatusBar(settings.use24h, settings.showBattery, showHome = false)
-            TabBar(tab, onTab = { tab = it; if (it == 0) detail = null }, onSearch = { searching = !searching; tab = if (tab == 2) 0 else tab })
+            TabBar(tab, onTab = { tab = it; if (it == 0) { detail = null; vitaDetail = null } }, onSearch = { searching = !searching; tab = if (tab == 2) 0 else tab })
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (tab) {
-                    0 -> Catalogue(
+                    0 -> if (vitaDetail != null) {
+                        val hb = vitaDetail!!
+                        VitaDetailPage(
+                            hb, started["vita:${hb.id}"],
+                            others = vita.orEmpty().filter { it.id != hb.id && it.type == hb.type }.take(3),
+                            onDownload = ::downloadVita, onOpen = { vitaDetail = it },
+                        )
+                    } else Catalogue(
                         segment, { segment = it }, detail, { detail = it }, searching, query, { query = it },
                         started, looking, ::download, ::openPage,
+                        VitaUi(vita, vitaLoading, vitaError, vitaType, { vitaType = it }, { vitaDetail = it }, { loadVita(true) }, { openPage(VitaDb.SITE) }, started),
                     )
                     1 -> BrowserTab(web, browsing, pageUrl, progress, ::go, ::openPage, context, onToast, { browsing = false; web.loadUrl("about:blank") })
                     else -> DownloadsTab(onToast)
@@ -260,7 +308,7 @@ fun StoreScreen(
             }
         }
         RoundButton(
-            onClick = { if (tab == 0 && detail != null) detail = null else if (tab == 1 && browsing && web.canGoBack()) web.goBack() else onClose() },
+            onClick = { if (tab == 0 && vitaDetail != null) vitaDetail = null else if (tab == 0 && detail != null) detail = null else if (tab == 1 && browsing && web.canGoBack()) web.goBack() else onClose() },
             modifier = Modifier.align(Alignment.BottomStart).padding(start = 6.dp, bottom = 6.dp),
             key = "store:back", dots = false,
         )
@@ -402,6 +450,7 @@ private fun Catalogue(
     looking: Map<String, Boolean>,
     onDownload: (StoreEntry) -> Unit,
     onOpenPage: (String) -> Unit,
+    vita: VitaUi,
 ) {
     if (detail != null) {
         DetailPage(detail, started[detail.id], looking[detail.id] == true, onDownload, onOpenPage, onDetail)
@@ -439,7 +488,11 @@ private fun Catalogue(
         ) {
             items(CATALOGUE.take(7), key = { it.id }) { e -> Banner(e) { onDetail(e) } }
         }
-        Segmented(listOf("Featured", "Emulators", "Free games", "All").let { listOf(it[0], it[1], it[2], it[3]) }, segment, onSegment)
+        Segmented(listOf("Featured", "Emulators", "Free games", "Vita homebrew", "All"), segment, onSegment)
+        if (segment == 3) {
+            VitaList(vita, query, Modifier.weight(1f))
+            return@Column
+        }
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth().padScroller { state.animateScrollBy(it) },
             state = state,
@@ -877,6 +930,147 @@ internal fun DownloadBar(d: DownloadItem, modifier: Modifier = Modifier) {
                 Modifier.fillMaxWidth(fraction.coerceAtLeast(0.01f)).height(5.dp)
                     .background(Brush.verticalGradient(listOf(Color(0xFFD6FF9A), Color(0xFF4DB82A))), CircleShape),
             )
+        }
+    }
+}
+
+// ------------------------------------------------------------------------------------------------------------------------
+// Vita homebrew (from VitaDB)
+// ------------------------------------------------------------------------------------------------------------------------
+
+/** What the Vita homebrew tab shows and does; built by [StoreScreen], which owns the loading. */
+private class VitaUi(
+    val list: List<VitaHb>?,
+    val loading: Boolean,
+    val error: String?,
+    val type: Int,
+    val onType: (Int) -> Unit,
+    val onOpen: (VitaHb) -> Unit,
+    val onRetry: () -> Unit,
+    val onSite: () -> Unit,
+    val started: Map<String, DownloadItem>,
+)
+
+private val VITA_TYPES = listOf("All", "Games", "Ports", "Emulators", "Tools")
+
+@Composable
+private fun VitaList(v: VitaUi, query: String, modifier: Modifier) {
+    val all = v.list
+    if (all == null) {
+        Column(modifier.fillMaxWidth().padding(30.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            if (v.error == null) {
+                Text(if (v.loading) "Loading the Vita homebrew list…" else "Opening the Vita homebrew list…", color = SoftText, fontSize = 17.sp, textAlign = TextAlign.Center)
+            } else {
+                Text("Couldn't load the Vita homebrew list (${v.error}).", color = Color.White, fontSize = 16.sp, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OrangeButton("store:vita:retry", "Try again", onClick = v.onRetry)
+                    OrangeButton("store:vita:site", "Open VitaDB", onClick = v.onSite)
+                }
+            }
+        }
+        return
+    }
+    val rows = remember(all, query, v.type) {
+        all.filter { (v.type == 0 || it.type == v.type) && (query.isBlank() || it.name.contains(query.trim(), true) || it.author.contains(query.trim(), true)) }
+    }
+    val state = rememberLazyListState()
+    Column(modifier.fillMaxWidth()) {
+        Segmented(VITA_TYPES, v.type, v.onType)
+        LazyColumn(
+            Modifier.weight(1f).fillMaxWidth().padScroller { state.animateScrollBy(it) },
+            state = state,
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 90.dp),
+        ) {
+            items(rows, key = { it.id }) { hb -> VitaRow(hb, v.started["vita:${hb.id}"]) { v.onOpen(hb) } }
+        }
+    }
+}
+
+/** The picture of a homebrew: its icon from VitaDB, or a blue square with its first letter until (or unless) it arrives. */
+@Composable
+private fun VitaIcon(hb: VitaHb, size: Dp) {
+    RemoteImage(hb.iconUrl, Modifier.size(size)) {
+        Box(
+            Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF1A5FB4), Color.Black.copy(alpha = 0.8f)))),
+            contentAlignment = Alignment.Center,
+        ) { Text(hb.name.take(1).uppercase(), color = Color.White, fontSize = (size.value * 0.42f).sp, fontWeight = FontWeight.Black) }
+    }
+}
+
+@Composable
+private fun VitaRow(hb: VitaHb, download: DownloadItem?, onClick: () -> Unit) {
+    val key = "store:vita:${hb.id}"
+    val lit = padHighlighted(key) || padHovered(key)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(74.dp)
+            .padClickable(key, corner = 0.dp, ring = false, onClick = onClick)
+            .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = if (lit) 0.30f else 0.14f), Color.White.copy(alpha = if (lit) 0.16f else 0.04f)))),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        VitaIcon(hb, 74.dp)
+        Column(Modifier.weight(1f).padding(start = 14.dp)) {
+            Text(hb.date.ifEmpty { "Vita homebrew" }, color = SoftText, fontSize = 13.sp, maxLines = 1)
+            Text(hb.name, color = Color.White, fontSize = 24.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(hb.author, color = DimText, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Text(
+            when {
+                download != null && download.state == DlState.RUNNING -> "${(download.fraction.coerceAtLeast(0f) * 100).toInt()}%"
+                download != null && download.state == DlState.DONE -> "Downloaded"
+                else -> "Free"
+            },
+            Modifier.padding(end = 18.dp), color = Color.White, fontSize = 20.sp,
+        )
+    }
+    Box(Modifier.fillMaxWidth().height(1.dp).background(Color.Black.copy(alpha = 0.25f)))
+    Box(Modifier.fillMaxWidth().height(1.dp).background(RowLine.copy(alpha = 0.55f)))
+}
+
+@Composable
+private fun VitaDetailPage(hb: VitaHb, download: DownloadItem?, others: List<VitaHb>, onDownload: (VitaHb) -> Unit, onOpen: (VitaHb) -> Unit) {
+    Row(Modifier.fillMaxSize().padding(start = 18.dp, end = 12.dp, top = 12.dp)) {
+        Box(Modifier.size(150.dp).border(2.dp, Color.White, RoundedCornerShape(6.dp)).clip(RoundedCornerShape(6.dp))) { VitaIcon(hb, 150.dp) }
+        Column(Modifier.weight(1f).padding(start = 18.dp).verticalScroll(rememberScrollState()).padding(bottom = 90.dp)) {
+            Text(hb.name, color = Color.White, fontSize = 30.sp, maxLines = 2)
+            Text(hb.author.uppercase(), color = SoftText, fontSize = 17.sp, maxLines = 1)
+            Spacer(Modifier.height(12.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(if (hb.version.isNotBlank()) "Version ${hb.version}" else "Homebrew", color = SoftText, fontSize = 18.sp)
+                Text("Free", color = Color.White, fontSize = 22.sp)
+                val label = when {
+                    download == null -> "Download"
+                    download.state == DlState.RUNNING -> "${(download.fraction.coerceAtLeast(0f) * 100).toInt()}%"
+                    download.state == DlState.DONE -> "Downloaded"
+                    download.state == DlState.FAILED -> "Try again"
+                    else -> "Paused"
+                }
+                OrangeButton("store:vita:get:${hb.id}", label) {
+                    if (download != null && download.state == DlState.FAILED) DownloadEngine.resume(download) else onDownload(hb)
+                }
+            }
+            if (hb.date.isNotBlank()) Text("Updated ${hb.date}", color = DimText, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
+            Box(Modifier.padding(vertical = 12.dp).fillMaxWidth().height(1.dp).background(RowLine.copy(alpha = 0.5f)))
+            Text(hb.description.ifBlank { "No description." }, color = Color.White, fontSize = 16.sp)
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "This is a .vpk file. When it has downloaded, it is in your Download folder: open Vita3K and choose File, then Install .vpk.",
+                color = DimText, fontSize = 14.sp,
+            )
+        }
+        Column(Modifier.width(150.dp).padding(start = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            if (others.isNotEmpty()) Text("You May Like", color = Color.White, fontSize = 16.sp, modifier = Modifier.padding(bottom = 8.dp))
+            others.forEach { o ->
+                Column(
+                    Modifier.padClickable("store:vlike:${o.id}", corner = 8.dp, pad = 2.dp) { onOpen(o) }.padding(bottom = 10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Box(Modifier.size(84.dp).border(2.dp, Color.White, RoundedCornerShape(6.dp)).clip(RoundedCornerShape(6.dp))) { VitaIcon(o, 84.dp) }
+                    Text(o.name, color = Color.White, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                }
+            }
         }
     }
 }

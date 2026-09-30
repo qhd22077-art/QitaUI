@@ -379,6 +379,12 @@ fun HomeScreen(homePresses: Int = 0) {
             item.kind == DlKind.APK || ext == "apk" -> {
                 ApkInstaller.install(context, File(path))?.let { toast = it }
             }
+            // A Vita package is not a game file for the library: put it where Vita3K's file picker can reach it.
+            ext == "vpk" -> scope.launch {
+                val r = withContext(Dispatchers.IO) { DownloadPlacer.saveToPublicDownloads(context, File(path), item.name) }
+                toast = r.message
+                if (r.ok) DownloadEngine.remove(item)
+            }
             ext == "zip" -> pendingZip = item
             else -> {
                 val candidates = DownloadPlacer.candidatesFor(ext)

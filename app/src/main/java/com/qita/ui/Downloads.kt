@@ -308,6 +308,26 @@ object DownloadPlacer {
     /** A message for the user: what happened to the file. */
     class Result(val ok: Boolean, val message: String)
 
+    /** Copies [file] into the phone's shared Download folder, where other apps (such as Vita3K's file picker) can see it. Blocks. */
+    fun saveToPublicDownloads(context: Context, file: File, name: String): Result = runCatching {
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name)
+                put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/octet-stream")
+                put(android.provider.MediaStore.Downloads.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+            }
+            val uri = context.contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: return Result(false, "Could not save to the Download folder")
+            context.contentResolver.openOutputStream(uri)?.use { out -> file.inputStream().use { it.copyTo(out) } }
+                ?: return Result(false, "Could not save to the Download folder")
+        } else {
+            val dir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS).apply { mkdirs() }
+            file.copyTo(File(dir, name), overwrite = true)
+        }
+        file.delete()
+        Result(true, "Saved $name to your Download folder. In Vita3K choose File, then Install .vpk")
+    }.getOrElse { Result(false, "Could not save the file: ${it.message}") }
+
     /** Copies [file] into the game folder for [system]. Blocks. */
     fun place(context: Context, file: File, name: String, system: GameSystem): Result = runCatching {
         val folders = GameLibrary.folders(context)
