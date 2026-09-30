@@ -36,6 +36,8 @@ data class Look(
     val symbols: Int = 45,
     /** Light mode: the drawing code skips its costliest effects. */
     val light: Boolean = false,
+    val batteryLow: Int = 20,
+    val batteryCritical: Int = 8,
 )
 
 val LocalLook = compositionLocalOf { Look() }
@@ -68,6 +70,8 @@ fun Settings.look() = Look(
     glass = if (glassBubbles) glass else 0f,
     symbols = if (lightMode) minOf(symbolCount, 18) else symbolCount,
     light = lightMode,
+    batteryLow = batteryLow,
+    batteryCritical = batteryCritical,
 )
 
 /** The swatches offered wherever a colour is picked. */

@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -170,7 +171,7 @@ fun StatusBar(
                     )
                 }
             }
-            if (showBattery) BatteryIcon(status.battery, status.charging)
+            if (showBattery) BatteryIcon(status.battery, status.charging, look.batteryLow, look.batteryCritical)
         }
     }
 }
@@ -281,32 +282,114 @@ private fun BluetoothIcon() {
     }
 }
 
-/** Glossy Vita-style battery: pale outline, green gradient fill that follows the charge. */
+/** The user's own pictures for the battery's states, kept as small files; the drawn icon is used for a state with no picture. */
+object BatteryArt {
+    /** Bumped whenever a picture is added or removed, so the status bar redraws. */
+    var rev by mutableStateOf(0)
+    val STATES = listOf("normal" to "Normal", "charging" to "Charging", "full" to "Full", "low" to "Low", "critical" to "Nearly dead")
+
+    private fun file(c: Context, state: String) = java.io.File(c.filesDir, "battery_$state.png")
+    fun has(c: Context, state: String) = file(c, state).exists()
+    fun load(c: Context, state: String): androidx.compose.ui.graphics.ImageBitmap? =
+        file(c, state).takeIf { it.exists() }?.let { android.graphics.BitmapFactory.decodeFile(it.path)?.asImageBitmap() }
+
+    fun save(c: Context, state: String, uri: android.net.Uri): Boolean = runCatching {
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        c.contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
+        var sample = 1
+        while (bounds.outWidth / sample > 512) sample *= 2
+        val bmp = c.contentResolver.openInputStream(uri)?.use {
+            android.graphics.BitmapFactory.decodeStream(it, null, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+        } ?: return false
+        file(c, state).outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        rev++
+        true
+    }.getOrDefault(false)
+
+    fun clear(c: Context, state: String) { file(c, state).delete(); rev++ }
+}
+
+/** Which picture of the battery applies: full and charging at once, charging, nearly dead, low, or normal. */
+internal fun batteryState(percent: Int, charging: Boolean, low: Int, critical: Int): String = when {
+    charging && percent >= 100 -> "full"
+    charging -> "charging"
+    percent <= critical -> "critical"
+    percent <= low -> "low"
+    else -> "normal"
+}
+
+/** The battery in the top bar: the user's own picture for its state if there is one, else the drawn icon of that state. */
 @Composable
-private fun BatteryIcon(percent: Int, charging: Boolean) {
+private fun BatteryIcon(percent: Int, charging: Boolean, low: Int, critical: Int) {
+    val context = LocalContext.current
+    val state = batteryState(percent, charging, low, critical)
+    val own = remember(state, BatteryArt.rev) { BatteryArt.load(context, state) }
+    if (own != null) Image(own, null, Modifier.size(width = 31.dp, height = 14.dp), contentScale = androidx.compose.ui.layout.ContentScale.Fit)
+    else BatteryDrawn(percent, state)
+}
+
+/**
+ * Glossy Vita-style battery with a look for each state: green while normal, a green fill that breathes with a bolt while charging
+ * (still with the bolt when full), amber when low, and a red, blinking outline with a mark when nearly dead.
+ */
+@Composable
+private fun BatteryDrawn(percent: Int, state: String) {
+    val pulse = if (state == "charging") {
+        androidx.compose.animation.core.rememberInfiniteTransition(label = "batteryPulse").animateFloat(
+            0.7f, 1f,
+            androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(900), androidx.compose.animation.core.RepeatMode.Reverse),
+            label = "pulse",
+        ).value
+    } else 1f
+    val blink = if (state == "critical") {
+        androidx.compose.animation.core.rememberInfiniteTransition(label = "batteryBlink").animateFloat(
+            0f, 1f,
+            androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(600), androidx.compose.animation.core.RepeatMode.Reverse),
+            label = "blink",
+        ).value
+    } else 0f
     Canvas(Modifier.size(width = 31.dp, height = 14.dp)) {
         val body = Size(size.width - 3.dp.toPx(), size.height)
         val stroke = 1.5.dp.toPx()
-        val (c1, c2) = when {
-            charging -> Color(0xFFB8F7C0) to Color(0xFF39C24F)
-            percent <= 15 -> Color(0xFFFFB0B0) to Color(0xFFE23B3B)
+        val (c1, c2) = when (state) {
+            "charging", "full" -> Color(0xFFB8F7C0) to Color(0xFF39C24F)
+            "low" -> Color(0xFFFFE2A0) to Color(0xFFF29A1F)
+            "critical" -> Color(0xFFFFB0B0) to Color(0xFFE23B3B)
             else -> Color(0xFFC8F7A8) to Color(0xFF4CC22D)
         }
-        drawRoundRect(Color(0xFFE6E6E6), size = body, cornerRadius = CornerRadius(3.dp.toPx()), style = Stroke(width = stroke))
-        val inner = (body.width - 2 * stroke - 2.dp.toPx()) * (percent.coerceIn(0, 100) / 100f)
+        val outline = if (state == "critical") lerp(Color(0xFFE6E6E6), Color(0xFFE23B3B), blink) else Color(0xFFE6E6E6)
+        drawRoundRect(outline, size = body, cornerRadius = CornerRadius(3.dp.toPx()), style = Stroke(width = stroke))
+        val fraction = if (state == "critical") percent.coerceIn(6, 100) / 100f else percent.coerceIn(0, 100) / 100f
+        val inner = (body.width - 2 * stroke - 2.dp.toPx()) * fraction
         drawRoundRect(
-            Brush.verticalGradient(listOf(c1, c2)),
+            Brush.verticalGradient(listOf(c1.copy(alpha = pulse), c2.copy(alpha = pulse))),
             topLeft = Offset(stroke + 1.dp.toPx(), stroke + 1.dp.toPx()),
             size = Size(inner.coerceAtLeast(0f), body.height - 2 * stroke - 2.dp.toPx()),
             cornerRadius = CornerRadius(1.5.dp.toPx()),
             style = Fill,
         )
         drawRoundRect(
-            Color(0xFFE6E6E6),
+            outline,
             topLeft = Offset(body.width + 0.5.dp.toPx(), size.height * 0.28f),
             size = Size(2.dp.toPx(), size.height * 0.44f),
             cornerRadius = CornerRadius(1.dp.toPx()),
         )
+        val w = body.width
+        val h = body.height
+        if (state == "charging" || state == "full") {
+            // A lightning bolt in the middle.
+            val bolt = Path().apply {
+                moveTo(w * 0.54f, h * 0.06f); lineTo(w * 0.40f, h * 0.56f); lineTo(w * 0.50f, h * 0.56f)
+                lineTo(w * 0.44f, h * 0.94f); lineTo(w * 0.64f, h * 0.42f); lineTo(w * 0.53f, h * 0.42f); lineTo(w * 0.60f, h * 0.06f); close()
+            }
+            drawPath(bolt, Color.Black.copy(alpha = 0.35f), style = Stroke(width = 1.2.dp.toPx(), join = StrokeJoin.Round))
+            drawPath(bolt, Color.White)
+        } else if (state == "critical") {
+            // An exclamation mark.
+            val x = w * 0.5f
+            drawLine(Color.White, Offset(x, h * 0.2f), Offset(x, h * 0.58f), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
+            drawCircle(Color.White, 1.1.dp.toPx(), Offset(x, h * 0.80f))
+        }
     }
 }
 

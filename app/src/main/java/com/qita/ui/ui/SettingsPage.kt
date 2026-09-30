@@ -133,6 +133,12 @@ fun SettingsPage(
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) onImport(uri)
     }
+    val batteryContext = androidx.compose.ui.platform.LocalContext.current
+    var batteryTarget by remember { mutableStateOf<String?>(null) }
+    val batteryPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        val target = batteryTarget
+        if (uri != null && target != null) BatteryArt.save(batteryContext, target, uri)
+    }
     val lockPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) onLockPicture(uri)
     }
@@ -351,6 +357,15 @@ fun SettingsPage(
                             SliderRow("set:barOpacity", "◑", "Bar opacity", settings.barOpacity, 0.2f..1f, 0.1f) { onChange(settings.copy(barOpacity = it)) }
                             CheckRow("set:24h2", "◷", "24-hour clock", settings.use24h) { onChange(settings.copy(use24h = it)) }
                             CheckRow("set:battery2", "⚡", "Show battery level", settings.showBattery) { onChange(settings.copy(showBattery = it)) }
+                            SliderRow("set:batLow", "▭", "Battery is low at (%)", settings.batteryLow.toFloat(), 10f..40f, 1f) { onChange(settings.copy(batteryLow = it.roundToInt().coerceAtLeast(settings.batteryCritical + 1))) }
+                            SliderRow("set:batCrit", "!", "Battery is nearly dead at (%)", settings.batteryCritical.toFloat(), 3f..15f, 1f) { onChange(settings.copy(batteryCritical = it.roundToInt().coerceAtMost(settings.batteryLow - 1))) }
+                            // The drawn icon of each state can be replaced by the user's own picture.
+                            val batteryRev = BatteryArt.rev
+                            BatteryArt.STATES.forEach { (state, name) ->
+                                val mine = remember(batteryRev, state) { BatteryArt.has(batteryContext, state) }
+                                MenuRow("set:bat:$state", "▭", "Battery picture, $name" + if (mine) " (yours)" else " (drawn)") { batteryTarget = state; batteryPicker.launch("image/*") }
+                                if (mine) MenuRow("set:bat:rm:$state", "✕", "Use the drawn battery for $name") { BatteryArt.clear(batteryContext, state) }
+                            }
                         }
                         "motion" -> {
                             CheckRow("set:light", "◌", "Light mode (30 fps, fewer symbols, no blur, less memory and battery)", settings.lightMode) { onChange(settings.copy(lightMode = it)) }
