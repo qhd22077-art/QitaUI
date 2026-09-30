@@ -35,8 +35,8 @@ val THEMES = listOf(
     Theme("Neon Grid", Color(0xFF120033), Color(0xFFC2185B), Color(0xFFFF7043), Scene.GRID),
     Theme("Dunes", Color(0xFF3B1552), Color(0xFFE0567A), Color(0xFFFFB25B), Scene.DUNES),
     // The real Vita wallpapers: glossy silk ribbons, and glass symbols over deep blue.
-    Theme("Vita Silk", Color(0xFF52C4EC), Color(0xFF2F7FC0), Color(0xFF13287F), Scene.SILK),
-    Theme("Vita Symbols", Color(0xFF031A4E), Color(0xFF0846A0), Color(0xFF0E64BE), Scene.SYMBOLS),
+    Theme("Vita Silk", Color(0xFF1B6FCB), Color(0xFF1850A8), Color(0xFF0C1F6B), Scene.SILK),
+    Theme("Vita Symbols", Color(0xFF021238), Color(0xFF063488), Color(0xFF0A4FA8), Scene.SYMBOLS),
 )
 
 /** Index of the Vita Silk theme in [THEMES], the look of PS Vita mode. */
@@ -108,6 +108,10 @@ data class Settings(
     val debugInput: Boolean = false,
     val lockScreen: Boolean = true,
     val vitaMode: Boolean = true,
+    val bgCustom: Boolean = false,
+    val bgTop: Int = 0xFF1B6FCB.toInt(),
+    val bgMid: Int = 0xFF1850A8.toInt(),
+    val bgBottom: Int = 0xFF0C1F6B.toInt(),
     val lockClockPos: Int = 0,
     val symbolCount: Int = 45,
     val notifColor: Int = 0xFF1D3E8F.toInt(),
@@ -138,7 +142,11 @@ data class Settings(
     val barOpacity: Float = 1f,
     val clockSize: Float = 1f,
 ) {
-    val theme: Theme get() = THEMES[themeIndex.coerceIn(THEMES.indices)]
+    /** The chosen theme; with custom background colours on, its sky colours are replaced by the user's. */
+    val theme: Theme get() {
+        val base = THEMES[themeIndex.coerceIn(THEMES.indices)]
+        return if (bgCustom) base.copy(top = Color(bgTop), mid = Color(bgMid), bottom = Color(bgBottom)) else base
+    }
 }
 
 /** Persists [Settings] in SharedPreferences and the custom wallpaper as a file in app storage. */
@@ -172,6 +180,10 @@ class SettingsStore(private val context: Context) {
         debugInput = prefs.getBoolean("debugInput", false),
         lockScreen = prefs.getBoolean("lockScreen", true),
         vitaMode = prefs.getBoolean("vitaMode", true),
+        bgCustom = prefs.getBoolean("bgCustom", false),
+        bgTop = prefs.getInt("bgTop", 0xFF1B6FCB.toInt()),
+        bgMid = prefs.getInt("bgMid", 0xFF1850A8.toInt()),
+        bgBottom = prefs.getInt("bgBottom", 0xFF0C1F6B.toInt()),
         lockClockPos = prefs.getInt("lockClockPos", 0),
         symbolCount = prefs.getInt("symbolCount", 45),
         notifColor = prefs.getInt("notifColor", 0xFF1D3E8F.toInt()),
@@ -228,6 +240,10 @@ class SettingsStore(private val context: Context) {
             .putBoolean("debugInput", s.debugInput)
             .putBoolean("lockScreen", s.lockScreen)
             .putBoolean("vitaMode", s.vitaMode)
+            .putBoolean("bgCustom", s.bgCustom)
+            .putInt("bgTop", s.bgTop)
+            .putInt("bgMid", s.bgMid)
+            .putInt("bgBottom", s.bgBottom)
             .putInt("lockClockPos", s.lockClockPos)
             .putInt("symbolCount", s.symbolCount)
             .putInt("notifColor", s.notifColor)

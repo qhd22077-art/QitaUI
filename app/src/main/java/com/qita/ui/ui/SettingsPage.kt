@@ -176,6 +176,12 @@ fun SettingsPage(
                                     onChange(settings.copy(particleCount = it.roundToInt()))
                                 }
                             }
+                            CheckRow("set:bgCustom", "◐", "Custom background colours", settings.bgCustom) { onChange(settings.copy(bgCustom = it)) }
+                            if (settings.bgCustom) {
+                                SwatchRow("set:bgTop", "▲", "Background: top colour", settings.bgTop, BG_SWATCHES) { onChange(settings.copy(bgTop = it)) }
+                                SwatchRow("set:bgMid", "●", "Background: middle colour", settings.bgMid, BG_SWATCHES) { onChange(settings.copy(bgMid = it)) }
+                                SwatchRow("set:bgBottom", "▼", "Background: bottom colour", settings.bgBottom, BG_SWATCHES) { onChange(settings.copy(bgBottom = it)) }
+                            }
                             SliderRow("set:dim", "◑", "Dim background", settings.dim, 0f..0.6f, 0.05f) { onChange(settings.copy(dim = it)) }
                             SliderRow("set:symbolCount", "△", "Vita Symbols: number of symbols", settings.symbolCount.toFloat(), 0f..100f, 5f) {
                                 onChange(settings.copy(symbolCount = it.roundToInt()))
@@ -407,14 +413,14 @@ private fun ChoiceRow(key: String, glyph: String, label: String, options: List<S
 
 /** A row of colour swatches; the chosen one has a white ring. Left/right on the gamepad steps through them. */
 @Composable
-private fun SwatchRow(key: String, glyph: String, label: String, selected: Int, onPick: (Int) -> Unit) {
+private fun SwatchRow(key: String, glyph: String, label: String, selected: Int, swatches: List<Int> = SWATCHES, onPick: (Int) -> Unit) {
     val lit = padHighlighted(key) || padHovered(key)
-    val at = SWATCHES.indexOf(selected)
+    val at = swatches.indexOf(selected)
     Column(
         Modifier
             .fillMaxWidth()
             .padTarget(key, corner = 0.dp, ring = false, onAdjust = { dir ->
-                onPick(SWATCHES[((if (at < 0) 0 else at) + dir + SWATCHES.size) % SWATCHES.size])
+                onPick(swatches[((if (at < 0) 0 else at) + dir + swatches.size) % swatches.size])
             })
             .rowBand(lit)
             .padding(horizontal = 6.dp, vertical = 8.dp),
@@ -424,7 +430,7 @@ private fun SwatchRow(key: String, glyph: String, label: String, selected: Int, 
             Text(label, color = Color.White, fontSize = 20.sp)
         }
         Row(Modifier.padding(start = 48.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SWATCHES.forEach { c ->
+            swatches.forEach { c ->
                 val on = c == selected
                 Box(
                     Modifier

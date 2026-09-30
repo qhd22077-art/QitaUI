@@ -159,9 +159,13 @@ fun Bubble(
         )
     }
     // A soft ring spreads from the bubble when it is pressed.
+    // Started from a counter rather than the press itself: a quick tap ends the press long before the ring has spread,
+    // and an effect keyed on the press would be cancelled half way and leave the ring frozen on the bubble.
     val ring = remember { Animatable(1f) }
-    LaunchedEffect(pressed) {
-        if (pressed) {
+    var ringCount by remember { mutableIntStateOf(0) }
+    LaunchedEffect(pressed) { if (pressed) ringCount++ }
+    LaunchedEffect(ringCount) {
+        if (ringCount > 0) {
             ring.snapTo(0f)
             ring.animateTo(1f, tween(VitaMotion.Long + 120, easing = VitaMotion.Ease))
         }

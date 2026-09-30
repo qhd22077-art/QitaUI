@@ -68,6 +68,11 @@ fun Settings.look() = Look(
 )
 
 /** The swatches offered wherever a colour is picked. */
+/** Swatches for background colours: deep blues first, like the Vita's skies, then other moods. */
+val BG_SWATCHES: List<Int> = listOf(
+    0xFF061238, 0xFF0C1F6B, 0xFF1850A8, 0xFF1B6FCB, 0xFF2F9BE8, 0xFF52C4EC, 0xFF6B44D6, 0xFF0B6B2B, 0xFFB8321A, 0xFF101216, 0xFFE8EEF8,
+).map { it.toInt() }
+
 val SWATCHES: List<Int> = listOf(
     0xFF1D3E8F, 0xFF40E0E0, 0xFF4A78D0, 0xFF5CC85A, 0xFFF0B030, 0xFFF0782C, 0xFFE0567A, 0xFFA060E0, 0xFFFFFFFF, 0xFF101216,
 ).map { it.toInt() }
