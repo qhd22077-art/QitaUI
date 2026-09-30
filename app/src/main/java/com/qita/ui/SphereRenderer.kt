@@ -1,17 +1,20 @@
 package com.qita.ui
 
 import android.graphics.Bitmap
+import kotlin.math.acos
+import kotlin.math.asin
+import kotlin.math.atan2
 import kotlin.math.sqrt
 
 /**
- * Renders an icon as a slightly inflated glass disc, once, for devices that cannot run the live shader (before
- * Android 13) or when live 3D is switched off. It mirrors the shader: the art lies flat on the face (so it is not
- * stretched), the surface is flat across most of the face and curves over quickly at the rim, and it is lit from the
- * upper left with a subtle highlight that follows the rim, a darker edge, bounced light and a fine lit edge.
+ * Renders an icon as a milky glass ball, once, for devices that cannot run the live shader (before Android 13) or when
+ * live 3D is switched off. It mirrors the shader without the rolling: the art is wrapped around the ball (filling most of
+ * it, squeezing toward the edge), lit softly from the upper left so colours stay vivid, with a rim that fades to white,
+ * a brighter lit rim on the upper left, light bounced up from below, and gentle highlights.
  */
 object SphereRenderer {
-    /** How much of the disc the art spans (1 = edge to edge). */
-    private const val ART_RADIUS = 0.84f
+    /** How far the art reaches from the centre of the ball, in radians (about 80 degrees). */
+    private const val REACH = 1.40f
 
     private val light = normalize(-0.42f, -0.58f, 0.70f)
     private val half = normalize(light[0], light[1], light[2] + 1f)
@@ -23,8 +26,11 @@ object SphereRenderer {
         return floatArrayOf(x / n, y / n, z / n)
     }
 
-    /** [backdrop] is the ARGB colour of the glass body that shows through transparent parts of the icon. */
-    fun render(art: Bitmap, size: Int, backdrop: Int): Bitmap {
+    /**
+     * [backdrop] is the ARGB colour of the glass body that shows where the icon is not. [hazy] scales how white the rim
+     * goes (1 normally, less for dark glass).
+     */
+    fun render(art: Bitmap, size: Int, backdrop: Int, hazy: Float = 1f): Bitmap {
         val aw = art.width
         val ah = art.height
         val src = IntArray(aw * ah)
@@ -35,6 +41,7 @@ object SphereRenderer {
 
         val coord = FloatArray(size) { (it + 0.5f) / size * 2f - 1f }
         val out = IntArray(size * size)
+        val lxy = sqrt(light[0] * light[0] + light[1] * light[1])
 
         for (py in 0 until size) {
             val y = coord[py]
@@ -45,20 +52,16 @@ object SphereRenderer {
                 val rr = sqrt(r2)
                 val cov = ((1f - rr) * size / 2f + 0.5f).coerceIn(0f, 1f)
                 if (cov <= 0f) continue
+                val nz = sqrt((1f - r2).coerceAtLeast(0f))
 
-                // Inflated profile: flat in the middle, curving over at the rim.
-                val rc = minOf(rr, 1f)
-                val rp = rc * sqrt(rc)
-                val nxy = if (rc > 0.0001f) rp / rc else 0f
-                val nx = x * nxy
-                val ny = y * nxy
-                val nz = sqrt((1f - rp * rp).coerceAtLeast(0f))
-
-                // The art lies flat; the dome bends it a little near the rim.
-                val dx = x + nx * 0.10f
-                val dy = y + ny * 0.10f
-                val ux = 0.5f + dx / (2f * ART_RADIUS)
-                val uy = 0.5f + dy / (2f * ART_RADIUS)
+                // Wrap the art: longitude and latitude of this point on the ball.
+                val lon = atan2(x, nz)
+                val lat = asin(y.coerceIn(-1f, 1f))
+                val ux = 0.5f + lon / (2f * REACH)
+                val uy = 0.5f + lat / (2f * REACH)
+                val ang = acos(nz.coerceIn(-1f, 1f))
+                val edgeT = ((ang / REACH - 0.80f) / 0.20f).coerceIn(0f, 1f)
+                val mask = 1f - edgeT * edgeT * (3f - 2f * edgeT)
                 var cr = 0f; var cg = 0f; var cb = 0f; var ca = 0f
                 if (ux in 0f..1f && uy in 0f..1f) {
                     val sx = ux * (aw - 1)
@@ -69,9 +72,6 @@ object SphereRenderer {
                     val w00 = (1 - fx) * (1 - fy); val w10 = fx * (1 - fy); val w01 = (1 - fx) * fy; val w11 = fx * fy
                     val p00 = src[y0 * aw + x0]; val p10 = src[y0 * aw + x1]
                     val p01 = src[y1 * aw + x0]; val p11 = src[y1 * aw + x1]
-                    val dist = sqrt(dx * dx + dy * dy) / ART_RADIUS
-                    val edgeT = ((dist - 0.92f) / 0.08f).coerceIn(0f, 1f)
-                    val mask = 1f - edgeT * edgeT * (3f - 2f * edgeT)
                     ca = mask * (((p00 ushr 24) * w00 + (p10 ushr 24) * w10 + (p01 ushr 24) * w01 + (p11 ushr 24) * w11)) / 255f
                     cr = ((((p00 shr 16) and 0xFF) * w00 + ((p10 shr 16) and 0xFF) * w10 + ((p01 shr 16) and 0xFF) * w01 + ((p11 shr 16) and 0xFF) * w11)) / 255f
                     cg = ((((p00 shr 8) and 0xFF) * w00 + ((p10 shr 8) and 0xFF) * w10 + ((p01 shr 8) and 0xFF) * w01 + ((p11 shr 8) and 0xFF) * w11)) / 255f
@@ -81,52 +81,39 @@ object SphereRenderer {
                 var g = bdG * (1f - ca) + cg * ca
                 var b = bdB * (1f - ca) + cb * ca
 
-                // Diffuse light from the upper left.
-                val ndl = (nx * light[0] + ny * light[1] + nz * light[2]).coerceAtLeast(0f)
-                val shade = 0.50f + 0.70f * ndl
+                // Soft, bright lighting so colours stay vivid.
+                val ndl = (x * light[0] + y * light[1] + nz * light[2]).coerceAtLeast(0f)
+                val shade = 0.74f + 0.36f * ndl
                 r *= shade; g *= shade; b *= shade
 
-                // Darker toward the rim.
+                // Milky glass: the edge fades toward white, brighter on the lit upper-left side.
                 val f1 = 1f - nz
-                val fres = f1 * f1 * f1
-                val dim = 1f - 0.50f * fres
-                r *= dim; g *= dim; b *= dim
+                val f = f1 * f1 * sqrt(f1) // f1^2.5, close to the shader's f1^2.2
+                val haze = 0.5f * f * hazy
+                r = r * (1f - 0.5f * f) + 0.95f * haze
+                g = g * (1f - 0.5f * f) + 0.96f * haze
+                b = b * (1f - 0.5f * f) + 1.00f * haze
+                val nl = rr + 0.0001f
+                val facing = ((x / nl) * light[0] / lxy + (y / nl) * light[1] / lxy).coerceAtLeast(0f)
+                val lit = 0.30f * f * facing
+                r += lit; g += lit; b += lit
 
-                // Light bounced up from below, strongest near the lower rim.
-                val nb = (nx * bounceDir[0] + ny * bounceDir[1] + nz * bounceDir[2]).coerceAtLeast(0f)
-                val nb2 = nb * nb
-                val bounce = nb2 * nb2 * 0.40f * (fres * 2.2f + 0.10f)
-                r += 0.75f * bounce; g += 0.85f * bounce; b += bounce
+                // Light bounced up from below.
+                val nb = (x * bounceDir[0] + y * bounceDir[1] + nz * bounceDir[2]).coerceAtLeast(0f)
+                val bounce = nb * nb * nb * 0.45f * (f * 2f + 0.05f)
+                r += 0.8f * bounce; g += 0.9f * bounce; b += bounce
 
-                // Subtle highlights that follow the rim: a small glint and a broad soft reflection.
-                val ndh = (nx * half[0] + ny * half[1] + nz * half[2]).coerceAtLeast(0f)
-                val q2 = ndh * ndh; val q4 = q2 * q2; val q8 = q4 * q4; val q16 = q8 * q8; val q32 = q16 * q16
-                val spec = q32 * q16 * q8 * q4 * 0.28f
-                val rx = 2f * nz * nx
-                val ry = 2f * nz * ny
+                // Gentle highlights: a small glint and a soft wide reflection.
+                val ndh = (x * half[0] + y * half[1] + nz * half[2]).coerceAtLeast(0f)
+                val q2 = ndh * ndh; val q4 = q2 * q2; val q8 = q4 * q4; val q16 = q8 * q8; val q32 = q16 * q16; val q64 = q32 * q32
+                val spec = q64 * q4 * q2 * 0.30f
+                val rx = 2f * nz * x
+                val ry = 2f * nz * y
                 val rz = 2f * nz * nz - 1f
                 val rd = (rx * window[0] + ry * window[1] + rz * window[2]).coerceAtLeast(0f)
-                val e2 = rd * rd; val e4 = e2 * e2
-                val e8 = e4 * e4
-                val env = e8 * e4 * e2 * 0.11f
+                val e2 = rd * rd
+                val env = e2 * e2 * rd * 0.24f
                 r += spec + env; g += spec + env; b += spec + env
-
-                // The bevel: a darker groove just inside the lit edge.
-                val gT = ((rr - 0.87f) / 0.05f).coerceIn(0f, 1f)
-                val gO = ((rr - 0.92f) / 0.04f).coerceIn(0f, 1f)
-                val groove = gT * gT * (3f - 2f * gT) * (1f - gO * gO * (3f - 2f * gO))
-                val gd = 1f - 0.40f * groove
-                r *= gd; g *= gd; b *= gd
-
-                // A fine lit edge around the disc, brighter on the side facing the light.
-                val lineT = ((rr - 0.93f) / 0.055f).coerceIn(0f, 1f)
-                val lineOut = ((rr - 0.985f) / 0.015f).coerceIn(0f, 1f)
-                val edgeLine = lineT * lineT * (3f - 2f * lineT) * (1f - lineOut * lineOut * (3f - 2f * lineOut))
-                val nlen = sqrt(nx * nx + ny * ny) + 0.0001f
-                val lxy = sqrt(light[0] * light[0] + light[1] * light[1])
-                val facing = 0.35f + 0.65f * ((nx / nlen * light[0] / lxy + ny / nlen * light[1] / lxy).coerceAtLeast(0f))
-                val rim = 0.24f * edgeLine * facing
-                r += rim; g += rim; b += rim
 
                 val ir = (r.coerceIn(0f, 1f) * 255f + 0.5f).toInt()
                 val ig = (g.coerceIn(0f, 1f) * 255f + 0.5f).toInt()

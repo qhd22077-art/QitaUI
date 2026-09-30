@@ -37,7 +37,8 @@ val SYSTEM_IDS: List<String> = SystemAction.values().map { it.id }
  */
 val SYSTEM_APPS: List<LaunchableApp> by lazy {
     listOf(
-        systemApp(SystemAction.SETTINGS, Color(0xFF3F9A5C)) { drawToolbox() },
+        // Settings is a green bubble with a pale toolbox, like the Vita's; the others are black glass with a white pictogram.
+        systemApp(SystemAction.SETTINGS, Color(0xFF3F9A5C), Color(0xFF9BD65A), Color(0xFF2F6E1F)) { drawToolbox(Color(0xFF2B5A1C)) },
         systemApp(SystemAction.STORE, Color(0xFF2E7DD7)) { drawBag() },
         systemApp(SystemAction.DESKTOP, Color(0xFFD9691E)) { drawMonitor() },
     )
@@ -45,10 +46,16 @@ val SYSTEM_APPS: List<LaunchableApp> by lazy {
 
 private val Ink = Color(0xFF14161A)
 
-private fun systemApp(action: SystemAction, tint: Color, art: DrawScope.() -> Unit): LaunchableApp {
+private fun systemApp(
+    action: SystemAction,
+    tint: Color,
+    backTop: Color = Color(0xFF30343C),
+    backBottom: Color = Color(0xFF07080A),
+    art: DrawScope.() -> Unit,
+): LaunchableApp {
     val icon = drawIcon {
         // A dark backdrop with a faint light in the upper left.
-        drawRect(Brush.linearGradient(listOf(Color(0xFF30343C), Color(0xFF07080A)), Offset.Zero, Offset(ICON.toFloat(), ICON.toFloat())))
+        drawRect(Brush.linearGradient(listOf(backTop, backBottom), Offset.Zero, Offset(ICON.toFloat(), ICON.toFloat())))
         drawCircle(
             Brush.radialGradient(listOf(Color.White.copy(alpha = 0.16f), Color.Transparent), Offset(ICON * 0.3f, ICON * 0.25f), ICON * 0.55f),
             radius = ICON * 0.55f, center = Offset(ICON * 0.3f, ICON * 0.25f),
@@ -61,7 +68,7 @@ private fun systemApp(action: SystemAction, tint: Color, art: DrawScope.() -> Un
         icon = icon,
         tint = tint,
         action = action,
-        ball = SphereRenderer.render(icon.asAndroidBitmap(), 224, 0xFF0A0B0D.toInt()).asImageBitmap(),
+        ball = SphereRenderer.render(icon.asAndroidBitmap(), 224, systemBody(action), if (action == SystemAction.SETTINGS) 1f else 0.55f).asImageBitmap(),
     )
 }
 
@@ -76,14 +83,14 @@ private fun drawIcon(block: DrawScope.() -> Unit): ImageBitmap {
 private fun white(y0: Float, y1: Float) = Brush.verticalGradient(listOf(Color.White, Color(0xFFC4CAD2)), startY = y0, endY = y1)
 
 /** A toolbox pictogram: handle, lid, body, a dark seam and latch. */
-private fun DrawScope.drawToolbox() {
+private fun DrawScope.drawToolbox(ink: Color = Ink) {
     drawRoundRect(white(48f, 120f), Offset(90f, 48f), Size(76f, 70f), CornerRadius(20f), style = Stroke(width = 13f))
     drawRoundRect(white(92f, 208f), Offset(40f, 92f), Size(176f, 116f), CornerRadius(16f))
-    drawRect(Ink, Offset(40f, 142f), Size(176f, 7f))
+    drawRect(ink, Offset(40f, 142f), Size(176f, 7f))
     drawRoundRect(Color.White, Offset(104f, 128f), Size(48f, 40f), CornerRadius(9f))
-    drawRoundRect(Ink, Offset(104f, 128f), Size(48f, 40f), CornerRadius(9f), style = Stroke(width = 5f))
-    drawCircle(Ink, 6f, Offset(128f, 146f))
-    drawRect(Ink, Offset(126f, 148f), Size(4f, 12f))
+    drawRoundRect(ink, Offset(104f, 128f), Size(48f, 40f), CornerRadius(9f), style = Stroke(width = 5f))
+    drawCircle(ink, 6f, Offset(128f, 146f))
+    drawRect(ink, Offset(126f, 148f), Size(4f, 12f))
 }
 
 /** A shopping bag pictogram with a star cut out of it. */
@@ -114,3 +121,6 @@ private fun DrawScope.drawMonitor() {
     drawPath(prompt, Color.White, style = Stroke(width = 10f, cap = StrokeCap.Round, join = StrokeJoin.Round))
     drawLine(Color.White, Offset(114f, 144f), Offset(152f, 144f), strokeWidth = 10f, cap = StrokeCap.Round)
 }
+
+/** The ARGB colour of the glass body behind a built-in bubble's art. */
+fun systemBody(action: SystemAction?): Int = if (action == SystemAction.SETTINGS) 0xFF3A7A26.toInt() else 0xFF0A0B0D.toInt()

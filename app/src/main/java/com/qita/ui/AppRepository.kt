@@ -47,7 +47,7 @@ object AppRepository {
                     packageName = it.activityInfo.packageName,
                     icon = bitmap.asImageBitmap(),
                     tint = tint,
-                    ball = SphereRenderer.render(bitmap, 224, darkBody(tint)).asImageBitmap(),
+                    ball = SphereRenderer.render(bitmap, 224, lightBody(tint)).asImageBitmap(),
                     installTime = info?.firstInstallTime ?: 0L,
                     version = info?.versionName.orEmpty(),
                     category = it.activityInfo.applicationInfo.category,
@@ -84,14 +84,6 @@ object AppRepository {
     fun close(context: Context, app: LaunchableApp) {
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         am.killBackgroundProcesses(app.packageName)
-    }
-
-    /** The glass body colour behind transparent parts of an icon: the icon's colour, darkened. */
-    internal fun darkBody(tint: Color): Int {
-        val r = (tint.red * 0.35f * 255f).toInt()
-        val g = (tint.green * 0.35f * 255f).toInt()
-        val b = (tint.blue * 0.35f * 255f).toInt()
-        return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
     }
 
     /** Mean colour of the opaque pixels, sampled on a coarse grid. */
@@ -144,4 +136,12 @@ object AppRepository {
         draw(canvas)
         return bmp
     }
+}
+
+/** The glass body colour behind transparent parts of an icon: the icon's colour, lightened. */
+fun lightBody(tint: Color): Int {
+    val r = ((tint.red * 0.65f + 0.35f) * 0.92f * 255f).toInt()
+    val g = ((tint.green * 0.65f + 0.35f) * 0.92f * 255f).toInt()
+    val b = ((tint.blue * 0.65f + 0.35f) * 0.92f * 255f).toInt()
+    return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
 }

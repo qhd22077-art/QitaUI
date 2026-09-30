@@ -63,7 +63,7 @@ fun Sphere(
     // On Android 13+ the ball is shaded live on the GPU and rolls; otherwise the pre-rendered ball is used.
     val live3d = LocalBall3D.current && round && Ball3D.supported
     val paint = if (live3d) remember(app.icon) {
-        Ball3D.create(app, if (app.action != null) 0xFF0A0B0D.toInt() else darkBody(app.tint))
+        Ball3D.create(app, if (app.action != null) com.qita.ui.systemBody(app.action) else lightBody(app.tint))
     } else null
     val ball = if (round && paint == null) app.ball else null
     val light = lerp(app.tint, Color.White, 0.42f)
@@ -184,10 +184,5 @@ fun Sphere(
     }
 }
 
-/** The glass body colour behind transparent parts of an icon: the icon's colour, darkened. */
-private fun darkBody(tint: Color): Int {
-    val r = (tint.red * 0.35f * 255f).toInt()
-    val g = (tint.green * 0.35f * 255f).toInt()
-    val b = (tint.blue * 0.35f * 255f).toInt()
-    return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
-}
+/** The glass body colour behind transparent parts of an icon: the icon's colour, lightened, like the coloured glass of the real bubbles. */
+private fun lightBody(tint: Color): Int = com.qita.ui.lightBody(tint)
