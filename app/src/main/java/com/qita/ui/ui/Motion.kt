@@ -1,6 +1,7 @@
 package com.qita.ui.ui
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.spring

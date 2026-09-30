@@ -10,6 +10,7 @@ import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import android.provider.Settings as AndroidSettings
 import androidx.compose.foundation.Canvas
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
