@@ -62,9 +62,9 @@ fun Sphere(
     val round = full && shape == CircleShape
     // On Android 13+ the ball is shaded live on the GPU and rolls; otherwise the pre-rendered ball is used.
     val live3d = LocalBall3D.current && round && Ball3D.supported
-    val paint = if (live3d) remember(app.icon) {
-        Ball3D.create(app, if (app.action != null) com.qita.ui.systemBody(app.action) else lightBody(app.tint))
-    } else null
+    val look = LocalLook.current
+    val body = remember(app.icon, look.bodyMode, look.bodyColor) { bodyFor(app, look) }
+    val paint = if (live3d) remember(app.icon) { Ball3D.create(app, body) } else null
     val ball = if (round && paint == null) app.ball else null
     val light = lerp(app.tint, Color.White, 0.42f)
     val dark = lerp(app.tint, Color.Black, 0.38f)
@@ -102,7 +102,7 @@ fun Sphere(
                 Modifier.fillMaxSize().drawBehind {
                     val r = roll()
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        Ball3D.update(paint, this.size.width, this.size.height, r.x, r.y, glow())
+                        Ball3D.update(paint, this.size.width, this.size.height, r.x, r.y, glow(), look, body)
                         drawRect(paint.brush)
                     }
                 },
@@ -113,7 +113,7 @@ fun Sphere(
             Box(
                 Modifier.fillMaxSize().drawBehind {
                     val g = glow()
-                    if (g > 0.01f) drawCircle(Color(0xFF16E0FF).copy(alpha = 0.34f * g))
+                    if (g > 0.01f) drawCircle(look.accent.copy(alpha = 0.34f * g))
                 },
             )
         } else if (full) {
@@ -144,7 +144,7 @@ fun Sphere(
                         listOf(Color.White.copy(alpha = 0.95f), Color.White.copy(alpha = 0f)),
                         center = Offset(w * 0.30f, h * 0.20f), radius = w * 0.11f,
                     )
-                    val cyan = Color(0xFF16E0FF)
+                    val cyan = look.accent
                     onDrawBehind {
                         drawRect(edge)
                         drawRect(bounce)

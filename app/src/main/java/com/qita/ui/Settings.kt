@@ -101,6 +101,29 @@ data class Settings(
     val autoAdd: Boolean = false,
     val debugInput: Boolean = false,
     val lockScreen: Boolean = true,
+    val bodyMode: Int = 0,
+    val bodyColor: Int = 0xFF4A78D0.toInt(),
+    val accent: Int = 0xFF40E0E0.toInt(),
+    val iconSat: Float = 1f,
+    val iconBright: Float = 1f,
+    val iconScale: Float = 1f,
+    val rimWidth: Float = 1f,
+    val highlight: Float = 1f,
+    val thickness: Float = 1f,
+    val dome: Float = 1f,
+    val sway: Float = 1f,
+    val tapAnim: Int = 0,
+    val nameSize: Float = 1f,
+    val nameWeight: Int = 1,
+    val nameColor: Int = 0xFFFFFFFF.toInt(),
+    val namePill: Boolean = false,
+    val nameFont: Int = 0,
+    val uiFontChoice: Int = 0,
+    val sceneSpeed: Float = 1f,
+    val reduceMotion: Boolean = false,
+    val showClock: Boolean = true,
+    val barOpacity: Float = 1f,
+    val clockSize: Float = 1f,
 ) {
     val theme: Theme get() = THEMES[themeIndex.coerceIn(THEMES.indices)]
 }
@@ -135,6 +158,29 @@ class SettingsStore(private val context: Context) {
         autoAdd = prefs.getBoolean("autoAdd", false),
         debugInput = prefs.getBoolean("debugInput", false),
         lockScreen = prefs.getBoolean("lockScreen", true),
+        bodyMode = prefs.getInt("bodyMode", 0),
+        bodyColor = prefs.getInt("bodyColor", 0xFF4A78D0.toInt()),
+        accent = prefs.getInt("accent", 0xFF40E0E0.toInt()),
+        iconSat = prefs.getFloat("iconSat", 1f),
+        iconBright = prefs.getFloat("iconBright", 1f),
+        iconScale = prefs.getFloat("iconScale", 1f),
+        rimWidth = prefs.getFloat("rimWidth", 1f),
+        highlight = prefs.getFloat("highlight", 1f),
+        thickness = prefs.getFloat("thickness", 1f),
+        dome = prefs.getFloat("dome", 1f),
+        sway = prefs.getFloat("sway", 1f),
+        tapAnim = prefs.getInt("tapAnim", 0),
+        nameSize = prefs.getFloat("nameSize", 1f),
+        nameWeight = prefs.getInt("nameWeight", 1),
+        nameColor = prefs.getInt("nameColor", 0xFFFFFFFF.toInt()),
+        namePill = prefs.getBoolean("namePill", false),
+        nameFont = prefs.getInt("nameFont", 0),
+        uiFontChoice = prefs.getInt("uiFontChoice", 0),
+        sceneSpeed = prefs.getFloat("sceneSpeed", 1f),
+        reduceMotion = prefs.getBoolean("reduceMotion", false),
+        showClock = prefs.getBoolean("showClock", true),
+        barOpacity = prefs.getFloat("barOpacity", 1f),
+        clockSize = prefs.getFloat("clockSize", 1f),
     )
 
     fun save(s: Settings) {
@@ -161,6 +207,29 @@ class SettingsStore(private val context: Context) {
             .putBoolean("autoAdd", s.autoAdd)
             .putBoolean("debugInput", s.debugInput)
             .putBoolean("lockScreen", s.lockScreen)
+            .putInt("bodyMode", s.bodyMode)
+            .putInt("bodyColor", s.bodyColor)
+            .putInt("accent", s.accent)
+            .putFloat("iconSat", s.iconSat)
+            .putFloat("iconBright", s.iconBright)
+            .putFloat("iconScale", s.iconScale)
+            .putFloat("rimWidth", s.rimWidth)
+            .putFloat("highlight", s.highlight)
+            .putFloat("thickness", s.thickness)
+            .putFloat("dome", s.dome)
+            .putFloat("sway", s.sway)
+            .putInt("tapAnim", s.tapAnim)
+            .putFloat("nameSize", s.nameSize)
+            .putInt("nameWeight", s.nameWeight)
+            .putInt("nameColor", s.nameColor)
+            .putBoolean("namePill", s.namePill)
+            .putInt("nameFont", s.nameFont)
+            .putInt("uiFontChoice", s.uiFontChoice)
+            .putFloat("sceneSpeed", s.sceneSpeed)
+            .putBoolean("reduceMotion", s.reduceMotion)
+            .putBoolean("showClock", s.showClock)
+            .putFloat("barOpacity", s.barOpacity)
+            .putFloat("clockSize", s.clockSize)
             .apply()
     }
 
@@ -268,6 +337,37 @@ class SettingsStore(private val context: Context) {
     /** The picked font as a family, or null if there is none or it cannot be read. */
     fun customFontFamily(): FontFamily? =
         if (fontFile.exists()) runCatching { FontFamily(Font(fontFile)) }.getOrNull() else null
+
+    /** Every setting (not the home layout, launch counts or wallpapers) as JSON text, so a look can be backed up. */
+    fun exportJson(): String {
+        val json = org.json.JSONObject()
+        prefs.all.forEach { (k, v) ->
+            if (k.startsWith("launch_") || k == "known" || k == "home" || k == "systemSeeded" || k == "tutorialSeen") return@forEach
+            when (v) {
+                is Boolean, is Int, is String -> json.put(k, v)
+                is Float -> json.put(k, v.toDouble())
+                else -> {}
+            }
+        }
+        return json.toString(2)
+    }
+
+    /** Applies settings written by [exportJson]. Returns false if the text is not valid. */
+    fun importJson(text: String): Boolean = runCatching {
+        val json = org.json.JSONObject(text)
+        val edit = prefs.edit()
+        json.keys().forEach { k ->
+            when (val v = json.get(k)) {
+                is Boolean -> edit.putBoolean(k, v)
+                is Int -> edit.putInt(k, v)
+                is Double -> edit.putFloat(k, v.toFloat())
+                is String -> edit.putString(k, v)
+                else -> {}
+            }
+        }
+        edit.apply()
+        true
+    }.getOrDefault(false)
 
     fun clearWallpaper(page: Int? = null) {
         wallpaperFile(page).delete()

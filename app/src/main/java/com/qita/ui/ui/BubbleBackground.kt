@@ -70,11 +70,14 @@ fun BubbleBackground(
 /** Draws the animated scene (or a cross-fade of two while swiping) from [mix], read only while drawing. */
 @Composable
 private fun SceneCanvas(mix: () -> SceneMix, scroll: () -> Float) {
-    val phase by rememberInfiniteTransition(label = "scene").animateFloat(
+    val look = LocalLook.current
+    val running by rememberInfiniteTransition(label = "scene").animateFloat(
         0f, (2 * PI).toFloat(),
-        infiniteRepeatable(tween(26_000, easing = LinearEasing), RepeatMode.Restart),
+        infiniteRepeatable(tween((26_000 / look.sceneSpeed.coerceIn(0.2f, 3f)).toInt(), easing = LinearEasing), RepeatMode.Restart),
         label = "phase",
     )
+    // With reduced motion the scene stands still.
+    val phase = if (look.reduceMotion) 1.9f else running
     val cache = remember { SceneCache() }
     val layerPaint = remember { Paint() }
     Canvas(Modifier.fillMaxSize()) {

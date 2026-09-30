@@ -75,6 +75,7 @@ fun StatusBar(
 ) {
     // How strongly icon [i] is highlighted: follows the live position if there is one, so the ring moves with the page.
     fun strength(i: Int): Float = position?.let { (1f - kotlin.math.abs(it() - i)).coerceIn(0f, 1f) } ?: if (i == current) 1f else 0f
+    val look = LocalLook.current
     val context = LocalContext.current
     var now by remember { mutableStateOf(Date()) }
     var status by remember { mutableStateOf(readStatus(context)) }
@@ -89,7 +90,7 @@ fun StatusBar(
         modifier
             .fillMaxWidth()
             .height(28.dp)
-            .background(Brush.verticalGradient(listOf(Color(0xFF000000), Color(0xFF0C0C0C)))),
+            .background(Brush.verticalGradient(listOf(Color(0xFF000000).copy(alpha = look.barOpacity), Color(0xFF0C0C0C).copy(alpha = look.barOpacity)))),
     ) {
         Row(
             Modifier.align(Alignment.CenterStart).padding(start = 14.dp),
@@ -133,8 +134,8 @@ fun StatusBar(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             val clock = if (use24h) SimpleDateFormat("HH:mm", Locale.getDefault()) else SimpleDateFormat("h:mm", Locale.getDefault())
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(clock.format(now), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Medium)
+            if (look.showClock) Row(verticalAlignment = Alignment.Bottom) {
+                Text(clock.format(now), color = Color.White, fontSize = (17f * look.clockSize).sp, fontWeight = FontWeight.Medium)
                 if (!use24h) {
                     Text(
                         SimpleDateFormat(" a", Locale.getDefault()).format(now).uppercase(Locale.getDefault()),

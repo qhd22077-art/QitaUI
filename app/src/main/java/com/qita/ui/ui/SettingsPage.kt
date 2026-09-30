@@ -15,6 +15,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -68,7 +69,6 @@ import com.qita.ui.Settings
 import com.qita.ui.THEMES
 import kotlin.math.roundToInt
 
-private val Cyan = Color(0xFF40E0E0)
 private val DeepGreen = Color(0xFF0B6A14)
 
 /**
@@ -89,6 +89,8 @@ fun SettingsPage(
     hasCustomFont: Boolean,
     onFont: (Uri) -> Unit,
     onClearFont: () -> Unit,
+    onExport: (Uri) -> Unit,
+    onImport: (Uri) -> Unit,
     onClose: () -> Unit,
 ) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -96,6 +98,12 @@ fun SettingsPage(
     }
     val fontPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) onFont(uri)
+    }
+    val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) onExport(uri)
+    }
+    val importer = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) onImport(uri)
     }
     var page by remember { mutableStateOf<String?>(null) }
     // Back steps out of a page first, then closes Settings (this handler is registered after Home's, so it wins).
@@ -105,6 +113,10 @@ fun SettingsPage(
     val title = when (page) {
         "theme" -> "Theme & Background"
         "home" -> "Home Screen"
+        "bubbles" -> "Bubbles & Icons"
+        "fonts" -> "Fonts & Text"
+        "topbar" -> "Top Bar"
+        "motion" -> "Motion"
         "status" -> "Date & Time"
         "controller" -> "Controller"
         "system" -> "System"
@@ -159,6 +171,8 @@ fun SettingsPage(
                                 }
                             }
                             SliderRow("set:dim", "◑", "Dim background", settings.dim, 0f..0.6f, 0.05f) { onChange(settings.copy(dim = it)) }
+                            SliderRow("set:sceneSpeed", "≋", "Background animation speed", settings.sceneSpeed, 0.3f..2.5f, 0.1f) { onChange(settings.copy(sceneSpeed = it)) }
+                            SwatchRow("set:accent", "◎", "Accent colour (selection and highlights)", settings.accent) { onChange(settings.copy(accent = it)) }
                         }
                         "home" -> {
                             LAYOUTS.forEachIndexed { i, l ->
@@ -166,15 +180,57 @@ fun SettingsPage(
                                     if (i == settings.layoutIndex) Text("✓", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                                 }) { onChange(settings.copy(layoutIndex = i)) }
                             }
-                            CheckRow("set:bubble3d", "◍", "Live 3D bubbles (Android 13+)", settings.bubble3d) { onChange(settings.copy(bubble3d = it)) }
-                            CheckRow("set:fullart", "◉", "Full-art bubbles (Vita style)", settings.fullArt) { onChange(settings.copy(fullArt = it)) }
-                            CheckRow("set:rounded", "▢", "Rounded square bubbles", settings.roundedBubbles) { onChange(settings.copy(roundedBubbles = it)) }
                             CheckRow("set:labels", "A", "Show app names", settings.showLabels) { onChange(settings.copy(showLabels = it)) }
                             CheckRow("set:dots", "•", "Show page dots", settings.showDots) { onChange(settings.copy(showDots = it)) }
                             SliderRow("set:size", "●", "Bubble size", settings.bubbleScale, 0.7f..1.1f, 0.05f) { onChange(settings.copy(bubbleScale = it)) }
                             CheckRow("set:newest", "↓", "Sort newest apps first", settings.sortNewest) { onChange(settings.copy(sortNewest = it)) }
                             CheckRow("set:autoadd", "+", "Add newly installed apps to home", settings.autoAdd) { onChange(settings.copy(autoAdd = it)) }
                             MenuRow("set:clearhome", "✕", "Remove all apps from home") { onClearHome() }
+                        }
+                        "bubbles" -> {
+                            CheckRow("set:bubble3d", "◍", "Live 3D bubbles (Android 13+)", settings.bubble3d) { onChange(settings.copy(bubble3d = it)) }
+                            CheckRow("set:fullart", "◉", "Full-art bubbles (Vita style)", settings.fullArt) { onChange(settings.copy(fullArt = it)) }
+                            CheckRow("set:rounded", "▢", "Rounded square bubbles", settings.roundedBubbles) { onChange(settings.copy(roundedBubbles = it)) }
+                            ChoiceRow(
+                                "set:bodyMode", "◐", "Glass colour behind icons",
+                                listOf("Icon colour", "One colour", "Black glass", "Milky white"), settings.bodyMode,
+                            ) { onChange(settings.copy(bodyMode = it)) }
+                            if (settings.bodyMode == 1) {
+                                SwatchRow("set:bodyColor", "●", "Glass colour", settings.bodyColor) { onChange(settings.copy(bodyColor = it)) }
+                            }
+                            SliderRow("set:iconScale", "▣", "Icon size inside the bubble", settings.iconScale, 0.7f..1.05f, 0.05f) { onChange(settings.copy(iconScale = it)) }
+                            SliderRow("set:iconSat", "◑", "Icon colour strength", settings.iconSat, 0f..1.6f, 0.1f) { onChange(settings.copy(iconSat = it)) }
+                            SliderRow("set:iconBright", "☀", "Icon brightness", settings.iconBright, 0.6f..1.4f, 0.05f) { onChange(settings.copy(iconBright = it)) }
+                            SliderRow("set:thickness", "◫", "Disc thickness", settings.thickness, 0f..1.8f, 0.1f) { onChange(settings.copy(thickness = it)) }
+                            SliderRow("set:dome", "◠", "Dome (flat to puffy)", settings.dome, 0.5f..2f, 0.1f) { onChange(settings.copy(dome = it)) }
+                            SliderRow("set:rimWidth", "○", "Milky rim width", settings.rimWidth, 0.3f..2.5f, 0.1f) { onChange(settings.copy(rimWidth = it)) }
+                            SliderRow("set:highlight", "✦", "Shine", settings.highlight, 0f..2f, 0.1f) { onChange(settings.copy(highlight = it)) }
+                            SliderRow("set:sway", "≈", "Idle sway", settings.sway, 0f..3f, 0.25f) { onChange(settings.copy(sway = it)) }
+                            ChoiceRow("set:tapAnim", "↻", "When tapped", listOf("Flip", "Pulse", "Nothing"), settings.tapAnim) { onChange(settings.copy(tapAnim = it)) }
+                        }
+                        "fonts" -> {
+                            InfoBox("The quick brown fox jumps over the lazy dog 0123456789")
+                            ChoiceRow("set:uiFont", "Aa", "Menu and screen font", FONT_NAMES, settings.uiFontChoice) { onChange(settings.copy(uiFontChoice = it)) }
+                            ChoiceRow("set:nameFont", "Aa", "App name font", FONT_NAMES, settings.nameFont) { onChange(settings.copy(nameFont = it)) }
+                            MenuRow("set:font", "↥", "Load a font file (.ttf / .otf)") { fontPicker.launch("*/*") }
+                            if (hasCustomFont) MenuRow("set:font:remove", "✕", "Remove the loaded font file") { onClearFont() }
+                            SliderRow("set:nameSize", "A", "App name size", settings.nameSize, 0.7f..1.5f, 0.05f) { onChange(settings.copy(nameSize = it)) }
+                            ChoiceRow("set:nameWeight", "A", "App name weight", listOf("Light", "Normal", "Bold"), settings.nameWeight) { onChange(settings.copy(nameWeight = it)) }
+                            SwatchRow("set:nameColor", "●", "App name colour", settings.nameColor) { onChange(settings.copy(nameColor = it)) }
+                            CheckRow("set:namePill", "▭", "Always show names on a pill", settings.namePill) { onChange(settings.copy(namePill = it)) }
+                        }
+                        "topbar" -> {
+                            CheckRow("set:showClock", "◷", "Show the clock", settings.showClock) { onChange(settings.copy(showClock = it)) }
+                            SliderRow("set:clockSize", "A", "Clock size", settings.clockSize, 0.7f..1.5f, 0.05f) { onChange(settings.copy(clockSize = it)) }
+                            SliderRow("set:barOpacity", "◑", "Bar opacity", settings.barOpacity, 0.2f..1f, 0.1f) { onChange(settings.copy(barOpacity = it)) }
+                            CheckRow("set:24h2", "◷", "24-hour clock", settings.use24h) { onChange(settings.copy(use24h = it)) }
+                            CheckRow("set:battery2", "⚡", "Show battery level", settings.showBattery) { onChange(settings.copy(showBattery = it)) }
+                        }
+                        "motion" -> {
+                            CheckRow("set:reduce", "■", "Reduce motion (still background, no sway or flip)", settings.reduceMotion) { onChange(settings.copy(reduceMotion = it)) }
+                            SliderRow("set:sceneSpeed2", "≋", "Background animation speed", settings.sceneSpeed, 0.3f..2.5f, 0.1f) { onChange(settings.copy(sceneSpeed = it)) }
+                            SliderRow("set:sway2", "≈", "Bubble idle sway", settings.sway, 0f..3f, 0.25f) { onChange(settings.copy(sway = it)) }
+                            ChoiceRow("set:tapAnim2", "↻", "Bubble tap animation", listOf("Flip", "Pulse", "Nothing"), settings.tapAnim) { onChange(settings.copy(tapAnim = it)) }
                         }
                         "status" -> {
                             CheckRow("set:24h", "◷", "24-hour clock", settings.use24h) { onChange(settings.copy(use24h = it)) }
@@ -199,14 +255,18 @@ fun SettingsPage(
                         "system" -> {
                             CheckRow("set:haptics", "∷", "Vibrate on long-press and highlight", settings.haptics) { onChange(settings.copy(haptics = it)) }
                             CheckRow("set:lock", "▭", "Lock screen when the launcher starts or the screen wakes", settings.lockScreen) { onChange(settings.copy(lockScreen = it)) }
-                            MenuRow("set:font", "Aa", "Choose a font file for names (.ttf / .otf)") { fontPicker.launch("*/*") }
-                            if (hasCustomFont) MenuRow("set:font:remove", "✕", "Use the built-in font") { onClearFont() }
+                            MenuRow("set:export", "↥", "Save my settings to a file") { exporter.launch("qitaui-settings.json") }
+                            MenuRow("set:import", "↧", "Load settings from a file") { importer.launch("*/*") }
                             MenuRow("set:tutorial", "i", "Show tutorial") { onShowTutorial() }
                             MenuRow("set:reset", "↺", "Reset all settings") { onChange(Settings()) }
                         }
                         else -> {
                             NavRow("set:nav:theme", "◐", "Theme & Background") { page = "theme" }
                             NavRow("set:nav:home", "⌂", "Home Screen") { page = "home" }
+                            NavRow("set:nav:bubbles", "◍", "Bubbles & Icons") { page = "bubbles" }
+                            NavRow("set:nav:fonts", "Aa", "Fonts & Text") { page = "fonts" }
+                            NavRow("set:nav:topbar", "▭", "Top Bar") { page = "topbar" }
+                            NavRow("set:nav:motion", "≈", "Motion") { page = "motion" }
                             NavRow("set:nav:status", "◷", "Date & Time") { page = "status" }
                             NavRow("set:nav:controller", "✦", "Controller") { page = "controller" }
                             NavRow("set:nav:system", "⚙", "System") { page = "system" }
@@ -251,6 +311,7 @@ private fun VitaGreen() {
 /** Cyan band behind the selected row, fading out at both ends, plus the thin separator line under every row. */
 private fun Modifier.rowBand(lit: Boolean): Modifier = composed {
     val band by animateFloatAsState(if (lit) 1f else 0f, tween(140), label = "band")
+    val Cyan = LocalLook.current.accent
     drawBehind {
         if (band > 0.01f) {
             drawRect(
@@ -281,6 +342,7 @@ private fun MenuRow(
     glyph: String,
     label: String,
     trailing: @Composable () -> Unit = {},
+    onAdjust: ((Int) -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     val lit = padHighlighted(key) || padHovered(key)
@@ -288,7 +350,7 @@ private fun MenuRow(
         Modifier
             .fillMaxWidth()
             .heightIn(min = 54.dp)
-            .padClickable(key, corner = 0.dp, ring = false, onClick = onClick)
+            .padClickable(key, corner = 0.dp, ring = false, onAdjust = onAdjust, onClick = onClick)
             .rowBand(lit)
             .padding(horizontal = 6.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -308,6 +370,53 @@ private fun NavRow(key: String, glyph: String, label: String, onClick: () -> Uni
 @Composable
 private fun CheckRow(key: String, glyph: String, label: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
     MenuRow(key, glyph, label, trailing = { GlowCheck(checked) }) { onChecked(!checked) }
+}
+
+private val FONT_NAMES = listOf("Built-in", "System", "Serif", "Monospace", "Loaded file")
+
+/** A row that steps through a short list of choices: tap or A goes to the next, left/right on the gamepad steps either way. */
+@Composable
+private fun ChoiceRow(key: String, glyph: String, label: String, options: List<String>, index: Int, onIndex: (Int) -> Unit) {
+    val n = options.size
+    val i = index.coerceIn(0, n - 1)
+    MenuRow(
+        key, glyph, label,
+        trailing = { Text(options[i], color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Medium) },
+        onAdjust = { dir -> onIndex((i + dir + n) % n) },
+    ) { onIndex((i + 1) % n) }
+}
+
+/** A row of colour swatches; the chosen one has a white ring. Left/right on the gamepad steps through them. */
+@Composable
+private fun SwatchRow(key: String, glyph: String, label: String, selected: Int, onPick: (Int) -> Unit) {
+    val lit = padHighlighted(key) || padHovered(key)
+    val at = SWATCHES.indexOf(selected)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padTarget(key, corner = 0.dp, ring = false, onAdjust = { dir ->
+                onPick(SWATCHES[((if (at < 0) 0 else at) + dir + SWATCHES.size) % SWATCHES.size])
+            })
+            .rowBand(lit)
+            .padding(horizontal = 6.dp, vertical = 8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            GlyphBadge(glyph)
+            Text(label, color = Color.White, fontSize = 20.sp)
+        }
+        Row(Modifier.padding(start = 48.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SWATCHES.forEach { c ->
+                val on = c == selected
+                Box(
+                    Modifier
+                        .size(if (on) 34.dp else 30.dp)
+                        .background(Color(c), CircleShape)
+                        .border(if (on) 3.dp else 1.5.dp, Color.White.copy(alpha = if (on) 1f else 0.7f), CircleShape)
+                        .clickable { onPick(c) },
+                )
+            }
+        }
+    }
 }
 
 /** Rounded box with a soft glow and a check when on, like the Vita's checkbox. */
@@ -390,6 +499,7 @@ private fun InfoBox(text: String, mono: Boolean = false) {
 @Composable
 internal fun BackButton(onClick: () -> Unit, modifier: Modifier = Modifier, key: String = "set:back") {
     val lit = padHighlighted(key) || padHovered(key)
+    val Cyan = LocalLook.current.accent
     Box(
         modifier
             .size(66.dp)

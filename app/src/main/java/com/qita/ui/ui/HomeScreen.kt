@@ -158,7 +158,16 @@ fun HomeScreen(homePresses: Int = 0) {
     val livePosition = remember { mutableFloatStateOf(-1f) }
     // The font for every name and label: the one the user picked, else the bundled one (M PLUS 1p, a clean Rodin-like sans).
     var fontVersion by remember { mutableIntStateOf(0) }
-    val uiFont = remember(fontVersion) { store.customFontFamily() ?: FontFamily(Font(R.font.mplus1p_medium, FontWeight.Medium)) }
+    val builtInFont = remember { FontFamily(Font(R.font.mplus1p_medium, FontWeight.Medium)) }
+    val fileFont = remember(fontVersion) { store.customFontFamily() }
+    // 0 built-in, 1 system, 2 serif, 3 monospace, 4 the font file the user picked.
+    fun familyOf(choice: Int): FontFamily = when (choice) {
+        1 -> FontFamily.Default
+        2 -> FontFamily.Serif
+        3 -> FontFamily.Monospace
+        4 -> fileFont ?: builtInFont
+        else -> builtInFont
+    }
 
     // Push the saved controller settings into the shared state before the first frame.
     remember(store) {
@@ -471,7 +480,9 @@ fun HomeScreen(homePresses: Int = 0) {
         LocalFullArt provides settings.fullArt,
         LocalBall3D provides settings.bubble3d,
         LocalBallClock provides ballClock,
-        LocalTextStyle provides LocalTextStyle.current.merge(TextStyle(fontFamily = uiFont)),
+        LocalTextStyle provides LocalTextStyle.current.merge(TextStyle(fontFamily = familyOf(settings.uiFontChoice))),
+        LocalLook provides settings.look(),
+        LocalNameFont provides familyOf(settings.nameFont),
     ) {
     Box(Modifier.fillMaxSize().onSizeChanged { rootWidth = it.width; rootHeight = it.height; PadNav.viewport = Rect(0f, 0f, it.width.toFloat(), it.height.toFloat()) }) {
         BubbleBackground(
@@ -704,9 +715,34 @@ fun HomeScreen(homePresses: Int = 0) {
                     onShowTutorial = { showSettings = false; showTutorial = true },
                     hasCustomFont = remember(fontVersion) { store.hasCustomFont() },
                     onFont = { uri ->
-                        if (store.saveFont(uri)) { fontVersion++; toast = "Font applied" } else toast = "That file could not be used as a font"
+                        if (store.saveFont(uri)) {
+                            fontVersion++; toast = "Font applied"
+                            settings = settings.copy(uiFontChoice = 4, nameFont = 4); store.save(settings)
+                        } else toast = "That file could not be used as a font"
                     },
-                    onClearFont = { store.clearFont(); fontVersion++ },
+                    onClearFont = {
+                        store.clearFont(); fontVersion++
+                        settings = settings.copy(
+                            uiFontChoice = if (settings.uiFontChoice == 4) 0 else settings.uiFontChoice,
+                            nameFont = if (settings.nameFont == 4) 0 else settings.nameFont,
+                        ); store.save(settings)
+                    },
+                    onExport = { uri ->
+                        val ok = runCatching {
+                            context.contentResolver.openOutputStream(uri)?.use { it.write(store.exportJson().toByteArray()) } != null
+                        }.getOrDefault(false)
+                        toast = if (ok) "Settings saved" else "Could not save the file"
+                    },
+                    onImport = { uri ->
+                        val text = runCatching { context.contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString() } }.getOrNull()
+                        if (text != null && store.importJson(text)) {
+                            settings = store.load()
+                            Controller.cursorMode = settings.cursorMode
+                            Controller.speed = settings.cursorSpeed
+                            Controller.swapAB = settings.swapAB
+                            toast = "Settings loaded"
+                        } else toast = "That file is not a settings file"
+                    },
                     onClose = { showSettings = false },
                 )
             }

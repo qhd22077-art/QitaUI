@@ -96,6 +96,7 @@ fun Bubble(
     /** 0 (far, top row) .. 1 (near, bottom row): nearer bubbles are a little bigger with a longer shadow. */
     depth: Float = 0.5f,
 ) {
+    val look = LocalLook.current
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val focused = padHighlighted(padKey)
@@ -135,7 +136,7 @@ fun Bubble(
     // cannot cancel it half way and leave the ball turned.
     val spin = remember { Animatable(0f) }
     var spinCount by remember { mutableIntStateOf(0) }
-    LaunchedEffect(pressed) { if (pressed && !spin.isRunning) spinCount++ }
+    LaunchedEffect(pressed) { if (pressed && !spin.isRunning && look.tapAnim != 2) spinCount++ }
     LaunchedEffect(spinCount) {
         if (spinCount > 0) {
             spin.snapTo(0f)
@@ -149,8 +150,8 @@ fun Bubble(
         val p = spin.value
         Offset(
             // A full turn is the same orientation as none, so it lands exactly where it started.
-            0.085f * sin(t + seed) + 6.2832f * p,
-            0.060f * sin(t * 1.3f + seed * 1.7f) + scrollRoll() * 0.15f + 0.22f * sin(3.1416f * p),
+            look.sway * 0.085f * sin(t + seed) + (if (look.tapAnim == 0) 6.2832f * p else 0f),
+            look.sway * 0.060f * sin(t * 1.3f + seed * 1.7f) + scrollRoll() * 0.15f + (if (look.tapAnim == 0) 0.22f * sin(3.1416f * p) else 0f),
         )
     }
     // A soft ring spreads from the bubble when it is pressed.
@@ -174,12 +175,12 @@ fun Bubble(
                     val r = size.toPx() / 2f
                     drawCircle(
                         Brush.radialGradient(
-                            0.55f to Color(0xFF16E0FF).copy(alpha = 0.45f * glow), 1f to Color.Transparent,
+                            0.55f to look.accent.copy(alpha = 0.45f * glow), 1f to Color.Transparent,
                             center = c, radius = r * 1.15f,
                         ),
                         radius = r * 1.15f, center = c,
                     )
-                    drawCircle(Color(0xFF3FE6FF).copy(alpha = 0.85f * glow * glowPulse), radius = r + 6.dp.toPx(), center = c, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 6.dp.toPx()))
+                    drawCircle(look.accent.copy(alpha = 0.85f * glow * glowPulse), radius = r + 6.dp.toPx(), center = c, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 6.dp.toPx()))
                     drawCircle(Color.White.copy(alpha = glow), radius = r + 2.dp.toPx(), center = c, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx()))
                 }
                 val p = ring.value
@@ -252,18 +253,22 @@ fun Bubble(
             }
         }
         if (showLabel) {
+            // The pill behind a name: on the selected bubble, or always if chosen. Dark names on a pale pill keep their contrast.
+            val pill = lit || look.namePill
+            val pillColor = if (moving) MoveCyan else if (lit) Color.White else Color.White.copy(alpha = 0.85f)
             Text(
                 app.label,
                 Modifier
                     .padding(top = 6.dp)
                     .then(
-                        if (lit) Modifier.background(if (moving) MoveCyan else Color.White, RoundedCornerShape(50)).padding(horizontal = 9.dp, vertical = 1.dp)
+                        if (pill) Modifier.background(pillColor, RoundedCornerShape(50)).padding(horizontal = 9.dp, vertical = 1.dp)
                         else Modifier,
                     ),
-                color = if (lit) Color(0xFF0B3D91) else Color.White,
-                fontSize = 13.sp,
-                fontWeight = if (lit) FontWeight.Bold else FontWeight.Normal,
-                style = TextStyle(shadow = if (lit) null else Shadow(Color.Black.copy(alpha = 0.55f), Offset(0f, 2f), 5f)),
+                color = if (pill) Color(0xFF0B3D91) else look.nameColor,
+                fontSize = (13f * look.nameSize).sp,
+                fontFamily = LocalNameFont.current,
+                fontWeight = if (lit) FontWeight.Bold else look.nameWeight,
+                style = TextStyle(shadow = if (pill) null else Shadow(Color.Black.copy(alpha = 0.55f), Offset(0f, 2f), 5f)),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,

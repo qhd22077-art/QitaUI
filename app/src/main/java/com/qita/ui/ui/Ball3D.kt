@@ -51,13 +51,24 @@ object Ball3D {
         shader.setFloatUniform("size", 1f, 1f)
         shader.setFloatUniform("rot", 0f, 0f)
         shader.setFloatUniform("glow", 0f)
+        shader.setFloatUniform("t1", 1f, 1f, 1f, 3f)
+        shader.setFloatUniform("acc", 0.09f, 0.88f, 1f)
+        shader.setFloatUniform("t2", 1f, 1f, 1f, 0f)
         shader.setFloatUniform("hazy", if (app.action != null && app.action != com.qita.ui.SystemAction.SETTINGS) 0.55f else 1f)
         return Paint(shader)
     }
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    fun update(paint: Paint, width: Float, height: Float, yaw: Float, pitch: Float, glow: Float) {
+    fun update(paint: Paint, width: Float, height: Float, yaw: Float, pitch: Float, glow: Float, look: Look, body: Int) {
         paint.shader.setFloatUniform("size", width, height)
+        paint.shader.setFloatUniform(
+            "body",
+            ((body shr 16) and 0xFF) / 255f, ((body shr 8) and 0xFF) / 255f, (body and 0xFF) / 255f,
+        )
+        // Icon saturation, brightness, icon size, dome exponent; then rim width, highlight, thickness.
+        paint.shader.setFloatUniform("t1", look.iconSat, look.iconBright, look.iconScale.coerceIn(0.6f, 1.1f), 3f / look.dome.coerceIn(0.5f, 2f))
+        paint.shader.setFloatUniform("acc", look.accent.red, look.accent.green, look.accent.blue)
+        paint.shader.setFloatUniform("t2", look.rimWidth.coerceIn(0.3f, 2.5f), look.highlight, look.thickness.coerceIn(0f, 1.8f), 0f)
         paint.shader.setFloatUniform("rot", yaw, pitch)
         paint.shader.setFloatUniform("glow", glow)
     }
@@ -70,6 +81,9 @@ uniform float2 rot;
 uniform float3 body;
 uniform float glow;
 uniform float hazy;
+uniform float4 t1;
+uniform float4 t2;
+uniform float3 acc;
 
 const float3 L = float3(-0.4194, -0.5792, 0.6990);
 const float3 Hh = float3(-0.2275, -0.3142, 0.9217);
@@ -109,7 +123,7 @@ float4 frontPix(float u, float v, float rr, float cy, float sy, float cp, float 
 
     // Inflated profile: a flat face that rolls over into a bevel at the rim.
     float rc = min(rr, 1.0);
-    float rp = rc * rc * rc;
+    float rp = pow(max(rc, 0.0001), t1.w);
     float2 dir = rc > 0.0001 ? float2(u, v) / rc : float2(0.0);
     float3 n0 = float3(dir * rp, sqrt(max(1.0 - rp * rp, 0.0)));
     float nx1 = n0.x * cy + n0.z * sy;
@@ -121,14 +135,17 @@ float4 frontPix(float u, float v, float rr, float cy, float sy, float cp, float 
 
     // The art is rigid and flat: it is never stretched or bent. It sits a little below the glass, so it slides a touch as the disc turns.
     float2 sh = float2(clamp(0.06 * sy / cy, -0.4, 0.4), clamp(-0.06 * sp / (abs(cy) * cp), -0.4, 0.4));
-    float R = 0.92;
+    float R = 0.92 / t1.z;
     float2 d = float2(u, v) + sh;
     float2 uv = 0.5 + d / (2.0 * R);
     float3 base = body;
     if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {
         half4 c = sampleIcon(uv * iconSize);
         float mask = 1.0 - smoothstep(0.93, 1.0, length(d) / R);
-        base = body * (1.0 - float(c.a) * mask) + float3(c.rgb) * mask;
+        float3 ic = float3(c.rgb);
+        float lum = dot(ic, float3(0.299, 0.587, 0.114));
+        ic = clamp((float3(lum) + (ic - float3(lum)) * t1.x) * t1.y, 0.0, 1.0);
+        base = body * (1.0 - float(c.a) * mask) + ic * mask;
     }
 
     // Soft, bright lighting so the colours stay vivid.
@@ -136,14 +153,14 @@ float4 frontPix(float u, float v, float rr, float cy, float sy, float cp, float 
     float3 col = base * (0.74 + 0.36 * ndl);
 
     // Milky glass: a narrow rim that fades toward white, brighter on the lit upper-left side.
-    float f = pow(max(1.0 - n.z, 0.0), 2.8);
+    float f = pow(max(1.0 - n.z, 0.0), 2.8 / t2.x);
     col = col * (1.0 - 0.5 * f) + float3(0.95, 0.96, 1.0) * (0.5 * f * hazy);
     float nl = length(n.xy) + 0.0001;
     float facing = max(dot(n.xy / nl, L.xy / 0.72), 0.0);
-    col += float3(0.26 * f * facing);
+    col += float3(0.26 * t2.y * f * facing);
     // A fine lit edge marks the bevel.
     float edgeLine = smoothstep(0.955, 0.985, rr) * (1.0 - smoothstep(0.985, 1.0, rr));
-    col += float3(0.22 * edgeLine * facing);
+    col += float3(0.22 * t2.y * edgeLine * facing);
 
     // Light bounced up from below, and gentle highlights that follow the dome.
     float nb = max(dot(n, Bn), 0.0);
@@ -152,9 +169,9 @@ float4 frontPix(float u, float v, float rr, float cy, float sy, float cp, float 
     float ndh = max(dot(n, Hh), 0.0);
     float3 Rv = 2.0 * n.z * n - float3(0.0, 0.0, 1.0);
     float env = pow(max(dot(Rv, W1), 0.0), 6.0) * 0.16;
-    col += float3(pow(ndh, 80.0) * 0.20 + env);
+    col += float3((pow(ndh, 80.0) * 0.20 + env) * t2.y);
 
-    col = mix(col, float3(0.09, 0.88, 1.0), 0.34 * glow);
+    col = mix(col, acc, 0.34 * glow);
     col = clamp(col, 0.0, 1.0);
     return float4(col * cov, cov);
 }
@@ -164,7 +181,7 @@ half4 main(float2 frag) {
 
     // The bubble is an inflated disc seen from slightly above. It can turn about its vertical axis (yaw, like a
     // flipping coin) and tilt about its horizontal axis (pitch).
-    float pitch = rot.y + 0.30;
+    float pitch = rot.y + 0.06 + 0.24 * min(t2.z, 1.2);
     float cy = cos(rot.x);
     float sy = sin(rot.x);
     float cp = cos(pitch);
@@ -176,7 +193,7 @@ half4 main(float2 frag) {
     float u = p.x / cy;
     float v = (p.y - u * sy * sp) / cp;
     float rr = sqrt(u * u + v * v);
-    float T = 0.22;
+    float T = 0.22 * t2.z;
     float ub = (p.x + T * sy) / cy;
     float vb = (p.y - ub * sy * sp - T * cy * sp) / cp;
     float rb = sqrt(ub * ub + vb * vb);
