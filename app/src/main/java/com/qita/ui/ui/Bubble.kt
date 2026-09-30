@@ -149,8 +149,8 @@ fun Bubble(
         val p = spin.value
         Offset(
             // A full turn is the same orientation as none, so it lands exactly where it started.
-            0.05f * sin(t + seed) + 6.2832f * p,
-            0.035f * sin(t * 1.3f + seed * 1.7f) + scrollRoll() * 0.15f + 0.22f * sin(3.1416f * p),
+            0.085f * sin(t + seed) + 6.2832f * p,
+            0.060f * sin(t * 1.3f + seed * 1.7f) + scrollRoll() * 0.15f + 0.22f * sin(3.1416f * p),
         )
     }
     // A soft ring spreads from the bubble when it is pressed.

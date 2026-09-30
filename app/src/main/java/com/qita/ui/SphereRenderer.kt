@@ -48,7 +48,7 @@ object SphereRenderer {
 
                 // Inflated profile: flat in the middle, curving over at the rim.
                 val rc = minOf(rr, 1f)
-                val rp = rc * rc * sqrt(rc)
+                val rp = rc * sqrt(rc)
                 val nxy = if (rc > 0.0001f) rp / rc else 0f
                 val nx = x * nxy
                 val ny = y * nxy
@@ -83,7 +83,7 @@ object SphereRenderer {
 
                 // Diffuse light from the upper left.
                 val ndl = (nx * light[0] + ny * light[1] + nz * light[2]).coerceAtLeast(0f)
-                val shade = 0.55f + 0.62f * ndl
+                val shade = 0.50f + 0.70f * ndl
                 r *= shade; g *= shade; b *= shade
 
                 // Darker toward the rim.
@@ -95,7 +95,7 @@ object SphereRenderer {
                 // Light bounced up from below, strongest near the lower rim.
                 val nb = (nx * bounceDir[0] + ny * bounceDir[1] + nz * bounceDir[2]).coerceAtLeast(0f)
                 val nb2 = nb * nb
-                val bounce = nb2 * nb2 * 0.30f * (fres * 2.2f + 0.10f)
+                val bounce = nb2 * nb2 * 0.40f * (fres * 2.2f + 0.10f)
                 r += 0.75f * bounce; g += 0.85f * bounce; b += bounce
 
                 // Subtle highlights that follow the rim: a small glint and a broad soft reflection.
@@ -107,8 +107,15 @@ object SphereRenderer {
                 val rz = 2f * nz * nz - 1f
                 val rd = (rx * window[0] + ry * window[1] + rz * window[2]).coerceAtLeast(0f)
                 val e2 = rd * rd; val e4 = e2 * e2
-                val env = e4 * e2 * 0.12f
+                val env = e4 * e4 * rd * 0.30f
                 r += spec + env; g += spec + env; b += spec + env
+
+                // The bevel: a darker groove just inside the lit edge.
+                val gT = ((rr - 0.87f) / 0.05f).coerceIn(0f, 1f)
+                val gO = ((rr - 0.92f) / 0.04f).coerceIn(0f, 1f)
+                val groove = gT * gT * (3f - 2f * gT) * (1f - gO * gO * (3f - 2f * gO))
+                val gd = 1f - 0.40f * groove
+                r *= gd; g *= gd; b *= gd
 
                 // A fine lit edge around the disc, brighter on the side facing the light.
                 val lineT = ((rr - 0.93f) / 0.055f).coerceIn(0f, 1f)
