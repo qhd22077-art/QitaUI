@@ -86,10 +86,16 @@ fun SettingsPage(
     onClearWallpaper: () -> Unit,
     onClearHome: () -> Unit,
     onShowTutorial: () -> Unit,
+    hasCustomFont: Boolean,
+    onFont: (Uri) -> Unit,
+    onClearFont: () -> Unit,
     onClose: () -> Unit,
 ) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) onWallpaper(uri)
+    }
+    val fontPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) onFont(uri)
     }
     var page by remember { mutableStateOf<String?>(null) }
     // Back steps out of a page first, then closes Settings (this handler is registered after Home's, so it wins).
@@ -193,6 +199,8 @@ fun SettingsPage(
                         "system" -> {
                             CheckRow("set:haptics", "∷", "Vibrate on long-press and highlight", settings.haptics) { onChange(settings.copy(haptics = it)) }
                             CheckRow("set:lock", "▭", "Lock screen when the launcher starts or the screen wakes", settings.lockScreen) { onChange(settings.copy(lockScreen = it)) }
+                            MenuRow("set:font", "Aa", "Choose a font file for names (.ttf / .otf)") { fontPicker.launch("*/*") }
+                            if (hasCustomFont) MenuRow("set:font:remove", "✕", "Use the built-in font") { onClearFont() }
                             MenuRow("set:tutorial", "i", "Show tutorial") { onShowTutorial() }
                             MenuRow("set:reset", "↺", "Reset all settings") { onChange(Settings()) }
                         }

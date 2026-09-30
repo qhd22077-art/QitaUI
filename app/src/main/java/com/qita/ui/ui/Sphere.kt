@@ -72,27 +72,17 @@ fun Sphere(
         Modifier
             .size(size)
             .then(modifier)
-            // Soft shadow under the bubble and a faint white halo around it, both drawn cheaply.
+            // A tight, soft shadow just behind the disc. It stays within a few dp of the edge, so it never reaches the name below.
             .drawBehind {
                 val r = this.size.minDimension / 2f
                 val lift = elevation.toPx()
-                for (i in 4 downTo 1) {
+                for (i in 3 downTo 1) {
                     drawCircle(
                         spot.copy(alpha = 0.10f),
-                        radius = r + lift * 0.10f * i,
-                        center = Offset(this.size.width / 2f, this.size.height / 2f + lift * 0.28f),
+                        radius = r + lift * 0.035f * i,
+                        center = Offset(this.size.width / 2f, this.size.height / 2f + lift * 0.05f * i),
                     )
                 }
-                // A flat shadow on the "floor" under the bubble makes it read as a ball.
-                for (i in 3 downTo 1) {
-                    drawOval(
-                        Color.Black.copy(alpha = 0.10f),
-                        Offset(this.size.width / 2f - r * (0.55f + 0.12f * i), this.size.height / 2f + r * (1.02f + 0.03f * i)),
-                        Size(r * (1.10f + 0.24f * i), r * (0.20f + 0.05f * i)),
-                    )
-                }
-                drawCircle(Color.White.copy(alpha = 0.10f), radius = r + 8.dp.toPx())
-                drawCircle(Color.White.copy(alpha = 0.16f), radius = r + 4.dp.toPx())
             }
             .clip(shape)
             .drawBehind {

@@ -54,6 +54,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -62,6 +63,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -85,6 +87,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -98,6 +102,7 @@ import com.qita.ui.CursorLayer
 import com.qita.ui.LAYOUTS
 import com.qita.ui.PAGE_PHOTO
 import com.qita.ui.PageLayout
+import com.qita.ui.R
 import com.qita.ui.THEMES
 import com.qita.ui.Theme
 import com.qita.ui.SYSTEM_APPS
@@ -151,6 +156,9 @@ fun HomeScreen(homePresses: Int = 0) {
     var showIndex by remember { mutableStateOf(false) }
     // Where the LiveArea carousel is right now (fractional while swiping); drives the top bar's indicator.
     val livePosition = remember { mutableFloatStateOf(-1f) }
+    // The font for every name and label: the one the user picked, else the bundled one (M PLUS 1p, a clean Rodin-like sans).
+    var fontVersion by remember { mutableIntStateOf(0) }
+    val uiFont = remember(fontVersion) { store.customFontFamily() ?: FontFamily(Font(R.font.mplus1p_medium, FontWeight.Medium)) }
 
     // Push the saved controller settings into the shared state before the first frame.
     remember(store) {
@@ -459,7 +467,12 @@ fun HomeScreen(homePresses: Int = 0) {
     val ballClock = rememberInfiniteTransition(label = "ballClock").animateFloat(
         0f, 6.2832f, infiniteRepeatable(tween(9000, easing = LinearEasing)), label = "ballClockValue",
     )
-    CompositionLocalProvider(LocalFullArt provides settings.fullArt, LocalBall3D provides settings.bubble3d, LocalBallClock provides ballClock) {
+    CompositionLocalProvider(
+        LocalFullArt provides settings.fullArt,
+        LocalBall3D provides settings.bubble3d,
+        LocalBallClock provides ballClock,
+        LocalTextStyle provides LocalTextStyle.current.merge(TextStyle(fontFamily = uiFont)),
+    ) {
     Box(Modifier.fillMaxSize().onSizeChanged { rootWidth = it.width; rootHeight = it.height; PadNav.viewport = Rect(0f, 0f, it.width.toFloat(), it.height.toFloat()) }) {
         BubbleBackground(
             top = settings.theme.top, mid = settings.theme.mid, bottom = settings.theme.bottom, particles = settings.particles,
@@ -689,6 +702,11 @@ fun HomeScreen(homePresses: Int = 0) {
                     onClearWallpaper = { store.clearWallpaper(); wallpaper = null },
                     onClearHome = { home = SYSTEM_IDS; store.saveHome(home) },
                     onShowTutorial = { showSettings = false; showTutorial = true },
+                    hasCustomFont = remember(fontVersion) { store.hasCustomFont() },
+                    onFont = { uri ->
+                        if (store.saveFont(uri)) { fontVersion++; toast = "Font applied" } else toast = "That file could not be used as a font"
+                    },
+                    onClearFont = { store.clearFont(); fontVersion++ },
                     onClose = { showSettings = false },
                 )
             }

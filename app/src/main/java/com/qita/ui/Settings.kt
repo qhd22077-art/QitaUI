@@ -9,6 +9,8 @@ import android.net.Uri
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import java.io.File
 import com.qita.ui.ui.Scene
 
@@ -249,6 +251,23 @@ class SettingsStore(private val context: Context) {
         wallpaperFile(page).outputStream().use { upright.compress(Bitmap.CompressFormat.JPEG, 90, it) }
         upright.asImageBitmap()
     }.getOrNull()
+
+    private val fontFile get() = File(context.filesDir, "custom_font.ttf")
+
+    fun hasCustomFont(): Boolean = fontFile.exists()
+
+    /** Copies a font file the user picked (for example their own copy of a system font) into app storage. */
+    fun saveFont(uri: Uri): Boolean = runCatching {
+        context.contentResolver.openInputStream(uri)?.use { input -> fontFile.outputStream().use { input.copyTo(it) } }
+        check(fontFile.length() > 1000)
+        true
+    }.getOrElse { fontFile.delete(); false }
+
+    fun clearFont() { fontFile.delete() }
+
+    /** The picked font as a family, or null if there is none or it cannot be read. */
+    fun customFontFamily(): FontFamily? =
+        if (fontFile.exists()) runCatching { FontFamily(Font(fontFile)) }.getOrNull() else null
 
     fun clearWallpaper(page: Int? = null) {
         wallpaperFile(page).delete()
