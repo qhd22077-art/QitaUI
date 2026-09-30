@@ -145,16 +145,21 @@ fun SettingsPage(
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) games.onAddFolder(uri)
     }
-    var page by remember { mutableStateOf<String?>(startPage) }
-    // Back steps out of a page first, then closes Settings (this handler is registered after Home's, so it wins).
-    BackHandler(enabled = page != null) { page = null }
+    // The settings are tabs; the selected one is [page].
+    var page by remember { mutableStateOf(startPage ?: "theme") }
     // Back closes an open choice list first.
     BackHandler(enabled = optionPicker.value != null) { optionPicker.value = null }
     androidx.compose.runtime.DisposableEffect(Unit) { onDispose { optionPicker.value = null } }
     val scroll = rememberScrollState()
     LaunchedEffect(page) { scroll.scrollTo(0) }
+    val tabs = listOf(
+        "theme" to "Theme", "background" to "Background", "home" to "Home", "bubbles" to "Bubbles", "fonts" to "Text",
+        "topbar" to "Top Bar", "status" to "Date & Time", "motion" to "Motion", "lock" to "Lock Screen", "games" to "Games",
+        "controller" to "Controller", "system" to "System",
+    )
     val title = when (page) {
-        "theme" -> "Theme & Background"
+        "background" -> "Background"
+        "theme" -> "Theme"
         "home" -> "Home Screen"
         "bubbles" -> "Bubbles & Icons"
         "games" -> "Games & Emulators"
@@ -177,12 +182,20 @@ fun SettingsPage(
                 Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 8.dp),
                 color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center,
             )
-            Box(Modifier.fillMaxWidth().padding(horizontal = 60.dp).height(1.dp).background(Color.White.copy(alpha = 0.5f)))
+            TabStrip(
+                labels = tabs.map { it.second },
+                selected = tabs.indexOfFirst { it.first == page }.coerceAtLeast(0),
+                keyPrefix = "set:tab",
+                selectedFill = listOf(Color(0xFFFFFFFF), Color(0xFFCFF3CF)),
+                selectedText = Color(0xFF0B5A14),
+                idleFill = Color(0xFF053A0C),
+            ) { page = tabs[it].first }
+            Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp).height(1.dp).background(Color.White.copy(alpha = 0.5f)))
             AnimatedContent(
                 targetState = page,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 transitionSpec = {
-                    if (targetState != null) {
+                    if (tabs.indexOfFirst { it.first == targetState } >= tabs.indexOfFirst { it.first == initialState }) {
                         (slideInHorizontally(tween(260)) { it / 4 } + fadeIn(tween(220))) togetherWith
                             (slideOutHorizontally(tween(260)) { -it / 4 } + fadeOut(tween(160)))
                     } else {
@@ -213,6 +226,9 @@ fun SettingsPage(
                                     if (i == settings.themeIndex) Text("✓", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                                 }) { onChange(settings.copy(themeIndex = i)) }
                             }
+                            SwatchRow("set:accent", "◎", "Accent colour (selection and highlights)", settings.accent) { onChange(settings.copy(accent = it)) }
+                        }
+                        "background" -> {
                             MenuRow("set:wallpaper", "▣", "Choose wallpaper image") { picker.launch("image/*") }
                             if (hasWallpaper) MenuRow("set:wallpaper:remove", "✕", "Remove wallpaper image") { onClearWallpaper() }
                             CheckRow("set:particles", "✦", "Floating particles", settings.particles) { onChange(settings.copy(particles = it)) }
@@ -232,7 +248,6 @@ fun SettingsPage(
                                 onChange(settings.copy(symbolCount = it.roundToInt()))
                             }
                             SliderRow("set:sceneSpeed", "≋", "Background animation speed", settings.sceneSpeed, 0.3f..2.5f, 0.1f) { onChange(settings.copy(sceneSpeed = it)) }
-                            SwatchRow("set:accent", "◎", "Accent colour (selection and highlights)", settings.accent) { onChange(settings.copy(accent = it)) }
                         }
                         "home" -> {
                             LAYOUTS.forEachIndexed { i, l ->
@@ -403,26 +418,14 @@ fun SettingsPage(
                             MenuRow("set:tutorial", "i", "Show tutorial") { onShowTutorial() }
                             MenuRow("set:reset", "↺", "Reset all settings") { onChange(Settings()) }
                         }
-                        else -> {
-                            NavRow("set:nav:theme", "◐", "Theme & Background") { page = "theme" }
-                            NavRow("set:nav:home", "⌂", "Home Screen") { page = "home" }
-                            NavRow("set:nav:bubbles", "◍", "Bubbles & Icons") { page = "bubbles" }
-                            NavRow("set:nav:lock", "▭", "Lock Screen") { page = "lock" }
-                            NavRow("set:nav:games", "G", "Games & Emulators") { page = "games" }
-                            NavRow("set:nav:fonts", "Aa", "Fonts & Text") { page = "fonts" }
-                            NavRow("set:nav:topbar", "▭", "Top Bar") { page = "topbar" }
-                            NavRow("set:nav:motion", "≈", "Motion") { page = "motion" }
-                            NavRow("set:nav:status", "◷", "Date & Time") { page = "status" }
-                            NavRow("set:nav:controller", "✦", "Controller") { page = "controller" }
-                            NavRow("set:nav:system", "⚙", "System") { page = "system" }
-                        }
+                        else -> {}
                     }
                 }
             }
         }
         optionPicker.value?.let { p -> OptionPicker(p) { optionPicker.value = null } }
         BackButton(
-            onClick = { if (page != null) page = null else onClose() },
+            onClick = onClose,
             modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 8.dp),
         )
     }

@@ -130,6 +130,7 @@ fun StoreSettings(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val state = rememberLazyListState()
+    var settingsTab by remember { mutableStateOf(0) }
     var modelMenu by remember { mutableStateOf(false) }
     var customModel by remember { mutableStateOf(false) }
     var loadedModels by remember { mutableStateOf(emptyList<String>()) }
@@ -147,11 +148,21 @@ fun StoreSettings(
     var key by remember { mutableStateOf(UserStores.aiKey(context)) }
     var model by remember { mutableStateOf(UserStores.aiModel(context)) }
     Box(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize()) {
+    TabStrip(
+        labels = listOf("Stores", "AI scan", "Folders", "Downloads", "Banners"),
+        selected = settingsTab,
+        keyPrefix = "store:settab",
+        selectedFill = listOf(OrangeTop, OrangeBottom),
+        selectedText = Color.White,
+        idleFill = TabDark,
+    ) { settingsTab = it }
     LazyColumn(
-        Modifier.fillMaxSize().padScroller { state.animateScrollBy(it) },
+        Modifier.weight(1f).fillMaxWidth().padScroller { state.animateScrollBy(it) },
         state = state,
         contentPadding = PaddingValues(bottom = 100.dp),
     ) {
+        if (settingsTab == 0) {
         item { SectionHeader("My stores") }
         item {
             Text(
@@ -185,6 +196,8 @@ fun StoreSettings(
                 }
             }
         }
+        }
+        if (settingsTab == 1) {
         item { SectionHeader("AI scan") }
         item {
             Text(
@@ -251,6 +264,8 @@ fun StoreSettings(
                 if (aiStatus.isNotEmpty()) Text(aiStatus, color = SoftText, fontSize = 13.sp)
             }
         }
+        }
+        if (settingsTab == 2) {
         item { SectionHeader("Download folders") }
         item {
             Text(
@@ -277,12 +292,16 @@ fun StoreSettings(
                 OrangeButton("store:fd:add", "Add a folder", onClick = onAddDownloadFolder)
             }
         }
+        }
+        if (settingsTab == 3) {
         item { SectionHeader("Downloads") }
         item {
             SettingRow("Ask before each download", "Unzip it? Which folder? Keep the zip afterwards? (APKs are not asked.) Off uses your last answers.") {
                 SmallAction("store:dl:ask", if (askBefore) "On" else "Off") { askBefore = !askBefore; DownloadPrefs.setAsk(context, askBefore) }
             }
         }
+        }
+        if (settingsTab == 4) {
         item { SectionHeader("Banners") }
         item {
             SettingRow("Style", "Artwork shows pictures with glare and shadows; Classic is plain colour cards.") {
@@ -316,6 +335,8 @@ fun StoreSettings(
                 if (picFolder) SmallAction("store:bn:clear", "Stop using folder", onClearFolder)
             }
         }
+        }
+    }
     }
     if (modelMenu) {
         val ids = (UserStores.MODELS.map { it.first } + loadedModels).distinct()
