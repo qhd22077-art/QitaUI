@@ -28,6 +28,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableFloatState
 import androidx.compose.runtime.key
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -92,11 +93,15 @@ fun LiveAreaHost(
     onLaunch: (LaunchableApp) -> Unit,
     onClosePage: (LaunchableApp) -> Unit,
     onInfo: (LaunchableApp) -> Unit,
+    /** Receives the live page position every frame (-1 = home, 0.. = open apps), for the top bar's indicator. */
+    position: MutableFloatState,
 ) {
     val settle by rememberUpdatedState(onSettle)
     val pagerState = rememberPagerState(initialPage = (current + 1).coerceIn(0, pages.size)) { pages.size + 1 }
     // Report where the pager comes to rest: -1 is the home screen, 0.. are the open pages.
     LaunchedEffect(pagerState) { snapshotFlow { pagerState.settledPage }.collect { settle(it - 1) } }
+    // The live position, not only where it comes to rest, so the indicator keeps up with quick flicks.
+    LaunchedEffect(pagerState) { snapshotFlow { pagerState.currentPage + pagerState.currentPageOffsetFraction - 1f }.collect { position.floatValue = it } }
     // Opening or closing a page from elsewhere moves the pager to it.
     LaunchedEffect(current, pages.size) {
         val target = (current + 1).coerceIn(0, pages.size)

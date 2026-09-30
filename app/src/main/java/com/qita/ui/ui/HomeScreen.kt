@@ -61,6 +61,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -148,6 +149,8 @@ fun HomeScreen(homePresses: Int = 0) {
     var pageWallpapers by remember { mutableStateOf(store.loadPageWallpapers(pageBg)) }
     var showBackgrounds by remember { mutableStateOf(false) }
     var showIndex by remember { mutableStateOf(false) }
+    // Where the LiveArea carousel is right now (fractional while swiping); drives the top bar's indicator.
+    val livePosition = remember { mutableFloatStateOf(-1f) }
 
     // Push the saved controller settings into the shared state before the first frame.
     remember(store) {
@@ -392,6 +395,10 @@ fun HomeScreen(homePresses: Int = 0) {
         }
     }
 
+    LaunchedEffect(selected) {
+        val index = openPages.indexOfFirst { it.packageName == selected?.packageName }
+        if (index >= 0) livePosition.floatValue = index.toFloat()
+    }
     // Pressing Home while the launcher is open closes everything and returns to the first page.
     LaunchedEffect(homePresses) {
         if (homePresses > 0 && selected != null && !showIndex && !showLock && !showDesktop && !showSearch && !showSettings) {
@@ -579,6 +586,7 @@ fun HomeScreen(homePresses: Int = 0) {
                     onLaunch = { launchApp(it) },
                     onClosePage = { closePage(it) },
                     onInfo = { if (it.action == null) AppRepository.showInfo(context, it) },
+                    position = livePosition,
                 )
                 }
             }
@@ -616,6 +624,7 @@ fun HomeScreen(homePresses: Int = 0) {
                     current = openPages.indexOfFirst { it.packageName == selected?.packageName },
                     onHome = { selected = null },
                     onPick = { i -> openPages.getOrNull(i)?.let { selected = it } },
+                    position = { if (selected != null) livePosition.floatValue else -1f },
                 )
             }
             CornerSphere(

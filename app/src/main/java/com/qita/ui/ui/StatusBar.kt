@@ -31,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -69,7 +70,11 @@ fun StatusBar(
     current: Int = -1,
     onHome: () -> Unit = {},
     onPick: (Int) -> Unit = {},
+    /** Live position of the page on screen (-1 = home, 0.. = open apps), fractional while swiping. Read while drawing. */
+    position: (() -> Float)? = null,
 ) {
+    // How strongly icon [i] is highlighted: follows the live position if there is one, so the ring moves with the page.
+    fun strength(i: Int): Float = position?.let { (1f - kotlin.math.abs(it() - i)).coerceIn(0f, 1f) } ?: if (i == current) 1f else 0f
     val context = LocalContext.current
     var now by remember { mutableStateOf(Date()) }
     var status by remember { mutableStateOf(readStatus(context)) }
@@ -96,23 +101,27 @@ fun StatusBar(
         }
         if (showHome) {
             Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                val onHomeNow = current < 0
                 Box(
                     Modifier
                         .clip(CircleShape)
-                        .then(if (onHomeNow && openApps.isNotEmpty()) Modifier.background(Color.White.copy(alpha = 0.20f)) else Modifier)
+                        .drawBehind { if (openApps.isNotEmpty()) drawRect(Color.White.copy(alpha = 0.20f * strength(-1))) }
                         .clickable(onClick = onHome)
                         .padding(horizontal = 6.dp, vertical = 3.dp),
                 ) { HomeIcon() }
                 openApps.forEachIndexed { i, app ->
-                    val on = i == current
                     Image(
                         app.icon, app.label,
                         Modifier
                             .size(20.dp)
                             .clip(CircleShape)
-                            .graphicsLayer { alpha = if (on) 1f else 0.65f }
-                            .then(if (on) Modifier.border(2.dp, Color.White, CircleShape) else Modifier)
+                            .graphicsLayer { alpha = 0.65f + 0.35f * strength(i) }
+                            .drawWithContent {
+                                drawContent()
+                                val s = strength(i)
+                                if (s > 0.01f) {
+                                    drawCircle(Color.White.copy(alpha = s), radius = this.size.minDimension / 2f - 1.dp.toPx(), style = Stroke(width = 2.dp.toPx()))
+                                }
+                            }
                             .clickable { onPick(i) },
                     )
                 }
