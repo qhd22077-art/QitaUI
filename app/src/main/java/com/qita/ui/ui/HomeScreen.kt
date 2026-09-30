@@ -463,14 +463,14 @@ fun HomeScreen(homePresses: Int = 0) {
             },
             particleCount = settings.particleCount, dim = settings.dim,
             scroll = { pagerState.currentPage + pagerState.currentPageOffsetFraction },
-            // The sky blends from one page's theme into the next as you swipe.
-            palette = {
+            // The scene of one page cross-fades into the next as you swipe.
+            scene = {
                 val pos = (pagerState.currentPage + pagerState.currentPageOffsetFraction).coerceAtLeast(0f)
                 val lo = floor(pos).toInt()
                 val f = pos - lo
                 val a = themeOf(lo)
                 val b = themeOf(lo + 1)
-                Triple(lerp(a.top, b.top, f), lerp(a.mid, b.mid, f), lerp(a.bottom, b.bottom, f))
+                SceneMix(a.scene, b.scene, f, Triple(a.top, a.mid, a.bottom), Triple(b.top, b.mid, b.bottom))
             },
         )
         Column(

@@ -10,12 +10,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import java.io.File
+import com.qita.ui.ui.Scene
 
 /** Marks a home page whose background is its own photo (see [SettingsStore.loadPageBg]). */
 const val PAGE_PHOTO = -2
 
 /** A wallpaper palette: the sky colour at the top, the middle band and the bright glow at the bottom. */
-data class Theme(val name: String, val top: Color, val mid: Color, val bottom: Color)
+data class Theme(val name: String, val top: Color, val mid: Color, val bottom: Color, val scene: Scene = Scene.WAVES)
 
 val THEMES = listOf(
     Theme("Vita Blue", Color(0xFF0A2C9A), Color(0xFF1B5BD8), Color(0xFFB4D8FF)),
@@ -24,6 +25,13 @@ val THEMES = listOf(
     Theme("Violet", Color(0xFF3A1C8F), Color(0xFF6B44D6), Color(0xFFD8C8FF)),
     Theme("Sunset", Color(0xFFB8321A), Color(0xFFF0782C), Color(0xFFFFE0B0)),
     Theme("Midnight", Color(0xFF060B2A), Color(0xFF14246E), Color(0xFF5A78D0)),
+    // Backgrounds with their own scenery, animated in layers at different depths.
+    Theme("Aurora", Color(0xFF03081C), Color(0xFF0B2A4A), Color(0xFF0E4A5A), Scene.AURORA),
+    Theme("Deep Sea", Color(0xFF52D0D8), Color(0xFF12708F), Color(0xFF031F3A), Scene.OCEAN),
+    Theme("Crystals", Color(0xFF0A0620), Color(0xFF231052), Color(0xFF4A1A6E), Scene.CRYSTAL),
+    Theme("Nebula", Color(0xFF02010A), Color(0xFF0B0724), Color(0xFF1A0F3A), Scene.SPACE),
+    Theme("Neon Grid", Color(0xFF120033), Color(0xFFC2185B), Color(0xFFFF7043), Scene.GRID),
+    Theme("Dunes", Color(0xFF3B1552), Color(0xFFE0567A), Color(0xFFFFB25B), Scene.DUNES),
 )
 
 /**

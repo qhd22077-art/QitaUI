@@ -97,9 +97,9 @@ fun BackgroundPicker(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 val base = THEMES[defaultThemeIndex.coerceIn(THEMES.indices)]
-                Tile("bg:default", "Default", override == null, Brush.verticalGradient(listOf(base.top, base.mid, base.bottom)), onClick = onDefault)
+                Tile("bg:default", "Default", override == null, Brush.verticalGradient(listOf(base.top, base.mid, base.bottom)), thumb = base, onClick = onDefault)
                 THEMES.forEachIndexed { i, t ->
-                    Tile("bg:$i", t.name, override == i, Brush.verticalGradient(listOf(t.top, t.mid, t.bottom))) { onTheme(i) }
+                    Tile("bg:$i", t.name, override == i, Brush.verticalGradient(listOf(t.top, t.mid, t.bottom)), thumb = t) { onTheme(i) }
                 }
                 Tile("bg:photo", "Photo", override == PAGE_PHOTO, null, glyph = "+") { picker.launch("image/*") }
             }
@@ -108,7 +108,7 @@ fun BackgroundPicker(
 }
 
 @Composable
-private fun Tile(key: String, label: String, selected: Boolean, brush: Brush?, glyph: String? = null, onClick: () -> Unit) {
+private fun Tile(key: String, label: String, selected: Boolean, brush: Brush?, glyph: String? = null, thumb: com.qita.ui.Theme? = null, onClick: () -> Unit) {
     val lit = padHighlighted(key) || padHovered(key)
     val shape = RoundedCornerShape(8.dp)
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -121,6 +121,7 @@ private fun Tile(key: String, label: String, selected: Boolean, brush: Brush?, g
                 .border(if (selected || lit) 3.dp else 1.dp, if (selected || lit) Aqua else Color.White.copy(alpha = 0.6f), shape),
             contentAlignment = Alignment.Center,
         ) {
+            if (thumb != null) SceneThumb(thumb.scene, Triple(thumb.top, thumb.mid, thumb.bottom), Modifier.fillMaxSize())
             if (glyph != null) Text(glyph, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Light)
         }
         Text(label, color = Color.White, fontSize = 11.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
