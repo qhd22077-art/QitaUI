@@ -26,6 +26,7 @@ enum class SystemAction(val id: String, val label: String, val blurb: String) {
     SETTINGS("qita.sys.settings", "Settings", "Change the theme, home screen layout, controller and system options."),
     STORE("qita.sys.store", "Store", "The store is not built yet. It will be added later."),
     DESKTOP("qita.sys.desktop", "Desktop", "A desktop with every app on this device, for anything not on the home screen."),
+    GAMES("qita.sys.games", "Games", "Your games from every console, and the emulators that play them."),
 }
 
 /** Ids of the built-in bubbles, in the order they start on the home screen. */
@@ -41,6 +42,7 @@ val SYSTEM_APPS: List<LaunchableApp> by lazy {
         systemApp(SystemAction.SETTINGS, Color(0xFF3F9A5C)) { drawToolbox() },
         systemApp(SystemAction.STORE, Color(0xFF2E7DD7)) { drawBag() },
         systemApp(SystemAction.DESKTOP, Color(0xFFD9691E)) { drawMonitor() },
+        systemApp(SystemAction.GAMES, Color(0xFF7A4FD0)) { drawGamepad() },
     )
 }
 
@@ -120,6 +122,24 @@ private fun DrawScope.drawMonitor() {
     val prompt = Path().apply { moveTo(74f, 98f); lineTo(100f, 120f); lineTo(74f, 142f) }
     drawPath(prompt, Color.White, style = Stroke(width = 10f, cap = StrokeCap.Round, join = StrokeJoin.Round))
     drawLine(Color.White, Offset(114f, 144f), Offset(152f, 144f), strokeWidth = 10f, cap = StrokeCap.Round)
+}
+
+/** A game controller pictogram: a rounded body, a cross on the left, two buttons on the right. */
+private fun DrawScope.drawGamepad() {
+    val body = Path().apply {
+        moveTo(74f, 84f); lineTo(182f, 84f)
+        cubicTo(214f, 84f, 232f, 112f, 226f, 150f); cubicTo(222f, 180f, 204f, 192f, 186f, 184f)
+        cubicTo(172f, 178f, 166f, 160f, 150f, 160f); lineTo(106f, 160f)
+        cubicTo(90f, 160f, 84f, 178f, 70f, 184f); cubicTo(52f, 192f, 34f, 180f, 30f, 150f)
+        cubicTo(24f, 112f, 42f, 84f, 74f, 84f); close()
+    }
+    drawPath(body, white(84f, 190f))
+    // The cross.
+    drawRoundRect(Ink, Offset(62f, 110f), Size(14f, 44f), CornerRadius(4f))
+    drawRoundRect(Ink, Offset(47f, 125f), Size(44f, 14f), CornerRadius(4f))
+    // The buttons.
+    drawCircle(Ink, 9f, Offset(178f, 116f))
+    drawCircle(Ink, 9f, Offset(200f, 138f))
 }
 
 /** The ARGB colour of the glass body behind a built-in bubble's art. */

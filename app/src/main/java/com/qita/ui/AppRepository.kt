@@ -30,6 +30,8 @@ data class LaunchableApp(
     val action: SystemAction? = null,
     /** The icon rendered as a lit glass ball (see [SphereRenderer]); null until rendered. */
     val ball: ImageBitmap? = null,
+    /** Set for a game found in one of the user's game folders; such a bubble starts the game in an emulator. */
+    val game: Game? = null,
 )
 
 object AppRepository {

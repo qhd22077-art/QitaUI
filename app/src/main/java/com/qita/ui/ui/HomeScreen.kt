@@ -96,6 +96,18 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.qita.ui.AppRepository
 import com.qita.ui.Command
+import com.qita.ui.Covers
+import com.qita.ui.EMULATORS
+import com.qita.ui.Game
+import com.qita.ui.GameFolder
+import com.qita.ui.GameLauncher
+import com.qita.ui.GameLibrary
+import com.qita.ui.GameScanner
+import com.qita.ui.SYSTEMS
+import com.qita.ui.installedEmulators
+import com.qita.ui.systemById
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import com.qita.ui.CrashReporter
 import com.qita.ui.Controller
 import com.qita.ui.CursorLayer
@@ -133,6 +145,14 @@ fun HomeScreen(homePresses: Int = 0) {
     var home by remember { mutableStateOf(store.loadHome()) }
     var counts by remember { mutableStateOf(store.loadLaunchCounts()) }
     var showDesktop by remember { mutableStateOf(false) }
+    var showGames by remember { mutableStateOf(false) }
+    // The games library: folders, which emulator plays what, and a status line while scanning or fetching cover art.
+    var gameFolders by remember { mutableStateOf(GameLibrary.folders(context)) }
+    var gameChoices by remember { mutableStateOf(SYSTEMS.mapNotNull { s -> GameLibrary.emulatorChoice(context, s.id)?.let { s.id to it } }.toMap()) }
+    var gamesBusy by remember { mutableStateOf<String?>(null) }
+    var settingsStart by remember { mutableStateOf<String?>(null) }
+    var coverTarget by remember { mutableStateOf<String?>(null) }
+    val emuInstalled = remember(context) { installedEmulators(context) }
     var showSearch by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showTutorial by remember { mutableStateOf(!store.tutorialSeen()) }
@@ -187,6 +207,18 @@ fun HomeScreen(homePresses: Int = 0) {
     var rootHeight by remember { mutableStateOf(0) }
     val rects = remember { mutableMapOf<String, Rect>() }
 
+    val coverPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.GetContent(),
+    ) { uri ->
+        val id = coverTarget
+        if (uri != null && id != null) {
+            scope.launch {
+                val ok = withContext(Dispatchers.IO) { Covers.pick(context, id, uri) }
+                if (ok) reload++ else toast = "That picture could not be used"
+            }
+        }
+    }
+
     val layout = LAYOUTS[settings.layoutIndex.coerceIn(LAYOUTS.indices)]
     val pageSize = layout.size
     // Only apps the user has added appear on the home screen; the desktop lists everything.
@@ -209,7 +241,7 @@ fun HomeScreen(homePresses: Int = 0) {
     val bgPage by remember { derivedStateOf { (pagerState.currentPage + pagerState.currentPageOffsetFraction).roundToInt().coerceAtLeast(0) } }
 
     val menuOpen = menuFor != null || showQuickMenu || showNotifs
-    val anyOverlay = showLock || showDesktop || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null
+    val anyOverlay = showLock || showDesktop || showGames || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null
 
     fun addToHome(app: LaunchableApp) {
         if (app.packageName !in home) { home = home + app.packageName; store.saveHome(home) }
@@ -224,18 +256,59 @@ fun HomeScreen(homePresses: Int = 0) {
         when (app.action) {
             SystemAction.SETTINGS -> { selected = null; showSettings = true }
             SystemAction.DESKTOP -> { selected = null; showDesktop = true }
+            SystemAction.GAMES -> { selected = null; showGames = true }
             SystemAction.STORE -> toast = "The Store is coming soon"
             null -> {
-                AppRepository.launch(context, app)
+                val game = app.game
+                if (game != null) {
+                    GameLauncher.launch(context, game)?.let { toast = it }
+                } else {
+                    AppRepository.launch(context, app)
+                }
                 store.recordLaunch(app.packageName)
                 counts = store.loadLaunchCounts()
             }
         }
     }
     fun closeApp(app: LaunchableApp) {
-        if (app.action != null) return
+        if (app.action != null || app.game != null) return
         AppRepository.close(context, app)
         toast = "Closed ${app.label}"
+    }
+    /** Downloads cover art for the games that have none (or for [only]). */
+    fun fetchCovers(only: Game? = null) {
+        if (gamesBusy != null) return
+        gamesBusy = "Getting cover art…"
+        scope.launch {
+            val todo = withContext(Dispatchers.IO) {
+                (if (only != null) listOf(only) else GameLibrary.games(context))
+                    .filter { only != null || !GameLibrary.coverFile(context, it.id).exists() }
+            }
+            var got = 0
+            withContext(Dispatchers.IO) {
+                todo.chunked(4).forEachIndexed { i, chunk ->
+                    gamesBusy = "Getting cover art… ${i * 4}/${todo.size}"
+                    got += chunk.map { g -> async { Covers.fetch(context, g) } }.awaitAll().count { it }
+                }
+            }
+            reload++
+            gamesBusy = null
+            toast = if (todo.isEmpty()) "Every game already has cover art" else "Got cover art for $got of ${todo.size}"
+        }
+    }
+    /** Looks through the game folders for games and keeps what it finds. */
+    fun scanGames() {
+        if (gamesBusy != null) return
+        gamesBusy = "Scanning for games…"
+        scope.launch {
+            val found = withContext(Dispatchers.IO) {
+                GameScanner.scan(context, GameLibrary.folders(context)).also { GameLibrary.saveGames(context, it) }
+            }
+            reload++
+            gamesBusy = null
+            toast = "Found ${found.size} game${if (found.size == 1) "" else "s"}"
+            if (found.isNotEmpty() && settings.gameCovers) fetchCovers()
+        }
     }
     /** Opens (or brings to the front) an app's LiveArea page. */
     fun openLiveArea(app: LaunchableApp, from: Offset? = null) {
@@ -315,7 +388,7 @@ fun HomeScreen(homePresses: Int = 0) {
     }
 
     // Loading icons is slow with many apps, so do it off the main thread.
-    LaunchedEffect(reload) { apps = withContext(Dispatchers.Default) { AppRepository.load(context) } }
+    LaunchedEffect(reload) { apps = withContext(Dispatchers.Default) { AppRepository.load(context) + GameLibrary.apps(context) } }
     // Reload whenever an app is installed, removed or updated.
     DisposableEffect(Unit) {
         val receiver = object : BroadcastReceiver() {
@@ -389,7 +462,7 @@ fun HomeScreen(homePresses: Int = 0) {
                 if (!showSettings && !showSearch && !menuOpen && !showTutorial) (selected ?: PadNav.currentApp())?.let { menuFor = it }
             Command.Toggle -> when {
                 showSettings || showSearch || menuOpen || showTutorial || selected != null -> {}
-                showDesktop -> PadNav.currentApp()?.let { if (it.packageName in homeSet) removeFromHome(it) else addToHome(it) }
+                showDesktop || showGames -> PadNav.currentApp()?.let { if (it.packageName in homeSet) removeFromHome(it) else addToHome(it) }
                 else -> PadNav.currentApp()?.let { startMove(it) }
             }
             is Command.MoveStep -> moveStep(cmd.dx, cmd.dy)
@@ -425,7 +498,7 @@ fun HomeScreen(homePresses: Int = 0) {
             showIndex = true
         } else if (homePresses > 0) {
             showIndex = false
-            selected = null; showSettings = false; showSearch = false; showDesktop = false; menuFor = null; showQuickMenu = false; showNotifs = false; editMode = false; showBackgrounds = false; dragApp = null
+            selected = null; showSettings = false; showSearch = false; showDesktop = false; showGames = false; menuFor = null; showQuickMenu = false; showNotifs = false; editMode = false; showBackgrounds = false; dragApp = null
             endMove(true)
             pagerState.animateScrollToPage(0)
         }
@@ -461,6 +534,7 @@ fun HomeScreen(homePresses: Int = 0) {
     BackHandler(enabled = showSettings && !menuOpen && !showTutorial) { showSettings = false }
     BackHandler(enabled = showSearch && !showSettings && !menuOpen && !showTutorial) { showSearch = false }
     BackHandler(enabled = showDesktop && !showSearch && !showSettings && !menuOpen && !showTutorial) { showDesktop = false }
+    BackHandler(enabled = showGames && !showSearch && !showSettings && !menuOpen && !showTutorial) { showGames = false }
     BackHandler(enabled = selected != null && !showDesktop && !showSearch && !showSettings && !menuOpen && !showTutorial) { selected = null }
     BackHandler(enabled = showIndex && !showLock) { showIndex = false }
     // Registered last so it wins: while locked, Back does nothing.
@@ -611,7 +685,7 @@ fun HomeScreen(homePresses: Int = 0) {
                     onSettle = { index -> if (index < 0) selected = null else openPages.getOrNull(index)?.let { selected = it } },
                     onLaunch = { launchApp(it) },
                     onClosePage = { closePage(it) },
-                    onInfo = { if (it.action == null) AppRepository.showInfo(context, it) },
+                    onInfo = { if (it.action == null && it.game == null) AppRepository.showInfo(context, it) },
                     position = livePosition,
                 )
                 }
@@ -671,7 +745,7 @@ fun HomeScreen(homePresses: Int = 0) {
         ) {
             CompositionLocalProvider(LocalPadLayer provides 1) {
                 DesktopScreen(
-                    apps = apps,
+                    apps = apps.filter { it.game == null },
                     homeApps = shown.filter { it.action == null },
                     onHome = homeSet,
                     counts = counts,
@@ -682,6 +756,25 @@ fun HomeScreen(homePresses: Int = 0) {
                     onLongPress = { menuFor = it },
                     onLauncherSettings = { showSettings = true },
                     onClose = { showDesktop = false },
+                )
+            }
+        }
+        AnimatedVisibility(
+            visible = showGames,
+            enter = fadeIn(tween(260)) + scaleIn(initialScale = 0.94f, animationSpec = spring(dampingRatio = 0.85f, stiffness = 400f)),
+            exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.96f, animationSpec = tween(200)),
+        ) {
+            CompositionLocalProvider(LocalPadLayer provides 1) {
+                val emuPackages = emuInstalled.map { it.second }.toSet()
+                GamesScreen(
+                    games = apps.filter { it.game != null },
+                    emulators = apps.filter { it.game == null && it.packageName in emuPackages },
+                    settings = settings,
+                    wallpaper = wallpaper,
+                    onLaunch = { launchApp(it) },
+                    onOptions = { menuFor = it },
+                    onSetup = { settingsStart = "games"; showSettings = true },
+                    onClose = { showGames = false },
                 )
             }
         }
@@ -748,7 +841,37 @@ fun HomeScreen(homePresses: Int = 0) {
                             toast = "Settings loaded"
                         } else toast = "That file is not a settings file"
                     },
-                    onClose = { showSettings = false },
+                    games = GamesSetup(
+                        folders = gameFolders,
+                        installed = emuInstalled,
+                        choices = gameChoices,
+                        gameCount = apps.count { it.game != null },
+                        busy = gamesBusy,
+                        onAddFolder = { uri ->
+                            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                            if (gameFolders.none { it.uri == uri.toString() }) {
+                                gameFolders = gameFolders + GameFolder(uri.toString(), "auto")
+                                GameLibrary.saveFolders(context, gameFolders)
+                            }
+                            scanGames()
+                        },
+                        onFolderSystem = { i, sys ->
+                            gameFolders = gameFolders.mapIndexed { idx, f -> if (idx == i) GameFolder(f.uri, sys) else f }
+                            GameLibrary.saveFolders(context, gameFolders)
+                        },
+                        onRemoveFolder = { i ->
+                            gameFolders = gameFolders.filterIndexed { idx, _ -> idx != i }
+                            GameLibrary.saveFolders(context, gameFolders)
+                        },
+                        onEmulator = { sys, pkg ->
+                            GameLibrary.setEmulatorChoice(context, sys, pkg)
+                            gameChoices = gameChoices + (sys to pkg)
+                        },
+                        onScan = { scanGames() },
+                        onCovers = { fetchCovers() },
+                    ),
+                    startPage = settingsStart,
+                    onClose = { showSettings = false; settingsStart = null },
                 )
             }
         }
@@ -808,8 +931,23 @@ fun HomeScreen(homePresses: Int = 0) {
             val onHome = app.packageName in homeSet
             ContextMenu(
                 title = app.label,
-                subtitle = if (app.action != null) "Built in" else app.packageName,
-                items = if (app.action != null) listOf(
+                subtitle = if (app.game != null) (systemById(app.game!!.systemId)?.name ?: "Game") else if (app.action != null) "Built in" else app.packageName,
+                items = if (app.game != null) listOf(
+                    MenuItem("Play") { menuFor = null; launchApp(app) },
+                    MenuItem(if (onHome) "Remove from home" else "Add to home") {
+                        menuFor = null
+                        if (onHome) removeFromHome(app) else addToHome(app)
+                    },
+                    MenuItem("Choose a cover picture") { menuFor = null; coverTarget = app.game!!.id; coverPicker.launch("image/*") },
+                    MenuItem("Get cover art online") { menuFor = null; fetchCovers(app.game) },
+                    MenuItem("Remove from library") {
+                        menuFor = null
+                        home = home - app.packageName; store.saveHome(home)
+                        GameLibrary.remove(context, app.game!!.id)
+                        reload++
+                    },
+                    MenuItem("Cancel") { menuFor = null },
+                ) else if (app.action != null) listOf(
                     MenuItem("Open") { menuFor = null; launchApp(app) },
                     MenuItem("Cancel") { menuFor = null },
                 ) else listOf(
@@ -887,6 +1025,7 @@ fun HomeScreen(homePresses: Int = 0) {
             showSettings -> listOf("D-pad" to "Move / adjust", "A" to "Toggle", "B" to "Done")
             showSearch -> listOf("D-pad" to "Move", "A" to "Open", "B" to "Close")
             showDesktop -> listOf("A" to "Launch", "X" to "Options", "Y" to "Add / remove", "L1" to "Folder", "L2" to "Close", "B" to "Back")
+            showGames -> listOf("D-pad" to "Move", "A" to "Play", "X" to "Options", "Y" to "Add / remove", "B" to "Back")
             editMode && selected == null -> listOf("A" to "Options", "Y" to "Move", "START" to "Background", "B" to "Done")
             selected != null -> listOf("A" to "Start", "X" to "Options", "L1" to "Prev", "R1" to "Next", "B" to "Home")
             else -> listOf("A" to "Open", "X" to "Options", "Y" to "Move", "L1" to "Prev", "R1" to "Next", "L2" to "Desktop", "R2" to "Search", "START" to "Settings")

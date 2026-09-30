@@ -71,6 +71,27 @@ import kotlin.math.roundToInt
 
 private val DeepGreen = Color(0xFF0B6A14)
 
+/** What the Games & Emulators setup page shows and does; built by the home screen, which owns the scanning. */
+class GamesSetup(
+    val folders: List<com.qita.ui.GameFolder>,
+    val installed: List<Pair<com.qita.ui.Emulator, String>>,
+    /** The package chosen to play each system (by system id), if any. */
+    val choices: Map<String, String>,
+    val gameCount: Int,
+    /** A status line while something is running, else null. */
+    val busy: String?,
+    val onAddFolder: (Uri) -> Unit,
+    val onFolderSystem: (Int, String) -> Unit,
+    val onRemoveFolder: (Int) -> Unit,
+    val onEmulator: (String, String) -> Unit,
+    val onScan: () -> Unit,
+    val onCovers: () -> Unit,
+)
+
+/** A readable name for a folder's tree URI: its last path segment. */
+private fun folderLabel(uri: String): String =
+    Uri.decode(uri).substringAfterLast(':').substringAfterLast('/').ifEmpty { "Folder" }
+
 /**
  * Settings in the Vita's own style: a green sky, a centred title over a thin rule, big white rows
  * with round icons, a cyan band on the selected row, glowing checkboxes and a round back button.
@@ -91,6 +112,8 @@ fun SettingsPage(
     onClearFont: () -> Unit,
     onExport: (Uri) -> Unit,
     onImport: (Uri) -> Unit,
+    games: GamesSetup,
+    startPage: String? = null,
     onClose: () -> Unit,
 ) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -105,7 +128,10 @@ fun SettingsPage(
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) onImport(uri)
     }
-    var page by remember { mutableStateOf<String?>(null) }
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) games.onAddFolder(uri)
+    }
+    var page by remember { mutableStateOf<String?>(startPage) }
     // Back steps out of a page first, then closes Settings (this handler is registered after Home's, so it wins).
     BackHandler(enabled = page != null) { page = null }
     val scroll = rememberScrollState()
@@ -114,6 +140,7 @@ fun SettingsPage(
         "theme" -> "Theme & Background"
         "home" -> "Home Screen"
         "bubbles" -> "Bubbles & Icons"
+        "games" -> "Games & Emulators"
         "fonts" -> "Fonts & Text"
         "topbar" -> "Top Bar"
         "motion" -> "Motion"
@@ -229,6 +256,42 @@ fun SettingsPage(
                             SliderRow("set:sway", "≈", "Idle sway", settings.sway, 0f..3f, 0.25f) { onChange(settings.copy(sway = it)) }
                             ChoiceRow("set:tapAnim", "↻", "When tapped", listOf("Flip", "Pulse", "Nothing"), settings.tapAnim) { onChange(settings.copy(tapAnim = it)) }
                         }
+                        "games" -> {
+                            InfoBox(
+                                "Set up your game library in four steps.\n" +
+                                    "1. Add the folders that hold your games.   2. Choose the emulator for each console.\n" +
+                                    "3. Scan for games.   4. Get cover art.   Games then appear in the Games bubble, and you can put any on the home screen.",
+                            )
+                            // Step 1: folders.
+                            games.folders.forEachIndexed { i, f ->
+                                val names = listOf("Auto-detect") + com.qita.ui.SYSTEMS.map { it.name }
+                                val at = if (f.systemId == "auto") 0 else 1 + com.qita.ui.SYSTEMS.indexOfFirst { it.id == f.systemId }.coerceAtLeast(0)
+                                ChoiceRow("set:gfolder:$i", "▣", folderLabel(f.uri), names, at) { n ->
+                                    games.onFolderSystem(i, if (n == 0) "auto" else com.qita.ui.SYSTEMS[n - 1].id)
+                                }
+                                MenuRow("set:gfolder:rm:$i", "✕", "Remove folder ${folderLabel(f.uri)}") { games.onRemoveFolder(i) }
+                            }
+                            MenuRow("set:gfolder:add", "+", "Add a game folder") { folderPicker.launch(null) }
+                            // Step 2: emulators.
+                            InfoBox(
+                                if (games.installed.isEmpty()) "No emulators found on this device yet."
+                                else "Found: " + games.installed.joinToString(", ") { it.first.name },
+                            )
+                            com.qita.ui.SYSTEMS.forEach { sys ->
+                                val options = sys.emulators.mapNotNull { id -> games.installed.firstOrNull { it.first.id == id } }
+                                if (options.isNotEmpty()) {
+                                    val chosen = games.choices[sys.id]
+                                    val at = options.indexOfFirst { it.second == chosen }.coerceAtLeast(0)
+                                    ChoiceRow("set:gemu:${sys.id}", "▶", "${sys.name} plays with", options.map { it.first.name }, at) { n ->
+                                        games.onEmulator(sys.id, options[n].second)
+                                    }
+                                }
+                            }
+                            // Steps 3 and 4.
+                            CheckRow("set:gcoverauto", "▦", "Get cover art automatically after a scan", settings.gameCovers) { onChange(settings.copy(gameCovers = it)) }
+                            MenuRow("set:gscan", "↻", if (games.busy != null) games.busy else "Scan for games (${games.gameCount} found)") { if (games.busy == null) games.onScan() }
+                            MenuRow("set:gcovers", "▦", "Get cover art online for games without one") { if (games.busy == null) games.onCovers() }
+                        }
                         "fonts" -> {
                             InfoBox("The quick brown fox jumps over the lazy dog 0123456789")
                             ChoiceRow("set:uiFont", "Aa", "Menu and screen font", FONT_NAMES, settings.uiFontChoice) { onChange(settings.copy(uiFontChoice = it)) }
@@ -289,6 +352,7 @@ fun SettingsPage(
                             NavRow("set:nav:theme", "◐", "Theme & Background") { page = "theme" }
                             NavRow("set:nav:home", "⌂", "Home Screen") { page = "home" }
                             NavRow("set:nav:bubbles", "◍", "Bubbles & Icons") { page = "bubbles" }
+                            NavRow("set:nav:games", "G", "Games & Emulators") { page = "games" }
                             NavRow("set:nav:fonts", "Aa", "Fonts & Text") { page = "fonts" }
                             NavRow("set:nav:topbar", "▭", "Top Bar") { page = "topbar" }
                             NavRow("set:nav:motion", "≈", "Motion") { page = "motion" }

@@ -4,6 +4,8 @@
     <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Cover art for games is downloaded from the libretro thumbnail server. -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- Needed to list the apps that can be launched from the Vita-style home screen. -->
     <queries>

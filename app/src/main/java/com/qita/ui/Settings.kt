@@ -108,6 +108,7 @@ data class Settings(
     val debugInput: Boolean = false,
     val lockScreen: Boolean = true,
     val vitaMode: Boolean = true,
+    val gameCovers: Boolean = true,
     val bgCustom: Boolean = false,
     val bgTop: Int = 0xFF1B6FCB.toInt(),
     val bgMid: Int = 0xFF1850A8.toInt(),
@@ -180,6 +181,7 @@ class SettingsStore(private val context: Context) {
         debugInput = prefs.getBoolean("debugInput", false),
         lockScreen = prefs.getBoolean("lockScreen", true),
         vitaMode = prefs.getBoolean("vitaMode", true),
+        gameCovers = prefs.getBoolean("gameCovers", true),
         bgCustom = prefs.getBoolean("bgCustom", false),
         bgTop = prefs.getInt("bgTop", 0xFF1B6FCB.toInt()),
         bgMid = prefs.getInt("bgMid", 0xFF1850A8.toInt()),
@@ -240,6 +242,7 @@ class SettingsStore(private val context: Context) {
             .putBoolean("debugInput", s.debugInput)
             .putBoolean("lockScreen", s.lockScreen)
             .putBoolean("vitaMode", s.vitaMode)
+            .putBoolean("gameCovers", s.gameCovers)
             .putBoolean("bgCustom", s.bgCustom)
             .putInt("bgTop", s.bgTop)
             .putInt("bgMid", s.bgMid)
@@ -282,11 +285,20 @@ class SettingsStore(private val context: Context) {
      */
     fun loadHome(): List<String> {
         val saved = prefs.getString("home", "").orEmpty().split('\n').filter { it.isNotBlank() }
-        if (prefs.getBoolean("systemSeeded", false)) return saved
-        val seeded = SYSTEM_IDS.filter { it !in saved } + saved
-        saveHome(seeded)
-        prefs.edit().putBoolean("systemSeeded", true).apply()
-        return seeded
+        if (!prefs.getBoolean("systemSeeded", false)) {
+            val seeded = SYSTEM_IDS.filter { it !in saved } + saved
+            saveHome(seeded)
+            prefs.edit().putBoolean("systemSeeded", true).putBoolean("gamesSeeded", true).apply()
+            return seeded
+        }
+        // The Games bubble arrived later: put it on the home screen once for installs that already had the others.
+        if (!prefs.getBoolean("gamesSeeded", false)) {
+            val withGames = if (SystemAction.GAMES.id in saved) saved else listOf(SystemAction.GAMES.id) + saved
+            saveHome(withGames)
+            prefs.edit().putBoolean("gamesSeeded", true).apply()
+            return withGames
+        }
+        return saved
     }
 
     fun saveHome(home: List<String>) {
