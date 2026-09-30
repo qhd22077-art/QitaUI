@@ -5,6 +5,10 @@ import android.content.Intent
 import android.provider.Settings as AndroidSettings
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.graphics.Path
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
@@ -58,40 +62,51 @@ import com.qita.ui.Notifications
 fun NotificationPanel(color: Color, onLaunch: (String) -> Unit, onDismiss: () -> Unit) {
     val context = LocalContext.current
     LaunchedEffect(Unit) { Notifications.checkAccess(context) }
-    BackHandler { onDismiss() }
     val items = Notifications.items
     val granted = Notifications.granted
     var expanded by remember { mutableStateOf(false) }
+    // Back first steps out of the big list, then closes the panel.
+    BackHandler { if (expanded) expanded = false else onDismiss() }
     val shown = if (expanded) items.toList() else items.take(5)
     val hidden = items.size - shown.size
     // The Vita's rows are dark slate; the chosen colour tints them.
     val rowColor = lerp(color, Color(0xFF4A4F58), 0.55f)
     CompositionLocalProvider(LocalPadLayer provides 4) {
-        Box(
+        BoxWithConstraints(
             Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures(onTap = { onDismiss() }) },
         ) {
+            val screenHeight = maxHeight
+            val panelShape = RoundedCornerShape(12.dp)
             Column(
                 Modifier
-                    .align(Alignment.TopEnd)
+                    .align(if (expanded) Alignment.TopCenter else Alignment.TopEnd)
                     .statusBarsPadding()
-                    .padding(top = 22.dp, end = 6.dp)
-                    .width(316.dp),
+                    .padding(top = 22.dp, end = if (expanded) 0.dp else 6.dp)
+                    .then(if (expanded) Modifier.fillMaxWidth(0.8f) else Modifier.width(316.dp)),
             ) {
                 // The pointer up to the button.
-                Canvas(Modifier.align(Alignment.End).padding(end = 26.dp).size(width = 20.dp, height = 10.dp)) {
+                Canvas(
+                    Modifier
+                        .align(Alignment.End)
+                        .padding(end = if (expanded) 0.dp else 26.dp)
+                        .size(width = 20.dp, height = 10.dp),
+                ) {
                     val p = Path().apply { moveTo(size.width / 2f, 0f); lineTo(size.width, size.height); lineTo(0f, size.height); close() }
                     drawPath(p, Color(0xFFEDEFF3))
                 }
                 Column(
                     Modifier
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(panelShape)
                         .background(Color(0xFFEDEFF3))
-                        .border(1.dp, Color.White.copy(alpha = 0.9f), RoundedCornerShape(12.dp))
+                        .border(if (expanded) 3.dp else 1.dp, Color.White.copy(alpha = 0.95f), panelShape)
                         .pointerInput(Unit) { detectTapGestures { } }
-                        .padding(3.dp),
+                        .padding(if (expanded) 3.dp else 3.dp),
                 ) {
                     Column(
-                        Modifier.clip(RoundedCornerShape(9.dp)).heightIn(max = 290.dp).verticalScroll(rememberScrollState()),
+                        Modifier
+                            .clip(RoundedCornerShape(9.dp))
+                            .heightIn(max = if (expanded) screenHeight * 0.74f else 290.dp)
+                            .verticalScroll(rememberScrollState()),
                     ) {
                         when {
                             !granted -> {
@@ -107,28 +122,121 @@ fun NotificationPanel(color: Color, onLaunch: (String) -> Unit, onDismiss: () ->
                             items.isEmpty() -> Box(Modifier.fillMaxWidth().height(64.dp).background(rowColor), contentAlignment = Alignment.Center) {
                                 Text("No notifications", color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
                             }
+                            expanded -> shown.forEachIndexed { i, n ->
+                                if (i > 0) Divider()
+                                ExpandedRow(n, i, color) { openNotification(context, n, onLaunch); onDismiss() }
+                            }
                             else -> shown.forEachIndexed { i, n ->
                                 if (i > 0) Divider()
                                 NotificationRow(n, i, rowColor) { openNotification(context, n, onLaunch); onDismiss() }
                             }
                         }
                     }
-                    Text(
-                        if (hidden > 0) "More" else if (granted && items.isNotEmpty()) "Clear all" else "Close",
-                        Modifier
-                            .fillMaxWidth()
-                            .padClickable("notif:more", corner = 0.dp) {
-                                if (hidden > 0) expanded = true
-                                else if (granted && items.isNotEmpty()) Notifications.clearAll()
-                                else onDismiss()
-                            }
-                            .padding(vertical = 9.dp),
-                        color = Color(0xFF2A2F3A), fontSize = 14.sp, fontWeight = FontWeight.Medium,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    if (!expanded) {
+                        Text(
+                            if (hidden > 0) "More" else if (granted && items.isNotEmpty()) "Clear all" else "Close",
+                            Modifier
+                                .fillMaxWidth()
+                                .padClickable("notif:more", corner = 0.dp) {
+                                    if (hidden > 0) expanded = true
+                                    else if (granted && items.isNotEmpty()) Notifications.clearAll()
+                                    else onDismiss()
+                                }
+                                .padding(vertical = 9.dp),
+                            color = Color(0xFF2A2F3A), fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                    }
+                }
+            }
+            if (expanded) {
+                // The round white button in the corner: clears everything.
+                val lit = padHighlighted("notif:all") || padHovered("notif:all")
+                Box(
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 10.dp, bottom = 10.dp)
+                        .size(58.dp)
+                        .clip(CircleShape)
+                        .background(if (lit) Color(0xFFDDE6F5) else Color.White)
+                        .padClickable("notif:all", corner = null, ring = false) { Notifications.clearAll() }
+                        .pointerInput(Unit) { detectTapGestures { } },
+                    contentAlignment = Alignment.Center,
+                ) { Dots(Color(0xFF6B7078)) }
+            }
+        }
+    }
+}
+
+/** A row of the big list, as on the console: a rounded picture, a bold title, a thin progress line, the text, a round "…" button and the age. */
+@Composable
+private fun ExpandedRow(n: NotificationItem, index: Int, color: Color, onClick: () -> Unit) {
+    val key = "notif:$index"
+    val lit = padHighlighted(key) || padHovered(key)
+    val busy = n.progress >= 0
+    // Transfers are mid grey; everything else (like a trophy) is a lighter grey.
+    val top = lerp(color, if (busy) Color(0xFF9EA2A9) else Color(0xFFCDD0D5), 0.70f)
+    val bottom = lerp(color, if (busy) Color(0xFF7C8088) else Color(0xFFADB1B7), 0.70f)
+    val shadow = Shadow(Color.Black.copy(alpha = 0.45f), Offset(0f, 2f), 4f)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(Brush.verticalGradient(listOf(if (lit) lerp(top, Color.White, 0.25f) else top, if (lit) lerp(bottom, Color.White, 0.25f) else bottom)))
+            .padClickable(key, corner = 0.dp, ring = false, onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val shape = RoundedCornerShape(8.dp)
+        if (n.icon != null) Image(n.icon, null, Modifier.size(44.dp).clip(shape).border(1.dp, Color.White.copy(alpha = 0.8f), shape))
+        else Box(Modifier.size(44.dp).clip(shape).background(Color.White.copy(alpha = 0.35f)))
+        Column(Modifier.weight(1f)) {
+            Text(
+                n.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                overflow = TextOverflow.Ellipsis, style = TextStyle(shadow = shadow),
+            )
+            if (busy) {
+                Box(Modifier.padding(vertical = 2.dp).fillMaxWidth().height(4.dp).background(Color.White.copy(alpha = 0.55f), CircleShape)) {
+                    Box(
+                        Modifier.fillMaxWidth(n.progress / 100f).height(4.dp)
+                            .background(Brush.verticalGradient(listOf(Color(0xFFD6FF9A), Color(0xFF4DB82A))), CircleShape),
                     )
                 }
             }
+            if (n.text.isNotBlank()) {
+                Text(n.text, color = Color.White, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, style = TextStyle(shadow = shadow))
+            }
         }
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Box(
+                Modifier
+                    .size(26.dp)
+                    .clip(CircleShape)
+                    .background(Color.White)
+                    .padClickable("notif:dots:$index", corner = null, ring = false) { Notifications.dismiss(n.key) },
+                contentAlignment = Alignment.Center,
+            ) { Dots(Color(0xFF6B7078), small = true) }
+            Text(timeAgo(n.time), color = Color.White, fontSize = 11.sp, style = TextStyle(shadow = shadow))
+        }
+    }
+}
+
+/** Three round dots in a row, the console's "…" symbol. */
+@Composable
+private fun Dots(color: Color, small: Boolean = false) {
+    Canvas(Modifier.size(if (small) 16.dp else 30.dp, if (small) 5.dp else 8.dp)) {
+        val r = size.height / 2f
+        for (i in 0..2) drawCircle(color, r, Offset(r + i * (size.width - 2 * r) / 2f, size.height / 2f))
+    }
+}
+
+private fun timeAgo(time: Long): String {
+    val minutes = ((System.currentTimeMillis() - time) / 60_000L).coerceAtLeast(0)
+    return when {
+        minutes < 1 -> "Just now"
+        minutes < 60 -> "$minutes Minute${if (minutes == 1L) "" else "s"} Ago"
+        minutes < 60 * 24 -> "${minutes / 60} Hour${if (minutes / 60 == 1L) "" else "s"} Ago"
+        else -> "${minutes / (60 * 24)} Day${if (minutes / (60 * 24) == 1L) "" else "s"} Ago"
     }
 }
 

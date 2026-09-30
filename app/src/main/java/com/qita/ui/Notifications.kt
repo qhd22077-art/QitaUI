@@ -83,6 +83,9 @@ object Notifications {
 
     fun clearAll() { runCatching { service?.cancelAllNotifications() } }
 
+    /** Dismisses one notification. */
+    fun dismiss(key: String) { runCatching { service?.cancelNotification(key) } }
+
     private fun appLabel(context: Context, pkg: String): String =
         runCatching { context.packageManager.getApplicationLabel(context.packageManager.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg)
 
