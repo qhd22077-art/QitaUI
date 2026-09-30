@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.qita.ui.LaunchableApp
 import kotlinx.coroutines.delay
+import kotlin.math.sin
 
 /**
  * Glossy app bubble with its label underneath.
@@ -88,6 +89,8 @@ fun Bubble(
     onDragEnd: () -> Unit = {},
     onDragCancel: () -> Unit = {},
     onPositioned: (Rect) -> Unit = {},
+    /** How far the bubble is rolled by scrolling (radians of pitch), read while drawing. */
+    scrollRoll: () -> Float = { 0f },
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -121,6 +124,24 @@ fun Bubble(
         )
     } else null
 
+    // Rolling of the 3D ball: a slow idle sway, a full turn when pressed, a nudge when selected, and the scroll.
+    val clock = LocalBallClock.current
+    val spin = remember { Animatable(0f) }
+    LaunchedEffect(pressed) {
+        if (pressed) {
+            spin.snapTo(0f)
+            spin.animateTo(6.2832f, tween(VitaMotion.Long + 300, easing = VitaMotion.Ease))
+            spin.snapTo(0f)
+        }
+    }
+    val seed = remember(app.packageName) { (app.packageName.hashCode() and 0xFFFF) / 10430f }
+    val roll: () -> Offset = {
+        val t = clock.value
+        Offset(
+            0.16f * sin(t + seed) + spin.value + 0.15f * glow,
+            0.10f * sin(t * 1.3f + seed * 1.7f) + scrollRoll() - 0.20f * glow,
+        )
+    }
     // A soft ring spreads from the bubble when it is pressed.
     val ring = remember { Animatable(1f) }
     LaunchedEffect(pressed) {
@@ -197,6 +218,7 @@ fun Bubble(
                 modifier = Modifier.padTarget(padKey, corner = null, app = app, pad = 10.dp, bring = false, ring = false, onClick = onClick),
                 shape = shape,
                 glow = { glow },
+                roll = roll,
                 elevation = if (lit) (12 + 6 * pulse).dp else 7.dp,
                 spot = if (moving) MoveCyan else Color(0xFF0A2A6A),
                 rim = if (moving) Brush.linearGradient(listOf(MoveCyan, MoveCyan)) else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.95f), Color.White.copy(alpha = 0.35f))),

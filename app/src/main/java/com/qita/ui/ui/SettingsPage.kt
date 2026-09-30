@@ -160,6 +160,7 @@ fun SettingsPage(
                                     if (i == settings.layoutIndex) Text("✓", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                                 }) { onChange(settings.copy(layoutIndex = i)) }
                             }
+                            CheckRow("set:bubble3d", "◍", "Live 3D bubbles (Android 13+)", settings.bubble3d) { onChange(settings.copy(bubble3d = it)) }
                             CheckRow("set:fullart", "◉", "Full-art bubbles (Vita style)", settings.fullArt) { onChange(settings.copy(fullArt = it)) }
                             CheckRow("set:rounded", "▢", "Rounded square bubbles", settings.roundedBubbles) { onChange(settings.copy(roundedBubbles = it)) }
                             CheckRow("set:labels", "A", "Show app names", settings.showLabels) { onChange(settings.copy(showLabels = it)) }

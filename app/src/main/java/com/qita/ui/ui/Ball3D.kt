@@ -1,0 +1,144 @@
+package com.qita.ui.ui
+
+import android.graphics.BitmapShader
+import android.graphics.RuntimeShader
+import android.graphics.Shader
+import android.os.Build
+import androidx.annotation.RequiresApi
+import androidx.compose.runtime.State
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.asAndroidBitmap
+import com.qita.ui.LaunchableApp
+
+/** Whether bubbles are shaded live as rolling 3D balls (needs Android 13+). */
+val LocalBall3D = compositionLocalOf { true }
+
+/** A shared clock (radians, looping) that drives the idle sway of every bubble, so only one animation runs. */
+val LocalBallClock = compositionLocalOf<State<Float>> {
+    object : State<Float> { override val value: Float = 0f }
+}
+
+/**
+ * A bubble drawn as a real 3D ball by a GPU shader (AGSL). The icon is looked up on the sphere after the surface
+ * is rotated by the bubble's yaw and pitch, while the lighting stays fixed, so the picture rolls under the highlight
+ * like a printed ball. [paint] is created once per bubble; if the shader fails to build it is null and the caller
+ * falls back to the pre-rendered ball.
+ */
+object Ball3D {
+    val supported: Boolean get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+
+    class Paint @RequiresApi(Build.VERSION_CODES.TIRAMISU) constructor(val shader: RuntimeShader) {
+        val brush = ShaderBrush(shader)
+    }
+
+    /** [body] is the ARGB glass colour that shows where the icon is not. */
+    fun create(app: LaunchableApp, body: Int): Paint? {
+        if (!supported) return null
+        return runCatching { build(app, body) }.getOrNull()
+    }
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    private fun build(app: LaunchableApp, body: Int): Paint {
+        val bitmap = app.icon.asAndroidBitmap()
+        val shader = RuntimeShader(AGSL)
+        shader.setInputShader("icon", BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP))
+        shader.setFloatUniform("iconSize", bitmap.width.toFloat(), bitmap.height.toFloat())
+        shader.setFloatUniform(
+            "body",
+            ((body shr 16) and 0xFF) / 255f, ((body shr 8) and 0xFF) / 255f, (body and 0xFF) / 255f,
+        )
+        shader.setFloatUniform("size", 1f, 1f)
+        shader.setFloatUniform("rot", 0f, 0f)
+        shader.setFloatUniform("glow", 0f)
+        return Paint(shader)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    fun update(paint: Paint, width: Float, height: Float, yaw: Float, pitch: Float, glow: Float) {
+        paint.shader.setFloatUniform("size", width, height)
+        paint.shader.setFloatUniform("rot", yaw, pitch)
+        paint.shader.setFloatUniform("glow", glow)
+    }
+
+    private const val AGSL = """
+uniform shader icon;
+uniform float2 iconSize;
+uniform float2 size;
+uniform float2 rot;
+uniform float3 body;
+uniform float glow;
+
+half4 sampleIcon(float2 px) {
+    float2 q = px - 0.5;
+    half2 f = half2(fract(q));
+    float2 b = floor(q) + 0.5;
+    half4 c00 = icon.eval(b);
+    half4 c10 = icon.eval(b + float2(1.0, 0.0));
+    half4 c01 = icon.eval(b + float2(0.0, 1.0));
+    half4 c11 = icon.eval(b + float2(1.0, 1.0));
+    return mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);
+}
+
+half4 main(float2 frag) {
+    float2 p = (frag / size) * 2.0 - 1.0;
+    float r2 = dot(p, p);
+    if (r2 >= 1.04) { return half4(0.0); }
+    float rr = sqrt(r2);
+    float cov = clamp((1.0 - rr) * size.x * 0.5 + 0.5, 0.0, 1.0);
+    float nz = sqrt(max(1.0 - r2, 0.0));
+    float3 n = float3(p.x, p.y, nz);
+
+    // Rotate the surface, then find where the icon sits on it.
+    float cp = cos(rot.y);
+    float sp = sin(rot.y);
+    float cy = cos(rot.x);
+    float sy = sin(rot.x);
+    float y1 = n.y * cp - n.z * sp;
+    float z1 = n.y * sp + n.z * cp;
+    float x2 = n.x * cy + z1 * sy;
+    float z2 = -n.x * sy + z1 * cy;
+    float lon = atan(x2, z2);
+    float lat = asin(clamp(y1, -1.0, 1.0));
+    float span = 1.5708 * 0.98;
+    float2 uv = float2(0.5 + lon / (2.0 * span), 0.5 + lat / (2.0 * span));
+
+    float3 base = body;
+    if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {
+        half4 c = sampleIcon(uv * iconSize);
+        base = body * (1.0 - float(c.a)) + float3(c.rgb);
+    }
+
+    // Lighting stays fixed while the picture rolls.
+    float3 L = normalize(float3(-0.42, -0.58, 0.70));
+    float ndl = max(dot(n, L), 0.0);
+    float3 col = base * (0.55 + 0.62 * ndl);
+
+    float f1 = 1.0 - nz;
+    float fres = f1 * f1 * f1;
+    col *= 1.0 - 0.55 * fres;
+
+    float3 B = normalize(float3(0.15, 0.85, 0.45));
+    float nb = max(dot(n, B), 0.0);
+    nb = nb * nb;
+    nb = nb * nb;
+    col += float3(0.75, 0.85, 1.0) * (0.30 * nb * (fres * 2.2 + 0.12));
+
+    float3 H = normalize(L + float3(0.0, 0.0, 1.0));
+    float ndh = max(dot(n, H), 0.0);
+    float spec = pow(ndh, 70.0) + pow(ndh, 14.0) * 0.16;
+    col += float3(spec);
+
+    if (nz > 0.2) {
+        float wx = p.x + 0.12;
+        float wy = p.y + 0.50;
+        float v = 1.0 - (wx * wx / 0.42 + wy * wy / 0.07);
+        if (v > 0.0) { col += float3(v * sqrt(v) * 0.28); }
+    }
+
+    col = mix(col, float3(0.09, 0.88, 1.0), 0.34 * glow);
+    col = clamp(col, 0.0, 1.0);
+    return half4(half3(col * cov), half(cov));
+}
+"""
+}

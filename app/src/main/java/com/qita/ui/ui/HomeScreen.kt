@@ -10,6 +10,10 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -444,7 +448,11 @@ fun HomeScreen(homePresses: Int = 0) {
     // A tween, never a spring: springs overshoot and padding must never go negative.
     val hintPad by animateDpAsState(if (Controller.padActive) 46.dp else 0.dp, tween(220), label = "hintPad")
 
-    CompositionLocalProvider(LocalFullArt provides settings.fullArt) {
+    // One looping clock drives the idle sway of every 3D bubble.
+    val ballClock = rememberInfiniteTransition(label = "ballClock").animateFloat(
+        0f, 6.2832f, infiniteRepeatable(tween(9000, easing = LinearEasing)), label = "ballClockValue",
+    )
+    CompositionLocalProvider(LocalFullArt provides settings.fullArt, LocalBall3D provides settings.bubble3d, LocalBallClock provides ballClock) {
     Box(Modifier.fillMaxSize().onSizeChanged { rootWidth = it.width; rootHeight = it.height; PadNav.viewport = Rect(0f, 0f, it.width.toFloat(), it.height.toFloat()) }) {
         BubbleBackground(
             top = settings.theme.top, mid = settings.theme.mid, bottom = settings.theme.bottom, particles = settings.particles,
@@ -951,6 +959,10 @@ private fun BubblePager(
                             onDragEnd = onDragEnd,
                             onDragCancel = onDragCancel,
                             onPositioned = { onPositioned(app.packageName, it) },
+                            // Bubbles roll as the page scrolls, the lower rows a little more than the upper ones.
+                            scrollRoll = {
+                                ((pagerState.currentPage + pagerState.currentPageOffsetFraction) - index).coerceIn(-2f, 2f) * (1.6f + (fy - 0.5f) * 1.2f)
+                            },
                         )
                     }
                 }

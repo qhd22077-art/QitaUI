@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import android.os.Build
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,10 +54,18 @@ fun Sphere(
     rimWidth: Dp = 2.5.dp,
     /** 0..1 selection glow, read while drawing: tints the bubble cyan like the Vita's selected bubble. */
     glow: () -> Float = { 0f },
+    /** Rolling of the ball: x = yaw, y = pitch, in radians. Read while drawing. */
+    roll: () -> Offset = { Offset.Zero },
 ) {
     val full = LocalFullArt.current
     // Round bubbles use the icon pre-rendered as a lit glass ball; other shapes fall back to painted art.
-    val ball = if (full && shape == CircleShape) app.ball else null
+    val round = full && shape == CircleShape
+    // On Android 13+ the ball is shaded live on the GPU and rolls; otherwise the pre-rendered ball is used.
+    val live3d = LocalBall3D.current && round && Ball3D.supported
+    val paint = if (live3d) remember(app.icon) {
+        Ball3D.create(app, if (app.action != null) 0xFF0A0B0D.toInt() else darkBody(app.tint))
+    } else null
+    val ball = if (round && paint == null) app.ball else null
     val light = lerp(app.tint, Color.White, 0.42f)
     val dark = lerp(app.tint, Color.Black, 0.38f)
     Box(
@@ -86,7 +96,7 @@ fun Sphere(
             }
             .clip(shape)
             .drawBehind {
-                if (ball == null) drawRect(
+                if (ball == null && paint == null) drawRect(
                     Brush.radialGradient(
                         listOf(light, app.tint, dark),
                         center = Offset(this.size.width * 0.42f, this.size.height * 0.30f),
@@ -96,7 +106,18 @@ fun Sphere(
             },
         contentAlignment = Alignment.Center,
     ) {
-        if (ball != null) {
+        if (paint != null) {
+            // The live ball: the shader draws the whole sphere, lit and rolled, every frame.
+            Box(
+                Modifier.fillMaxSize().drawBehind {
+                    val r = roll()
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        Ball3D.update(paint, this.size.width, this.size.height, r.x, r.y, glow())
+                        drawRect(paint.brush)
+                    }
+                },
+            )
+        } else if (ball != null) {
             Image(ball, app.label, Modifier.fillMaxSize())
             // Selected: the whole ball glows cyan.
             Box(
@@ -165,10 +186,18 @@ fun Sphere(
                     .background(Brush.verticalGradient(listOf(Color.Transparent, Color.White.copy(alpha = 0.30f)))),
             )
         }
-        if (ball == null) {
+        if (ball == null && paint == null) {
             // A fine dark ring inside the white rim gives the edge some depth. Both go on last so art never covers them.
             Box(Modifier.fillMaxSize().padding(rimWidth).border(1.dp, Color.Black.copy(alpha = 0.22f), shape))
             Box(Modifier.fillMaxSize().border(rimWidth, rim, shape))
         }
     }
+}
+
+/** The glass body colour behind transparent parts of an icon: the icon's colour, darkened. */
+private fun darkBody(tint: Color): Int {
+    val r = (tint.red * 0.35f * 255f).toInt()
+    val g = (tint.green * 0.35f * 255f).toInt()
+    val b = (tint.blue * 0.35f * 255f).toInt()
+    return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
 }
