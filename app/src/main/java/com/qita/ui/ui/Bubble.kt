@@ -126,22 +126,29 @@ fun Bubble(
         )
     } else null
 
-    // Rolling of the 3D ball: a slow idle sway, a full turn when pressed, a nudge when selected, and the scroll.
+    // Rolling of the 3D ball: a barely-there idle sway, one clean spin per touch, and the scroll. Selecting a bubble does
+    // not turn it (the glow shows selection).
     val clock = LocalBallClock.current
+    // Progress 0..1 of the current spin. It is started by a counter, not by the press itself, so letting go of a quick tap
+    // cannot cancel it half way and leave the ball turned.
     val spin = remember { Animatable(0f) }
-    LaunchedEffect(pressed) {
-        if (pressed) {
+    var spinCount by remember { mutableIntStateOf(0) }
+    LaunchedEffect(pressed) { if (pressed && !spin.isRunning) spinCount++ }
+    LaunchedEffect(spinCount) {
+        if (spinCount > 0) {
             spin.snapTo(0f)
-            spin.animateTo(6.2832f, tween(VitaMotion.Long + 300, easing = VitaMotion.Ease))
+            spin.animateTo(1f, tween(650, easing = VitaMotion.Ease))
             spin.snapTo(0f)
         }
     }
     val seed = remember(app.packageName) { (app.packageName.hashCode() and 0xFFFF) / 10430f }
     val roll: () -> Offset = {
         val t = clock.value
+        val p = spin.value
         Offset(
-            0.16f * sin(t + seed) + spin.value + 0.15f * glow,
-            0.10f * sin(t * 1.3f + seed * 1.7f) + scrollRoll() - 0.20f * glow,
+            // A full turn is the same orientation as none, so it lands exactly where it started.
+            0.05f * sin(t + seed) + 6.2832f * p,
+            0.035f * sin(t * 1.3f + seed * 1.7f) + scrollRoll() + 0.22f * sin(3.1416f * p),
         )
     }
     // A soft ring spreads from the bubble when it is pressed.
@@ -184,7 +191,7 @@ fun Bubble(
                 }
             }
             .graphicsLayer {
-                val s = scale * (0.6f + 0.4f * appear.value) * (0.94f + 0.12f * depth)
+                val s = scale * (0.6f + 0.4f * appear.value) * (0.94f + 0.12f * depth) * (1f + 0.06f * sin(3.1416f * spin.value))
                 scaleX = s
                 scaleY = s
                 rotationZ = wiggle?.value ?: 0f
