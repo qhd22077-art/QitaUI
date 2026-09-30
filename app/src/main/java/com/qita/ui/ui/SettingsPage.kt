@@ -147,6 +147,7 @@ fun SettingsPage(
     }
     // The settings are tabs; the selected one is [page].
     var page by remember { mutableStateOf(startPage ?: "theme") }
+    var lockTab by remember { mutableStateOf(0) }
     // Back closes an open choice list first.
     BackHandler(enabled = optionPicker.value != null) { optionPicker.value = null }
     androidx.compose.runtime.DisposableEffect(Unit) { onDispose { optionPicker.value = null } }
@@ -290,32 +291,54 @@ fun SettingsPage(
                             ChoiceRow("set:tapAnim", "↻", "When tapped", listOf("Flip", "Pulse", "Nothing"), settings.tapAnim) { onChange(settings.copy(tapAnim = it)) }
                         }
                         "lock" -> {
-                            MenuRow("set:lockPreview", "▶", "Preview the lock screen") { onPreviewLock() }
-                            ChoiceRow("set:lockPos", "▭", "Clock position", listOf("Bottom right", "Bottom left", "Top left"), settings.lockClockPos) {
-                                onChange(settings.copy(lockClockPos = it))
+                            // The start screen, made easy: a live preview, one-tap looks, then a few short tabs.
+                            LockPreview(settings, Modifier.padding(vertical = 8.dp))
+                            TabStrip(
+                                labels = LOCK_PRESETS.map { it.first },
+                                selected = -1, keyPrefix = "set:lockpre", padStep = false,
+                                selectedFill = listOf(Color.White, Color(0xFFCFF3CF)), selectedText = Color(0xFF0B5A14), idleFill = Color(0xFF053A0C),
+                                modifier = Modifier.padding(horizontal = 0.dp),
+                            ) { onChange(LOCK_PRESETS[it].second(settings)) }
+                            TabStrip(
+                                labels = listOf("Clock", "Panel", "Background", "Extras"),
+                                selected = lockTab, keyPrefix = "set:locktab", padStep = false,
+                                selectedFill = listOf(Color.White, Color(0xFFCFF3CF)), selectedText = Color(0xFF0B5A14), idleFill = Color(0xFF053A0C),
+                            ) { lockTab = it }
+                            when (lockTab) {
+                                0 -> {
+                                    ChoiceRow("set:lockPos", "▭", "Clock position", listOf("Bottom right", "Bottom left", "Top left"), settings.lockClockPos) { onChange(settings.copy(lockClockPos = it)) }
+                                    SliderRow("set:lockSize", "A", "Clock size", settings.lockClockSize, 0.6f..1.6f, 0.1f) { onChange(settings.copy(lockClockSize = it)) }
+                                    ChoiceRow("set:lockFont", "Aa", "Clock and date font", LOCK_FONTS, settings.lockFont) { onChange(settings.copy(lockFont = it)) }
+                                    SwatchRow("set:lockColor", "●", "Clock and date colour", settings.lockClockColor) { onChange(settings.copy(lockClockColor = it)) }
+                                    CheckRow("set:lockDate", "◷", "Show the date", settings.lockShowDate) { onChange(settings.copy(lockShowDate = it)) }
+                                }
+                                1 -> {
+                                    CheckRow("set:lockFrame", "▢", "Show the glass frame", settings.lockFrame) { onChange(settings.copy(lockFrame = it)) }
+                                    if (settings.lockFrame) {
+                                        SliderRow("set:lockBevel", "◩", "Bevel depth", settings.lockBevel, 0f..1f, 0.1f) { onChange(settings.copy(lockBevel = it)) }
+                                        SliderRow("set:lockBorder", "○", "Frame brightness", settings.lockBorder, 0f..1f, 0.1f) { onChange(settings.copy(lockBorder = it)) }
+                                    }
+                                    SliderRow("set:lockTint", "◑", "Glass tint", settings.lockPanelTint, 0f..0.4f, 0.02f) { onChange(settings.copy(lockPanelTint = it)) }
+                                }
+                                2 -> {
+                                    ChoiceRow("set:lockBg", "▣", "Background", listOf("Same as home", "A theme", "My picture"), settings.lockBgMode) { onChange(settings.copy(lockBgMode = it)) }
+                                    if (settings.lockBgMode == 1) {
+                                        ChoiceRow("set:lockTheme", "◐", "Lock screen theme", THEMES.map { it.name }, settings.lockTheme.coerceIn(THEMES.indices)) { onChange(settings.copy(lockTheme = it)) }
+                                    }
+                                    if (settings.lockBgMode == 2) {
+                                        MenuRow("set:lockPic", "▣", "Choose a picture") { lockPicker.launch("image/*") }
+                                        if (hasLockPicture) MenuRow("set:lockPic:rm", "✕", "Remove the picture") { onClearLockPicture() }
+                                    }
+                                }
+                                else -> {
+                                    CheckRow("set:lockNotifs", "✉", "Show notifications on the lock screen", settings.lockNotifs) { onChange(settings.copy(lockNotifs = it)) }
+                                    if (settings.lockNotifs) {
+                                        SliderRow("set:lockNotifCount", "✉", "How many notifications", settings.lockNotifCount.toFloat(), 1f..5f, 1f) { onChange(settings.copy(lockNotifCount = it.roundToInt())) }
+                                    }
+                                    CheckRow("set:lockTap", "☝", "Tap the corner to unlock (otherwise peel it)", settings.lockTapPeel) { onChange(settings.copy(lockTapPeel = it)) }
+                                    MenuRow("set:lockPreview", "▶", "Preview the real lock screen") { onPreviewLock() }
+                                }
                             }
-                            SliderRow("set:lockSize", "A", "Clock size", settings.lockClockSize, 0.6f..1.6f, 0.1f) { onChange(settings.copy(lockClockSize = it)) }
-                            ChoiceRow("set:lockFont", "Aa", "Clock and date font", LOCK_FONTS, settings.lockFont) { onChange(settings.copy(lockFont = it)) }
-                            SwatchRow("set:lockColor", "●", "Clock and date colour", settings.lockClockColor) { onChange(settings.copy(lockClockColor = it)) }
-                            CheckRow("set:lockDate", "◷", "Show the date", settings.lockShowDate) { onChange(settings.copy(lockShowDate = it)) }
-                            CheckRow("set:lockFrame", "▢", "Show the glass frame", settings.lockFrame) { onChange(settings.copy(lockFrame = it)) }
-                            if (settings.lockFrame) {
-                                SliderRow("set:lockBorder", "○", "Frame brightness", settings.lockBorder, 0f..1f, 0.1f) { onChange(settings.copy(lockBorder = it)) }
-                            }
-                            SliderRow("set:lockTint", "◑", "Panel tint", settings.lockPanelTint, 0f..0.4f, 0.02f) { onChange(settings.copy(lockPanelTint = it)) }
-                            ChoiceRow("set:lockBg", "▣", "Background", listOf("Same as home", "A theme", "My picture"), settings.lockBgMode) { onChange(settings.copy(lockBgMode = it)) }
-                            if (settings.lockBgMode == 1) {
-                                ChoiceRow("set:lockTheme", "◐", "Lock screen theme", THEMES.map { it.name }, settings.lockTheme.coerceIn(THEMES.indices)) { onChange(settings.copy(lockTheme = it)) }
-                            }
-                            if (settings.lockBgMode == 2) {
-                                MenuRow("set:lockPic", "▣", "Choose a picture") { lockPicker.launch("image/*") }
-                                if (hasLockPicture) MenuRow("set:lockPic:rm", "✕", "Remove the picture") { onClearLockPicture() }
-                            }
-                            CheckRow("set:lockNotifs", "✉", "Show notifications on the lock screen", settings.lockNotifs) { onChange(settings.copy(lockNotifs = it)) }
-                            if (settings.lockNotifs) {
-                                SliderRow("set:lockNotifCount", "✉", "How many notifications", settings.lockNotifCount.toFloat(), 1f..5f, 1f) { onChange(settings.copy(lockNotifCount = it.roundToInt())) }
-                            }
-                            CheckRow("set:lockTap", "☝", "Tap the corner to unlock (otherwise peel it)", settings.lockTapPeel) { onChange(settings.copy(lockTapPeel = it)) }
                         }
                         "games" -> {
                             InfoBox(
@@ -522,6 +545,15 @@ private fun CheckRow(key: String, glyph: String, label: String, checked: Boolean
 }
 
 private val FONT_NAMES = listOf("Built-in", "System", "Serif", "Monospace", "Loaded file")
+/** One-tap looks for the lock screen: a name and what it sets. */
+private val LOCK_PRESETS: List<Pair<String, (Settings) -> Settings>> = listOf(
+    "Vita" to { s -> s.copy(lockClockPos = 0, lockClockSize = 1f, lockFont = 0, lockClockColor = 0xFFFFFFFF.toInt(), lockShowDate = true, lockFrame = true, lockBorder = 0.6f, lockPanelTint = 0.06f, lockBevel = 0.7f) },
+    "Glass" to { s -> s.copy(lockClockPos = 1, lockClockSize = 1f, lockFont = 0, lockShowDate = true, lockFrame = true, lockBorder = 0.9f, lockPanelTint = 0.14f, lockBevel = 1f) },
+    "Deep bevel" to { s -> s.copy(lockClockPos = 0, lockClockSize = 1.1f, lockFrame = true, lockBorder = 0.75f, lockPanelTint = 0.10f, lockBevel = 1f) },
+    "Big clock" to { s -> s.copy(lockClockPos = 1, lockClockSize = 1.5f, lockFont = 1, lockShowDate = true, lockFrame = true, lockBorder = 0.5f, lockPanelTint = 0.04f, lockBevel = 0.5f) },
+    "Clean" to { s -> s.copy(lockClockPos = 0, lockClockSize = 1.1f, lockShowDate = true, lockFrame = true, lockBorder = 0.3f, lockPanelTint = 0.02f, lockBevel = 0.3f) },
+    "Minimal" to { s -> s.copy(lockClockPos = 2, lockClockSize = 0.8f, lockShowDate = false, lockFrame = false, lockPanelTint = 0f, lockBevel = 0f) },
+)
 private val LOCK_FONTS = listOf("Thin sans", "Built-in", "System", "Serif", "Monospace", "Loaded file")
 
 /** A row that steps through a short list of choices: tap or A goes to the next, left/right on the gamepad steps either way. */

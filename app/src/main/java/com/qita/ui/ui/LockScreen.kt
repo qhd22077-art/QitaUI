@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -127,14 +128,7 @@ fun LockScreen(
                             shape = PeelShape(baseFold + peel.value, radius)
                             clip = true
                         }
-                        .drawBehind {
-                            // An almost clear panel with a thin pale border, like a pane of glass over the wallpaper.
-                            val r = CornerRadius(radius, radius)
-                            drawRoundRect(Color.White.copy(alpha = settings.lockPanelTint), cornerRadius = r)
-                            if (settings.lockFrame) {
-                                drawRoundRect(Color.White.copy(alpha = settings.lockBorder), cornerRadius = r, style = Stroke(width = 1.2.dp.toPx()))
-                            }
-                        },
+                        .drawBehind { drawLockPanel(settings.lockPanelTint, settings.lockFrame, settings.lockBorder, settings.lockBevel, radius) },
                 ) {
                     val clockSize = (maxHeight.value * 0.27f * settings.lockClockSize).sp
                     val dateSize = (maxHeight.value * 0.072f * settings.lockClockSize).sp
@@ -219,6 +213,65 @@ fun LockScreen(
                     onPeeled = onUnlock,
                     modifier = Modifier.align(Alignment.TopEnd),
                 )
+            }
+        }
+    }
+}
+
+/**
+ * The lock screen's pane of glass: an almost clear fill, a bevelled frame (bright edge top left, dark edge bottom right, a fine
+ * inset line inside it), a sheen across the top and a soft shade along the bottom. [bevel] (0..1) says how deep it looks.
+ */
+internal fun DrawScope.drawLockPanel(tint: Float, frame: Boolean, border: Float, bevel: Float, radius: Float) {
+    val r = CornerRadius(radius, radius)
+    drawRoundRect(Color.White.copy(alpha = tint), cornerRadius = r)
+    if (!frame) return
+    val w = 1.4.dp.toPx()
+    val corner = Offset(size.width, size.height)
+    // The outer edge: lit from the top left.
+    drawRoundRect(
+        Brush.linearGradient(listOf(Color.White.copy(alpha = border), Color.White.copy(alpha = border * 0.3f), Color.Black.copy(alpha = 0.40f * bevel)), Offset.Zero, corner),
+        cornerRadius = r, style = Stroke(width = w * (1f + bevel)),
+    )
+    // A fine inset line, dark then light, so the edge looks cut into the glass.
+    val inset = w * (2.2f + bevel)
+    drawRoundRect(
+        Brush.linearGradient(listOf(Color.Black.copy(alpha = 0.30f * bevel), Color.White.copy(alpha = 0.35f * bevel)), Offset.Zero, corner),
+        topLeft = Offset(inset, inset), size = androidx.compose.ui.geometry.Size(size.width - 2 * inset, size.height - 2 * inset),
+        cornerRadius = CornerRadius((radius - inset).coerceAtLeast(2f)), style = Stroke(width = w),
+    )
+    // Sheen across the top, shade along the bottom.
+    drawRoundRect(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.20f * bevel), Color.Transparent), 0f, size.height * 0.24f), cornerRadius = r)
+    drawRoundRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.20f * bevel)), size.height * 0.72f, size.height), cornerRadius = r)
+}
+
+/** A small live copy of the lock screen for the settings page, so each change can be seen at once. */
+@Composable
+fun LockPreview(settings: Settings, modifier: Modifier = Modifier) {
+    val theme = if (settings.lockBgMode == 1) com.qita.ui.THEMES[settings.lockTheme.coerceIn(com.qita.ui.THEMES.indices)] else settings.theme
+    val now = remember { Date() }
+    BoxWithConstraints(
+        modifier
+            .fillMaxWidth()
+            .height(140.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Brush.verticalGradient(listOf(theme.top, theme.mid, theme.bottom)))
+            .border(1.dp, Color.White.copy(alpha = 0.6f), RoundedCornerShape(12.dp)),
+    ) {
+        val panelRadius = with(LocalDensity.current) { 8.dp.toPx() }
+        Box(
+            Modifier.fillMaxSize().padding(8.dp).drawBehind { drawLockPanel(settings.lockPanelTint, settings.lockFrame, settings.lockBorder, settings.lockBevel, panelRadius) },
+        ) {
+            val clockSize = (maxHeight.value * 0.27f * settings.lockClockSize).sp
+            val dateSize = (maxHeight.value * 0.075f * settings.lockClockSize).sp
+            val color = Color(settings.lockClockColor)
+            val pos = settings.lockClockPos
+            Column(
+                Modifier.align(if (pos == 0) Alignment.BottomEnd else if (pos == 1) Alignment.BottomStart else Alignment.TopStart).padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalAlignment = if (pos == 0) Alignment.End else Alignment.Start,
+            ) {
+                if (settings.lockShowDate) Text(SimpleDateFormat("MMMM d (EEEE)", Locale.getDefault()).format(now), color = color.copy(alpha = 0.92f), fontSize = dateSize, fontWeight = FontWeight.Light)
+                Text(SimpleDateFormat(if (settings.use24h) "HH : mm" else "h : mm", Locale.getDefault()).format(now), color = color, fontSize = clockSize, fontWeight = FontWeight.ExtraLight)
             }
         }
     }

@@ -125,6 +125,8 @@ data class Settings(
     val lockShowDate: Boolean = true,
     val lockPanelTint: Float = 0.06f,
     val lockBorder: Float = 0.5f,
+    /** How deep the glass frame's bevel looks (0 flat .. 1 deep). */
+    val lockBevel: Float = 0.7f,
     val lockFrame: Boolean = true,
     val lockBgMode: Int = 0,
     val lockTheme: Int = 0,
@@ -218,6 +220,7 @@ class SettingsStore(private val context: Context) {
         lockShowDate = prefs.getBoolean("lockShowDate", true),
         lockPanelTint = prefs.getFloat("lockPanelTint", 0.06f),
         lockBorder = prefs.getFloat("lockBorder", 0.5f),
+        lockBevel = prefs.getFloat("lockBevel", 0.7f),
         lockFrame = prefs.getBoolean("lockFrame", true),
         lockBgMode = prefs.getInt("lockBgMode", 0),
         lockTheme = prefs.getInt("lockTheme", 0),
@@ -296,6 +299,7 @@ class SettingsStore(private val context: Context) {
             .putBoolean("lockShowDate", s.lockShowDate)
             .putFloat("lockPanelTint", s.lockPanelTint)
             .putFloat("lockBorder", s.lockBorder)
+            .putFloat("lockBevel", s.lockBevel)
             .putBoolean("lockFrame", s.lockFrame)
             .putInt("lockBgMode", s.lockBgMode)
             .putInt("lockTheme", s.lockTheme)

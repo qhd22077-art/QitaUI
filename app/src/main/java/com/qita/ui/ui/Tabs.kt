@@ -42,6 +42,8 @@ fun TabStrip(
     selectedText: Color,
     idleFill: Color,
     modifier: Modifier = Modifier,
+    /** Whether L1 and R1 step through these tabs (only one strip on a screen should). */
+    padStep: Boolean = true,
     onSelect: (Int) -> Unit,
 ) {
     val scroll = rememberScrollState()
@@ -49,7 +51,8 @@ fun TabStrip(
     val current = rememberUpdatedState(selected)
     val choose = rememberUpdatedState(onSelect)
     val count = rememberUpdatedState(labels.size)
-    LaunchedEffect(Unit) {
+    LaunchedEffect(padStep) {
+        if (!padStep) return@LaunchedEffect
         Controller.commands.collect { cmd ->
             if (cmd is Command.Page) {
                 val next = (current.value + cmd.delta).coerceIn(0, count.value - 1)
