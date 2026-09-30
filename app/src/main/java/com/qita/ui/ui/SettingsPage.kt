@@ -306,7 +306,7 @@ fun SettingsPage(
                             games.folders.forEachIndexed { i, f ->
                                 val names = listOf("Auto-detect") + com.qita.ui.SYSTEMS.map { it.name }
                                 val at = if (f.systemId == "auto") 0 else 1 + com.qita.ui.SYSTEMS.indexOfFirst { it.id == f.systemId }.coerceAtLeast(0)
-                                ChoiceRow("set:gfolder:$i", "▣", folderLabel(f.uri), names, at) { n ->
+                                ChoiceRow("set:gfolder:$i", "▣", f.label.ifBlank { folderLabel(f.uri) }, names, at) { n ->
                                     games.onFolderSystem(i, if (n == 0) "auto" else com.qita.ui.SYSTEMS[n - 1].id)
                                 }
                                 MenuRow("set:gfolder:rm:$i", "✕", "Remove folder ${folderLabel(f.uri)}") { games.onRemoveFolder(i) }

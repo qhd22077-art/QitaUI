@@ -46,6 +46,24 @@ object UserStores {
         prefs(c).edit().putString("user_stores", arr.toString()).apply()
     }
 
+    /** Models offered in the picker: the id and a plain description. */
+    val MODELS: List<Pair<String, String>> = listOf(
+        "claude-haiku-4-5-20251001" to "Haiku 4.5 (fast and cheap, good for this)",
+        "claude-sonnet-5-5" to "Sonnet 5.5 (more careful)",
+        "claude-opus-5-5" to "Opus 5.5 (most careful, slower)",
+        "claude-fable-5-1" to "Fable 5.1",
+    )
+    fun modelName(id: String): String = MODELS.firstOrNull { it.first == id }?.second ?: id
+
+    fun aiMaxLinks(c: Context): Int = prefs(c).getInt("ai_links", 250)
+    fun aiDefaultMode(c: Context): Int = prefs(c).getInt("ai_mode", 0)
+    fun aiExtra(c: Context): String = prefs(c).getString("ai_extra", "").orEmpty()
+    fun aiTidy(c: Context): Boolean = prefs(c).getBoolean("ai_tidy", true)
+    fun aiGroup(c: Context): Boolean = prefs(c).getBoolean("ai_group", true)
+    fun setAiOptions(c: Context, links: Int, mode: Int, extra: String, tidy: Boolean, group: Boolean) {
+        prefs(c).edit().putInt("ai_links", links).putInt("ai_mode", mode).putString("ai_extra", extra.trim()).putBoolean("ai_tidy", tidy).putBoolean("ai_group", group).apply()
+    }
+
     fun aiKey(c: Context): String = prefs(c).getString("ai_key", "").orEmpty()
     fun aiModel(c: Context): String = prefs(c).getString("ai_model", DEFAULT_MODEL).orEmpty().ifBlank { DEFAULT_MODEL }
     fun setAi(c: Context, key: String, model: String) {
@@ -141,12 +159,15 @@ object PageScanner {
     private fun aiItems(context: Context, title: String, cands: List<Cand>): List<ScanItem> {
         val key = UserStores.aiKey(context)
         if (key.isBlank()) throw IOException("no AI key is set")
-        val list = (cands.filter { it.kind == 0 } + cands.filter { it.kind == 1 } + cands.filter { it.kind == 2 }).take(250)
+        val list = (cands.filter { it.kind == 0 } + cands.filter { it.kind == 1 } + cands.filter { it.kind == 2 }).take(UserStores.aiMaxLinks(context))
         if (list.isEmpty()) return emptyList()
         val prompt = buildString {
             append("You are helping build a download menu from a web page titled \"").append(title.take(120)).append("\". Below are the links found on the page, each as: number | link text | address.\n")
             append("Choose the links that lead to downloadable files, to folders or lists of files, or to pages that clearly offer downloads. Drop navigation, login, social and advert links. ")
-            append("For each link you keep, give a clean short name and a short section title (for example a console, a type of file or a category), and group similar ones under the same section title.\n")
+            append("For each link you keep, give ")
+            append(if (UserStores.aiTidy(context)) "a clean short name" else "its name as it is")
+            append(if (UserStores.aiGroup(context)) " and a short section title (for example a console, a type of file or a category), and group similar ones under the same section title.\n" else " and the section title \"Files\".\n")
+            UserStores.aiExtra(context).takeIf { it.isNotBlank() }?.let { append("The user also asks: ").append(it.take(200)).append(". Follow that when choosing.\n") }
             append("Reply with ONLY a JSON array, no other words: [{\"n\": <number>, \"name\": \"...\", \"section\": \"...\"}]. Use only numbers from the list.\n\n")
             list.forEachIndexed { i, c -> append(i + 1).append(" | ").append(c.text.take(80)).append(" | ").append(c.url.take(160)).append('\n') }
         }
@@ -183,6 +204,47 @@ object PageScanner {
         }
         // Folders first, then files and pages, each group in the AI's order of sections.
         return out.sortedBy { if (it.folder) 0 else if (it.page) 2 else 1 }
+    }
+
+    /** The model ids the user's key can use, newest first. Blocks. Throws with the API's message on failure. */
+    fun listModels(context: Context): List<String> {
+        val key = UserStores.aiKey(context)
+        if (key.isBlank()) throw IOException("no AI key is set")
+        val conn = URL("https://api.anthropic.com/v1/models?limit=50").openConnection() as HttpURLConnection
+        conn.connectTimeout = 12000
+        conn.readTimeout = 20000
+        conn.setRequestProperty("x-api-key", key)
+        conn.setRequestProperty("anthropic-version", "2023-06-01")
+        val code = conn.responseCode
+        val text = (if (code in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+        conn.disconnect()
+        if (code !in 200..299) throw IOException(runCatching { JSONObject(text).getJSONObject("error").getString("message") }.getOrDefault("HTTP $code"))
+        val arr = JSONObject(text).getJSONArray("data")
+        return (0 until arr.length()).map { arr.getJSONObject(it).getString("id") }
+    }
+
+    /** One tiny request with the saved key and model; returns "It works." or what went wrong. Blocks. */
+    fun testAi(context: Context): String {
+        val key = UserStores.aiKey(context)
+        if (key.isBlank()) return "Type your API key first, then Save."
+        return runCatching {
+            val body = JSONObject().put("model", UserStores.aiModel(context)).put("max_tokens", 8)
+                .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", "Reply with the word OK.")))
+            val conn = URL("https://api.anthropic.com/v1/messages").openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.connectTimeout = 12000
+            conn.readTimeout = 30000
+            conn.doOutput = true
+            conn.setRequestProperty("content-type", "application/json")
+            conn.setRequestProperty("x-api-key", key)
+            conn.setRequestProperty("anthropic-version", "2023-06-01")
+            conn.outputStream.use { it.write(body.toString().toByteArray()) }
+            val code = conn.responseCode
+            val text = (if (code in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+            conn.disconnect()
+            if (code in 200..299) "It works (${UserStores.aiModel(context)})."
+            else runCatching { JSONObject(text).getJSONObject("error").getString("message") }.getOrDefault("HTTP $code")
+        }.getOrElse { "Could not reach the API (${it.message})" }
     }
 
     /** Scans [url]. Blocks. Throws with a readable message if the page cannot be read. */

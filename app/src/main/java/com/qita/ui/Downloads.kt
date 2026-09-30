@@ -33,6 +33,43 @@ enum class DlState { RUNNING, PAUSED, DONE, FAILED }
 /** What to do with a file when it has finished: [APK] offers to install it, [FILE] puts it with the games if it is one. */
 enum class DlKind { FILE, APK }
 
+/** What the user chose before the download began: unzip it, which game folder it goes to (null: leave it in Downloads), and what to do with the zip. */
+class DownloadPlan(val unzip: Boolean, val folderUri: String?, val deleteZip: Boolean)
+
+/** A download waiting for the user's answers; [onItem] gets the download once it has started. */
+class DownloadRequest(
+    val url: String,
+    val name: String,
+    val kind: DlKind,
+    val cookie: String?,
+    val userAgent: String?,
+    val onItem: (DownloadItem) -> Unit,
+)
+
+/** The user's standing choices about downloads, and the last answers (used when the questions are switched off). */
+object DownloadPrefs {
+    private fun prefs(c: Context) = c.getSharedPreferences("qita_downloads", Context.MODE_PRIVATE)
+    fun ask(c: Context): Boolean = prefs(c).getBoolean("ask", true)
+    fun setAsk(c: Context, on: Boolean) { prefs(c).edit().putBoolean("ask", on).apply() }
+
+    fun remember(c: Context, plan: DownloadPlan, wasZip: Boolean) {
+        prefs(c).edit().apply {
+            if (wasZip) { putBoolean("last_unzip", plan.unzip); putBoolean("last_delzip", plan.deleteZip) }
+            putString("last_folder", plan.folderUri ?: "")
+        }.apply()
+    }
+
+    fun lastUnzip(c: Context) = prefs(c).getBoolean("last_unzip", true)
+    fun lastDeleteZip(c: Context) = prefs(c).getBoolean("last_delzip", true)
+    fun lastFolder(c: Context): String? = prefs(c).getString("last_folder", null)?.ifEmpty { null }
+
+    /** The answers to use without asking: the last ones, or null if there are none yet (the old ask-afterwards menus then apply). */
+    fun quietPlan(c: Context): DownloadPlan? {
+        val folder = lastFolder(c) ?: return null
+        return DownloadPlan(lastUnzip(c), folder, lastDeleteZip(c))
+    }
+}
+
 /** One download. The fields that change while it runs are Compose state, so the lists showing it update by themselves. */
 class DownloadItem(
     val id: String,
@@ -52,6 +89,8 @@ class DownloadItem(
     var speed by mutableStateOf(0f)
     var finalPath by mutableStateOf<String?>(null)
     internal var job: Job? = null
+    /** The user's answers, if they were asked before it began. */
+    var plan: DownloadPlan? = null
 
     val fraction: Float get() = if (total > 0) (bytes.toFloat() / total).coerceIn(0f, 1f) else -1f
 
@@ -104,6 +143,7 @@ object DownloadEngine {
                     o.optString("cookie").ifEmpty { null }, o.optString("ua").ifEmpty { null },
                     o.optLong("started"), File(dir(app!!), o.getString("id") + ".part"),
                 )
+                if (o.has("plan_folder") || o.has("plan_unzip")) item.plan = DownloadPlan(o.optBoolean("plan_unzip"), o.optString("plan_folder").ifEmpty { null }, o.optBoolean("plan_del", true))
                 item.total = o.optLong("total", -1)
                 item.finalPath = o.optString("final").ifEmpty { null }
                 val done = o.optString("state") == "DONE" && item.finalPath != null && File(item.finalPath!!).exists()
@@ -121,21 +161,41 @@ object DownloadEngine {
             arr.put(
                 JSONObject().put("id", it.id).put("url", it.url).put("name", it.name).put("kind", it.kind.name)
                     .put("cookie", it.cookie ?: "").put("ua", it.userAgent ?: "").put("started", it.startedAt)
-                    .put("total", it.total).put("final", it.finalPath ?: "").put("state", it.state.name).put("error", it.error ?: ""),
+                    .put("total", it.total).put("final", it.finalPath ?: "").put("state", it.state.name).put("error", it.error ?: "")
+                    .also { o -> it.plan?.let { p -> o.put("plan_unzip", p.unzip).put("plan_folder", p.folderUri ?: "").put("plan_del", p.deleteZip) } },
             )
         }
         prefs().edit().putString("items", arr.toString()).apply()
     }
 
     /** Starts a download and returns it. [name] is cleaned of characters a file name cannot hold. */
-    fun enqueue(url: String, name: String, kind: DlKind = DlKind.FILE, cookie: String? = null, userAgent: String? = null): DownloadItem {
+    fun enqueue(url: String, name: String, kind: DlKind = DlKind.FILE, cookie: String? = null, userAgent: String? = null, plan: DownloadPlan? = null): DownloadItem {
         val context = app ?: error("DownloadEngine.init was not called")
         val id = java.lang.Long.toHexString(System.nanoTime())
         val item = DownloadItem(id, url, cleanName(name), kind, cookie, userAgent, System.currentTimeMillis(), File(dir(context), "$id.part"))
+        item.plan = plan
         items.add(0, item)
         persist()
         start(item)
         return item
+    }
+
+    /** Shows the questions (set by the home screen, which can draw them over the Store); null means there is nobody to ask. */
+    var asker: ((DownloadRequest) -> Unit)? = null
+
+    /**
+     * The way the Store starts a download. APKs go straight to the installer's route. Anything else first asks the user (unzip?
+     * which folder? keep the zip?), unless they switched the questions off, when their last answers are used.
+     */
+    fun request(url: String, name: String, kind: DlKind = DlKind.FILE, cookie: String? = null, userAgent: String? = null, onItem: (DownloadItem) -> Unit = {}) {
+        val context = app ?: error("DownloadEngine.init was not called")
+        val apk = kind == DlKind.APK || name.endsWith(".apk", true)
+        val ask = asker
+        if (apk || ask == null || !DownloadPrefs.ask(context)) {
+            onItem(enqueue(url, name, kind, cookie, userAgent, if (apk) null else DownloadPrefs.quietPlan(context)))
+        } else {
+            ask(DownloadRequest(url, name, kind, cookie, userAgent, onItem))
+        }
     }
 
     private fun cleanName(name: String): String =
@@ -305,6 +365,23 @@ object DownloadPlacer {
     /** Consoles a file type can belong to (several for shared types like iso). */
     fun candidatesFor(ext: String): List<GameSystem> = SYSTEMS.filter { ext.lowercase() in it.exts }
 
+    /**
+     * The folder a download most likely belongs in: by its file type, then by the names in its name (a console's name or a folder's
+     * label), then the folder used last time. Returns an index into [folders], or -1 when there is none.
+     */
+    fun suggest(context: Context, folders: List<GameFolder>, name: String): Int {
+        if (folders.isEmpty()) return -1
+        val ext = name.substringAfterLast('.', "").lowercase()
+        val byExt = candidatesFor(ext)
+        if (byExt.size == 1) folders.indexOfFirst { it.systemId == byExt[0].id }.takeIf { it >= 0 }?.let { return it }
+        val tokens = name.lowercase().split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }
+        folders.indexOfFirst { f -> f.label.lowercase().split(Regex("[^a-z0-9]+")).any { it.isNotEmpty() && it in tokens } }.takeIf { it >= 0 }?.let { return it }
+        GameScanner.systemFromName(name)?.let { sys -> folders.indexOfFirst { it.systemId == sys.id }.takeIf { it >= 0 }?.let { return it } }
+        if (byExt.size > 1) folders.indexOfFirst { f -> byExt.any { it.id == f.systemId } }.takeIf { it >= 0 }?.let { return it }
+        val last = DownloadPrefs.lastFolder(context)
+        return folders.indexOfFirst { it.uri == last }.takeIf { it >= 0 } ?: 0
+    }
+
     /** A message for the user: what happened to the file. */
     class Result(val ok: Boolean, val message: String)
 
@@ -329,26 +406,26 @@ object DownloadPlacer {
     }.getOrElse { Result(false, "Could not save the file: ${it.message}") }
 
     /** Copies [file] into the game folder for [system]. Blocks. */
-    fun place(context: Context, file: File, name: String, system: GameSystem): Result = runCatching {
+    fun place(context: Context, file: File, name: String, system: GameSystem?, chosen: GameFolder? = null): Result = runCatching {
         val folders = GameLibrary.folders(context)
-        val folder = folders.firstOrNull { it.systemId == system.id } ?: folders.firstOrNull { it.systemId == "auto" }
+        val folder = chosen ?: folders.firstOrNull { it.systemId == system?.id } ?: folders.firstOrNull { it.systemId == "auto" }
             ?: return Result(false, "Add a game folder in Settings → Games & Emulators first. The file is in Downloads.")
         val resolver = context.contentResolver
         val tree = Uri.parse(folder.uri)
         val rootId = DocumentsContract.getTreeDocumentId(tree)
         // An auto folder keeps each console in its own sub-folder, named so the scanner can tell them apart.
-        val parentId = if (folder.systemId == "auto") subFolder(context, tree, rootId, system) else rootId
+        val parentId = if (folder.systemId == "auto" && system != null) subFolder(context, tree, rootId, system) else rootId
         val parent = DocumentsContract.buildDocumentUriUsingTree(tree, parentId)
         val doc = DocumentsContract.createDocument(resolver, parent, "application/octet-stream", name)
             ?: return Result(false, "Could not write into the game folder")
         resolver.openOutputStream(doc)?.use { out -> file.inputStream().use { it.copyTo(out) } }
             ?: return Result(false, "Could not write into the game folder")
         file.delete()
-        Result(true, "Added $name to ${system.name}")
+        Result(true, "Added $name to ${folder.label.ifBlank { system?.name ?: "your game folder" }}")
     }.getOrElse { Result(false, "Could not save the file: ${it.message}") }
 
     /** Unzips [zip] (no folders, no paths: only the files) and places each one. Blocks. */
-    fun unzipAndPlace(context: Context, zip: File, system: GameSystem): Result = runCatching {
+    fun unzipAndPlace(context: Context, zip: File, system: GameSystem?, chosen: GameFolder? = null, deleteZip: Boolean = true): Result = runCatching {
         val temp = File(zip.parentFile, "unzip_${System.nanoTime()}").apply { mkdirs() }
         val files = ArrayList<File>()
         ZipInputStream(zip.inputStream().buffered()).use { zin ->
@@ -366,12 +443,12 @@ object DownloadPlacer {
         var placed = 0
         var last: Result? = null
         for (f in files) {
-            val r = place(context, f, f.name, system)
+            val r = place(context, f, f.name, system ?: candidatesFor(f.extension).singleOrNull() ?: GameScanner.systemFromName(f.name), chosen)
             last = r
             if (r.ok) placed++ else break
         }
         temp.deleteRecursively()
-        if (placed > 0) { zip.delete(); Result(true, "Unzipped $placed file${if (placed == 1) "" else "s"} into ${system.name}") }
+        if (placed > 0) { if (deleteZip) zip.delete(); Result(true, "Unzipped $placed file${if (placed == 1) "" else "s"} into ${chosen?.label?.ifBlank { null } ?: system?.name ?: "your game folder"}") }
         else last ?: Result(false, "The zip was empty")
     }.getOrElse { Result(false, "Could not unzip: ${it.message}") }
 

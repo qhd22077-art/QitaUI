@@ -56,7 +56,7 @@ class Game(
 )
 
 /** A folder the user pointed the launcher at; [systemId] is a system id, or "auto" to tell by file type and folder names. */
-class GameFolder(val uri: String, val systemId: String)
+data class GameFolder(val uri: String, val systemId: String, val label: String = "")
 
 val EMULATORS: List<Emulator> = listOf(
     Emulator("retroarch", "RetroArch", listOf("com.retroarch.aarch64", "com.retroarch", "com.retroarch.ra32")),
@@ -117,12 +117,12 @@ object GameLibrary {
 
     fun folders(c: Context): List<GameFolder> = runCatching {
         val arr = JSONArray(prefs(c).getString("folders", "[]"))
-        (0 until arr.length()).map { val o = arr.getJSONObject(it); GameFolder(o.getString("uri"), o.optString("system", "auto")) }
+        (0 until arr.length()).map { val o = arr.getJSONObject(it); GameFolder(o.getString("uri"), o.optString("system", "auto"), o.optString("label")) }
     }.getOrDefault(emptyList())
 
     fun saveFolders(c: Context, list: List<GameFolder>) {
         val arr = JSONArray()
-        list.forEach { arr.put(JSONObject().put("uri", it.uri).put("system", it.systemId)) }
+        list.forEach { arr.put(JSONObject().put("uri", it.uri).put("system", it.systemId).put("label", it.label)) }
         prefs(c).edit().putString("folders", arr.toString()).apply()
     }
 
@@ -182,6 +182,45 @@ object GameScanner {
         }
         return out.values.toList()
     }
+
+    /** The console a name (of a folder or a file) points to, from the names each console goes by, or null. */
+    fun systemFromName(name: String): GameSystem? {
+        val lower = name.lowercase()
+        val tokens = lower.split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }
+        val squashed = lower.replace(Regex("[^a-z0-9]"), "")
+        return SYSTEMS.firstOrNull { s -> s.aliases.any { a -> a in tokens || squashed == a } || s.short.lowercase() in tokens }
+    }
+
+    /** What a scan of the folder [tree] suggests: the console (or null) and whether that is certain enough to fix the folder to it. Blocks. */
+    class Detected(val system: GameSystem?, val sure: Boolean)
+
+    fun detect(context: Context, tree: Uri): Detected = runCatching {
+        val rootId = DocumentsContract.getTreeDocumentId(tree)
+        systemFromName(displayName(context, tree, rootId) ?: "")?.let { return Detected(it, true) }
+        val counts = HashMap<String, Int>()
+        var files = 0
+        fun visit(docId: String, depth: Int) {
+            val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, docId)
+            val cols = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE)
+            val entries = ArrayList<Triple<String, String, String>>()
+            context.contentResolver.query(children, cols, null, null, null)?.use { c ->
+                while (c.moveToNext()) entries.add(Triple(c.getString(0) ?: continue, c.getString(1) ?: continue, c.getString(2) ?: ""))
+            }
+            for ((id, name, mime) in entries) {
+                if (files > 400) return
+                if (mime == DocumentsContract.Document.MIME_TYPE_DIR) { if (depth < 2) visit(id, depth + 1); continue }
+                val byExt = SYSTEMS.filter { name.substringAfterLast('.', "").lowercase() in it.exts }
+                if (byExt.isEmpty()) continue
+                files++
+                val sys = if (byExt.size == 1) byExt[0] else systemFromName(name)
+                if (sys != null) counts[sys.id] = (counts[sys.id] ?: 0) + 1
+            }
+        }
+        visit(rootId, 0)
+        val best = counts.maxByOrNull { it.value } ?: return Detected(null, false)
+        val total = counts.values.sum()
+        Detected(systemById(best.key), best.value >= 3 && best.value * 10 >= total * 9)
+    }.getOrDefault(Detected(null, false))
 
     private fun displayName(context: Context, tree: Uri, docId: String): String? = runCatching {
         val uri = DocumentsContract.buildDocumentUriUsingTree(tree, docId)

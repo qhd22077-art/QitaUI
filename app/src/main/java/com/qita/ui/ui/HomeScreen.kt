@@ -101,6 +101,7 @@ import com.qita.ui.GameSystem
 import com.qita.ui.DownloadPlacer
 import com.qita.ui.DownloadItem
 import com.qita.ui.DownloadEngine
+import com.qita.ui.DownloadRequest
 import com.qita.ui.DlKind
 import com.qita.ui.ApkInstaller
 import com.qita.ui.Covers
@@ -160,6 +161,8 @@ fun HomeScreen(homePresses: Int = 0) {
     var gamesBusy by remember { mutableStateOf<String?>(null) }
     var settingsStart by remember { mutableStateOf<String?>(null) }
     var pendingZip by remember { mutableStateOf<DownloadItem?>(null) }
+    // A download waiting for the user's answers (unzip? which folder? keep the zip?).
+    var askReq by remember { mutableStateOf<DownloadRequest?>(null) }
     var pendingPlace by remember { mutableStateOf<PendingPlace?>(null) }
     var coverTarget by remember { mutableStateOf<String?>(null) }
     val emuInstalled = remember(context) { installedEmulators(context) }
@@ -375,6 +378,31 @@ fun HomeScreen(homePresses: Int = 0) {
     fun handleFinished(item: DownloadItem) {
         val path = item.finalPath ?: return
         val ext = item.name.substringAfterLast('.', "").lowercase()
+        // The user answered before it began: file it as they said, then always rescan so it shows up in Games (and on the home screen).
+        val plan = item.plan
+        if (plan != null && item.kind != DlKind.APK && ext != "apk") {
+            val folder = gameFolders.firstOrNull { it.uri == plan.folderUri }
+            if (folder != null) {
+                scope.launch {
+                    val system = if (folder.systemId != "auto") systemById(folder.systemId)
+                    else DownloadPlacer.candidatesFor(ext).singleOrNull() ?: GameScanner.systemFromName(item.name)
+                    val r = withContext(Dispatchers.IO) {
+                        if (plan.unzip && ext == "zip") DownloadPlacer.unzipAndPlace(context, File(path), system, folder, plan.deleteZip)
+                        else DownloadPlacer.place(context, File(path), item.name, system, folder)
+                    }
+                    toast = r.message
+                    if (r.ok) {
+                        DownloadEngine.remove(item)
+                        // A scan already running must not make this one be skipped.
+                        var waited = 0
+                        while (gamesBusy != null && waited++ < 40) delay(500)
+                        scanGames()
+                    }
+                }
+                return
+            }
+            if (ext != "vpk") { toast = "Saved in Downloads: ${item.name}"; return }
+        }
         when {
             item.kind == DlKind.APK || ext == "apk" -> {
                 ApkInstaller.install(context, File(path))?.let { toast = it }
@@ -400,7 +428,8 @@ fun HomeScreen(homePresses: Int = 0) {
     DisposableEffect(Unit) {
         DownloadEngine.init(context)
         DownloadEngine.onFinished = { handleFinished(it) }
-        onDispose { DownloadEngine.onFinished = {} }
+        DownloadEngine.asker = { askReq = it }
+        onDispose { DownloadEngine.onFinished = {}; DownloadEngine.asker = null }
     }
     /** Opens (or brings to the front) an app's LiveArea page. */
     fun openLiveArea(app: LaunchableApp, from: Offset? = null) {
@@ -862,6 +891,8 @@ fun HomeScreen(homePresses: Int = 0) {
                     settings = settings,
                     onToast = { toast = it },
                     onOpenNotifications = { showNotifs = true },
+                    folders = gameFolders,
+                    onFolders = { gameFolders = it; GameLibrary.saveFolders(context, it) },
                     onClose = { showStore = false },
                 )
             }
@@ -961,13 +992,17 @@ fun HomeScreen(homePresses: Int = 0) {
                         onAddFolder = { uri ->
                             runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
                             if (gameFolders.none { it.uri == uri.toString() }) {
-                                gameFolders = gameFolders + GameFolder(uri.toString(), "auto")
-                                GameLibrary.saveFolders(context, gameFolders)
-                            }
-                            scanGames()
+                                // The console is worked out from the folder's name or what is in it, and becomes its label.
+                                scope.launch {
+                                    val det = withContext(Dispatchers.IO) { GameScanner.detect(context, uri) }
+                                    gameFolders = gameFolders + GameFolder(uri.toString(), if (det.sure && det.system != null) det.system.id else "auto", det.system?.short.orEmpty())
+                                    GameLibrary.saveFolders(context, gameFolders)
+                                    scanGames()
+                                }
+                            } else scanGames()
                         },
                         onFolderSystem = { i, sys ->
-                            gameFolders = gameFolders.mapIndexed { idx, f -> if (idx == i) GameFolder(f.uri, sys) else f }
+                            gameFolders = gameFolders.mapIndexed { idx, f -> if (idx == i) f.copy(systemId = sys) else f }
                             GameLibrary.saveFolders(context, gameFolders)
                         },
                         onRemoveFolder = { i ->
@@ -1038,6 +1073,18 @@ fun HomeScreen(homePresses: Int = 0) {
             )
         }
 
+        // The questions before a download starts.
+        askReq?.let { r ->
+            DownloadAskDialog(
+                r, gameFolders,
+                onConfirm = { plan ->
+                    askReq = null
+                    r.onItem(DownloadEngine.enqueue(r.url, r.name, r.kind, r.cookie, r.userAgent, plan))
+                    toast = "Downloading ${r.name}. Progress is in the notification panel."
+                },
+                onCancel = { askReq = null },
+            )
+        }
         // A finished zip: unzip it into a console's folder, or keep it as it is.
         pendingZip?.let { item ->
             ContextMenu(

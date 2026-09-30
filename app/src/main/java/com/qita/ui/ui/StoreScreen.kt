@@ -210,6 +210,8 @@ fun StoreScreen(
     settings: Settings,
     onToast: (String) -> Unit,
     onOpenNotifications: () -> Unit,
+    folders: List<com.qita.ui.GameFolder>,
+    onFolders: (List<com.qita.ui.GameFolder>) -> Unit,
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -240,6 +242,28 @@ fun StoreScreen(
             onToast("Banner folder set. A few of its pictures will show in the Store, a different few each week.")
         }
     }
+    // Adding a download folder: the console is worked out from the folder's name or contents, and offered as its label.
+    fun addFolder(uri: Uri) {
+        runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
+        scope.launch {
+            val det = withContext(Dispatchers.IO) { com.qita.ui.GameScanner.detect(context, uri) }
+            val f = com.qita.ui.GameFolder(uri.toString(), if (det.sure && det.system != null) det.system.id else "auto", det.system?.short.orEmpty())
+            onFolders(folders.filter { it.uri != f.uri } + f)
+            onToast(if (det.system != null) "Looks like ${det.system.name}. Change the label if that is wrong." else "Folder added. Give it a label.")
+        }
+    }
+    fun detectFolder(i: Int) {
+        val f = folders.getOrNull(i) ?: return
+        scope.launch {
+            val det = withContext(Dispatchers.IO) { com.qita.ui.GameScanner.detect(context, Uri.parse(f.uri)) }
+            if (det.system == null) onToast("Could not tell what is in that folder")
+            else {
+                onFolders(folders.map { if (it.uri == f.uri) it.copy(label = det.system.short, systemId = if (det.sure) det.system.id else it.systemId) else it })
+                onToast("Looks like ${det.system.name}")
+            }
+        }
+    }
+    val downloadFolderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> if (uri != null) addFolder(uri) }
     // The Vita homebrew list, loaded the first time its tab is opened.
     var vita by remember { mutableStateOf<List<VitaHb>?>(null) }
     var vitaLoading by remember { mutableStateOf(false) }
@@ -270,8 +294,7 @@ fun StoreScreen(
     }
     fun getFile(item: ScanItem) {
         val name = URLUtil.guessFileName(item.url, null, null)
-        DownloadEngine.enqueue(item.url, name, if (name.endsWith(".apk", true)) DlKind.APK else DlKind.FILE)
-        onToast("Downloading $name. Progress is in the notification panel.")
+        DownloadEngine.request(item.url, name, if (name.endsWith(".apk", true)) DlKind.APK else DlKind.FILE)
     }
 
     // The browser is created once and kept while the user moves between tabs.
@@ -370,8 +393,7 @@ fun StoreScreen(
         web.setDownloadListener { url, userAgent, disposition, mime, _ ->
             val name = URLUtil.guessFileName(url, disposition, mime)
             val kind = if (name.endsWith(".apk", true)) DlKind.APK else DlKind.FILE
-            DownloadEngine.enqueue(url, name, kind, CookieManager.getInstance().getCookie(url), userAgent)
-            onToast("Downloading $name. Progress is in the notification panel.")
+            DownloadEngine.request(url, name, kind, CookieManager.getInstance().getCookie(url), userAgent)
         }
         onDispose { web.stopLoading(); web.destroy() }
     }
@@ -393,8 +415,7 @@ fun StoreScreen(
             existing != null && existing.state == DlState.DONE -> onToast("Already downloaded. It is in your Download folder.")
             existing != null && existing.state != DlState.FAILED -> onToast("Already downloading. Progress is in the notification panel.")
             else -> {
-                started["vita:${hb.id}"] = DownloadEngine.enqueue(hb.download, "${hb.name} ${hb.version}".trim() + ".vpk", DlKind.FILE)
-                onToast("Downloading ${hb.name}. Progress is in the notification panel.")
+                DownloadEngine.request(hb.download, "${hb.name} ${hb.version}".trim() + ".vpk", DlKind.FILE) { started["vita:${hb.id}"] = it }
             }
         }
     }
@@ -472,6 +493,9 @@ fun StoreScreen(
                         onChooseFolder = { folderPicker.launch(null) },
                         onShuffle = { StoreBanners.shuffle(context); picRev++; onToast("Picked another few pictures") },
                         onClearFolder = { StoreBanners.clearFolder(context); picFolder = false; picRev++; onToast("Banner folder removed") },
+                        folders = folders, onFolders = onFolders,
+                        onAddDownloadFolder = { downloadFolderPicker.launch(null) },
+                        onDetectFolder = ::detectFolder,
                     )
                 }
             }
@@ -1295,17 +1319,15 @@ private fun DownloadsTab(onToast: (String) -> Unit) {
                 val t = clipboard.getText()?.text?.trim().orEmpty()
                 if (t.startsWith("http://") || t.startsWith("https://")) {
                     val name = URLUtil.guessFileName(t, null, null)
-                    DownloadEngine.enqueue(t, name, if (name.endsWith(".apk", true)) DlKind.APK else DlKind.FILE)
-                    onToast("Downloading $name")
+                    DownloadEngine.request(t, name, if (name.endsWith(".apk", true)) DlKind.APK else DlKind.FILE)
                 } else onToast("Copy a full link that starts with http first")
             }
             OrangeButton("store:dl:add", "Download") {
                 val t = link.trim()
                 if (t.startsWith("http://") || t.startsWith("https://")) {
                     val name = URLUtil.guessFileName(t, null, null)
-                    DownloadEngine.enqueue(t, name, if (name.endsWith(".apk", true)) DlKind.APK else DlKind.FILE)
+                    DownloadEngine.request(t, name, if (name.endsWith(".apk", true)) DlKind.APK else DlKind.FILE)
                     link = ""
-                    onToast("Downloading $name")
                 } else onToast("Paste a full link that starts with http")
             }
         }
