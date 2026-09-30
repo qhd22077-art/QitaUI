@@ -56,6 +56,9 @@ fun GamesScreen(
     onLaunch: (LaunchableApp) -> Unit,
     onOptions: (LaunchableApp) -> Unit,
     onSetup: () -> Unit,
+    onScan: () -> Unit,
+    /** A status line while a scan (or cover download) is running, else null. */
+    scanning: String?,
     onClose: () -> Unit,
 ) {
     var tab by remember { mutableStateOf("all") }
@@ -91,6 +94,7 @@ fun GamesScreen(
                     }
                     item { Chip("games:tab:emu", "Emulators ${emulators.size}", tab == "emu") { tab = "emu" } }
                 }
+                Chip("games:scan", if (scanning != null) "Scanning…" else "Scan", scanning != null, onClick = { if (scanning == null) onScan() })
                 Chip("games:setup", "Setup", false, onClick = onSetup)
             }
             Box(Modifier.fillMaxWidth().height(1.dp).padding(horizontal = 20.dp).background(Color.White.copy(alpha = 0.35f)))

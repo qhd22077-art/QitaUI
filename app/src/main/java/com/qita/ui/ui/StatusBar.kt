@@ -61,6 +61,28 @@ internal data class Status(val battery: Int, val charging: Boolean, val wifi: Bo
  * The Vita information bar: a thin black strip with Wi-Fi and Bluetooth on the left, the home
  * icon in the middle, and the time and a green battery on the right.
  */
+/** The screen-rotation action, set by the home screen, so every screen's status bar can offer a rotate button. */
+object ScreenRotator {
+    var onRotate by androidx.compose.runtime.mutableStateOf<(() -> Unit)?>(null)
+}
+
+/** Two arrows chasing each other round a circle. */
+@Composable
+private fun RotateIcon() {
+    Canvas(Modifier.size(15.dp)) {
+        val w = size.width
+        val stroke = Stroke(width = w * 0.12f, cap = StrokeCap.Round)
+        val inset = w * 0.16f
+        val box = androidx.compose.ui.geometry.Size(w - 2 * inset, w - 2 * inset)
+        drawArc(Color.White, 200f, 130f, false, Offset(inset, inset), box, style = stroke)
+        drawArc(Color.White, 20f, 130f, false, Offset(inset, inset), box, style = stroke)
+        val a = Path().apply { moveTo(w * 0.72f, w * 0.05f); lineTo(w * 0.92f, w * 0.32f); lineTo(w * 0.60f, w * 0.30f); close() }
+        val b = Path().apply { moveTo(w * 0.28f, w * 0.95f); lineTo(w * 0.08f, w * 0.68f); lineTo(w * 0.40f, w * 0.70f); close() }
+        drawPath(a, Color.White)
+        drawPath(b, Color.White)
+    }
+}
+
 @Composable
 fun StatusBar(
     use24h: Boolean,
@@ -101,6 +123,9 @@ fun StatusBar(
         ) {
             if (status.wifi) WifiIcon()
             if (status.bluetooth) BluetoothIcon()
+            ScreenRotator.onRotate?.let { rotate ->
+                Box(Modifier.clip(CircleShape).clickable(onClick = rotate).padding(horizontal = 6.dp, vertical = 4.dp)) { RotateIcon() }
+            }
         }
         if (showHome) {
             Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {

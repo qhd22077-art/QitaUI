@@ -426,6 +426,8 @@ fun HomeScreen(homePresses: Int = 0) {
             }
         }
     }
+    // Every screen's status bar gets a rotate button.
+    DisposableEffect(Unit) { ScreenRotator.onRotate = { rotate() }; onDispose { ScreenRotator.onRotate = null } }
     LaunchedEffect(settings.orientation) { (context as? android.app.Activity)?.requestedOrientation = com.qita.ui.orientationFlag(settings.orientation) }
     // The download engine starts with the launcher, and tells it when a file has finished.
     DisposableEffect(Unit) {
@@ -922,6 +924,8 @@ fun HomeScreen(homePresses: Int = 0) {
                     onLaunch = { launchApp(it) },
                     onOptions = { menuFor = it },
                     onSetup = { settingsStart = "games"; showSettings = true },
+                    onScan = { scanGames() },
+                    scanning = gamesBusy,
                     onClose = { showGames = false },
                 )
             }
