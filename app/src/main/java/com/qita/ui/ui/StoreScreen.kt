@@ -21,6 +21,10 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import com.qita.ui.GameLibrary
 import com.qita.ui.StoreBanners
+import com.qita.ui.BannerCfg
+import com.qita.ui.UserStore
+import com.qita.ui.UserStores
+import com.qita.ui.ScanItem
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.graphics.graphicsLayer
@@ -102,17 +106,17 @@ import org.json.JSONObject
 
 // The colours of the real PlayStation Store, measured from photos of it.
 private val StoreTop = Color(0xFF22428F)
-private val StoreMid = Color(0xFF1A3379)
+internal val StoreMid = Color(0xFF1A3379)
 private val StoreBottom = Color(0xFF142460)
 private val StoreIndigo = Color(0xFF2A2A94)
 private val BarTop = Color(0xFF6F79B0)
 private val BarBottom = Color(0xFF36408F)
-private val TabDark = Color(0xFF172248)
-private val RowLine = Color(0xFF4F66AC)
-private val SoftText = Color(0xFFA6B4E8)
-private val DimText = Color(0xFF8798D2)
-private val OrangeTop = Color(0xFFF58A3A)
-private val OrangeBottom = Color(0xFFE6621C)
+internal val TabDark = Color(0xFF172248)
+internal val RowLine = Color(0xFF4F66AC)
+internal val SoftText = Color(0xFFA6B4E8)
+internal val DimText = Color(0xFF8798D2)
+internal val OrangeTop = Color(0xFFF58A3A)
+internal val OrangeBottom = Color(0xFFE6621C)
 
 /** One item of the catalogue. [repo] is a GitHub project whose newest APK the Install button fetches; without one it opens [page]. */
 class StoreEntry(
@@ -166,7 +170,7 @@ private val PRESETS = listOf(
     Preset("Libretro docs", "https://docs.libretro.com", "Guides and free content"),
 )
 
-private val TitleShadow = TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.45f), Offset(0f, 2f), 4f))
+internal val TitleShadow = TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.45f), Offset(0f, 2f), 4f))
 
 private fun storeBackground() = Brush.verticalGradient(listOf(StoreTop, StoreMid, StoreBottom))
 
@@ -199,7 +203,25 @@ fun StoreScreen(
     var picRev by remember { mutableStateOf(0) }
     var snapRev by remember { mutableStateOf(0) }
     var picFolder by remember { mutableStateOf(StoreBanners.folder(context) != null) }
-    LaunchedEffect(picRev) { pics = withContext(Dispatchers.IO) { StoreBanners.picks(context) } }
+    var cfg by remember { mutableStateOf(BannerCfg.load(context)) }
+    fun updateCfg(n: BannerCfg) { cfg = n; BannerCfg.save(context, n) }
+    // The user's own stores, made from links.
+    var stores by remember { mutableStateOf(UserStores.load(context)) }
+    fun updateStores(n: List<UserStore>) { stores = n; UserStores.save(context, n) }
+    var openStoreId by remember { mutableStateOf<String?>(null) }
+    var storeStack by remember { mutableStateOf(emptyList<StoreLevel>()) }
+    fun storeBack() { if (storeStack.size > 1) storeStack = storeStack.dropLast(1) else { storeStack = emptyList(); openStoreId = null } }
+    fun openStore(st: UserStore) {
+        tab = 0; segment = 5; detail = null; vitaDetail = null
+        openStoreId = st.id
+        storeStack = listOf(StoreLevel(st.name, st.url, st.items))
+    }
+    fun getFile(item: ScanItem) {
+        val name = URLUtil.guessFileName(item.url, null, null)
+        DownloadEngine.enqueue(item.url, name, if (name.endsWith(".apk", true)) DlKind.APK else DlKind.FILE)
+        onToast("Downloading $name. Progress is in the notification panel.")
+    }
+    LaunchedEffect(picRev, cfg.picCount) { pics = withContext(Dispatchers.IO) { StoreBanners.picks(context, cfg.picCount) } }
     LaunchedEffect(Unit) { if (StoreBanners.ensureSnaps(context) > 0) snapRev++ }
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
@@ -308,6 +330,8 @@ fun StoreScreen(
     }
 
     BackHandler(enabled = menu) { menu = false }
+    BackHandler(enabled = !menu && tab == 3) { tab = 0 }
+    BackHandler(enabled = !menu && tab == 0 && openStoreId != null && vitaDetail == null) { storeBack() }
     BackHandler(enabled = !menu && tab == 0 && vitaDetail != null) { vitaDetail = null }
     BackHandler(enabled = !menu && tab == 0 && detail != null) { detail = null }
     BackHandler(enabled = !menu && tab == 1 && browsing && web.canGoBack()) { web.goBack() }
@@ -323,7 +347,7 @@ fun StoreScreen(
         }
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             StatusBar(settings.use24h, settings.showBattery, showHome = false)
-            TabBar(tab, onTab = { tab = it; if (it == 0) { detail = null; vitaDetail = null } }, onSearch = { searching = !searching; tab = if (tab == 2) 0 else tab })
+            TabBar(tab, onTab = { tab = it; if (it == 0) { detail = null; vitaDetail = null } }, onSearch = { searching = !searching; tab = if (tab == 2 || tab == 3) 0 else tab }, onSettings = { tab = 3 })
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (tab) {
                     0 -> if (vitaDetail != null) {
@@ -333,18 +357,32 @@ fun StoreScreen(
                             others = vita.orEmpty().filter { it.id != hb.id && it.type == hb.type }.take(3),
                             onDownload = ::downloadVita, onOpen = { vitaDetail = it },
                         )
+                    } else if (openStoreId != null && storeStack.isNotEmpty()) {
+                        val st = stores.firstOrNull { it.id == openStoreId }
+                        if (st == null) { openStoreId = null } else StoreItemsPage(
+                            st, storeStack, { storeStack = it },
+                            onRootScanned = { items -> updateStores(stores.map { if (it.id == st.id) it.copy(items = items, scannedAt = System.currentTimeMillis()) else it }) },
+                            onGet = ::getFile, onOpenPage = ::openPage, onToast = onToast,
+                        )
                     } else Catalogue(
                         segment, { segment = it }, detail, { detail = it }, searching, query, { query = it },
-                        started, looking, ::download, ::openPage, pics, snapRev,
+                        started, looking, ::download, ::openPage, pics, snapRev, cfg, stores, ::openStore, { tab = 3 },
                         VitaUi(vita, vitaLoading, vitaError, vitaType, { vitaType = it }, { vitaDetail = it }, ::downloadVita, { loadVita(true) }, { openPage(VitaDb.SITE) }, started),
                     )
                     1 -> BrowserTab(web, browsing, pageUrl, progress, ::go, ::openPage, context, onToast, { browsing = false; web.loadUrl("about:blank") })
-                    else -> DownloadsTab(onToast)
+                    2 -> DownloadsTab(onToast)
+                    else -> StoreSettings(
+                        stores, ::updateStores, cfg, ::updateCfg, picFolder, onToast,
+                        onOpenStore = ::openStore,
+                        onChooseFolder = { folderPicker.launch(null) },
+                        onShuffle = { StoreBanners.shuffle(context); picRev++; onToast("Picked another few pictures") },
+                        onClearFolder = { StoreBanners.clearFolder(context); picFolder = false; picRev++; onToast("Banner folder removed") },
+                    )
                 }
             }
         }
         RoundButton(
-            onClick = { if (tab == 0 && vitaDetail != null) vitaDetail = null else if (tab == 0 && detail != null) detail = null else if (tab == 1 && browsing && web.canGoBack()) web.goBack() else onClose() },
+            onClick = { if (tab == 3) tab = 0 else if (tab == 0 && openStoreId != null && vitaDetail == null) storeBack() else if (tab == 0 && vitaDetail != null) vitaDetail = null else if (tab == 0 && detail != null) detail = null else if (tab == 1 && browsing && web.canGoBack()) web.goBack() else onClose() },
             modifier = Modifier.align(Alignment.BottomStart).padding(start = 6.dp, bottom = 6.dp),
             key = "store:back", dots = false,
         )
@@ -379,7 +417,7 @@ fun StoreScreen(
 // ------------------------------------------------------------------------------------------------------------------------
 
 @Composable
-private fun TabBar(tab: Int, onTab: (Int) -> Unit, onSearch: () -> Unit) {
+private fun TabBar(tab: Int, onTab: (Int) -> Unit, onSearch: () -> Unit, onSettings: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -407,16 +445,26 @@ private fun TabBar(tab: Int, onTab: (Int) -> Unit, onSearch: () -> Unit) {
                 Text(label, color = Color.White, fontSize = 19.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
             }
         }
+        val litSet = padHighlighted("store:settings") || padHovered("store:settings")
+        Text(
+            "Settings",
+            Modifier
+                .padClickable("store:settings", corner = 8.dp, ring = false, onClick = onSettings)
+                .background(if (litSet || tab == 3) TabDark.copy(alpha = 0.9f) else TabDark.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
+                .border(1.dp, Color.White.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
+                .padding(horizontal = 12.dp, vertical = 7.dp),
+            color = Color.White, fontSize = 15.sp, maxLines = 1,
+        )
         val lit = padHighlighted("store:search") || padHovered("store:search")
         Text(
             "Search",
             Modifier
-                .padding(horizontal = 10.dp)
+                .padding(start = 8.dp, end = 10.dp)
                 .padClickable("store:search", corner = 8.dp, ring = false, onClick = onSearch)
                 .background(if (lit) TabDark.copy(alpha = 0.9f) else TabDark.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
                 .border(1.dp, Color.White.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
-                .padding(horizontal = 16.dp, vertical = 7.dp),
-            color = Color.White, fontSize = 15.sp,
+                .padding(horizontal = 14.dp, vertical = 7.dp),
+            color = Color.White, fontSize = 15.sp, maxLines = 1,
         )
     }
 }
@@ -466,7 +514,7 @@ private fun RoundButton(onClick: () -> Unit, modifier: Modifier, key: String, do
 }
 
 @Composable
-private fun OrangeButton(key: String, label: String, enabled: Boolean = true, onClick: () -> Unit) {
+internal fun OrangeButton(key: String, label: String, enabled: Boolean = true, onClick: () -> Unit) {
     val lit = padHighlighted(key) || padHovered(key)
     Text(
         label,
@@ -489,7 +537,7 @@ private fun OrangeButton(key: String, label: String, enabled: Boolean = true, on
 // ------------------------------------------------------------------------------------------------------------------------
 
 /** A soft light across the top half of a glossy part (bars, buttons), like the glass of the real store's controls. */
-private fun Modifier.gloss(radius: Dp = 8.dp, strength: Float = 0.28f): Modifier = this.drawBehind {
+internal fun Modifier.gloss(radius: Dp = 8.dp, strength: Float = 0.28f): Modifier = this.drawBehind {
     val r = radius.toPx()
     drawRoundRect(
         Brush.verticalGradient(listOf(Color.White.copy(alpha = strength), Color.White.copy(alpha = strength * 0.12f)), 0f, size.height * 0.5f),
@@ -500,7 +548,7 @@ private fun Modifier.gloss(radius: Dp = 8.dp, strength: Float = 0.28f): Modifier
 }
 
 /** Slides a piece in from the right and fades it up when it first appears, so lists and pages move instead of popping. */
-private fun Modifier.slideIn(fromX: Float = 60f): Modifier = composed {
+internal fun Modifier.slideIn(fromX: Float = 60f): Modifier = composed {
     val p = remember { Animatable(0f) }
     LaunchedEffect(Unit) { p.animateTo(1f, tween(260, easing = VitaMotion.Ease)) }
     graphicsLayer {
@@ -544,6 +592,10 @@ private fun Catalogue(
     onOpenPage: (String) -> Unit,
     pics: List<String>,
     snapRev: Int,
+    cfg: BannerCfg,
+    stores: List<UserStore>,
+    onOpenStore: (UserStore) -> Unit,
+    onAddStore: () -> Unit,
     vita: VitaUi,
 ) {
     if (detail != null) {
@@ -577,31 +629,21 @@ private fun Catalogue(
             GameLibrary.games(appContext).filter { GameLibrary.coverFile(appContext, it.id).exists() || StoreBanners.snapFile(appContext, it.id).exists() }
         }.getOrDefault(emptyList())
     }
-    val banners = remember(vitaAll, myGames, pics) {
+    val banners = remember(vitaAll, myGames, pics, cfg) {
+        val art = cfg.style == 0
         buildList {
-            // The user's own pictures come first.
-            pics.forEachIndexed { i, path -> add(BannerArt("p$i", "", "", path, false, 0xFF203060, "", null)) }
-            vitaAll?.filter { it.type == 1 && it.iconUrl != null }?.take(5)?.forEach { hb ->
-                add(BannerArt("v${hb.id}", hb.name, "Vita homebrew  ·  ${hb.author}", hb.iconUrl, true, 0xFF1A5FB4, "VITA") { vita.onOpen(hb) })
+            // The user's own pictures come first (artwork style only: the classic cards have no pictures).
+            if (art && cfg.pics) pics.forEachIndexed { i, path -> add(BannerArt("p$i", "", "", path, false, 0xFF203060, "", null)) }
+            if (cfg.vita) vitaAll?.filter { it.type == 1 && it.iconUrl != null }?.take(5)?.forEach { hb ->
+                add(BannerArt("v${hb.id}", hb.name, "Vita homebrew  ·  ${hb.author}", if (art) hb.iconUrl else null, true, 0xFF1A5FB4, "VITA") { vita.onOpen(hb) })
             }
-            myGames.take(5).forEach { g ->
+            if (cfg.games) myGames.take(5).forEach { g ->
                 val snap = StoreBanners.snapFile(appContext, g.id)
                 // A screenshot fills the banner; a box cover is shown whole over a blurred copy of itself.
-                if (snap.exists()) add(BannerArt("g${g.id}", g.title, "From your library", snap.path, false, 0xFF203060, "GAME", null))
-                else add(BannerArt("g${g.id}", g.title, "From your library", GameLibrary.coverFile(appContext, g.id).path, true, 0xFF203060, "GAME", null))
+                if (snap.exists()) add(BannerArt("g${g.id}", g.title, "From your library", if (art) snap.path else null, false, 0xFF203060, "GAME", null))
+                else add(BannerArt("g${g.id}", g.title, "From your library", if (art) GameLibrary.coverFile(appContext, g.id).path else null, true, 0xFF203060, "GAME", null))
             }
-            CATALOGUE.take(7).forEach { e -> add(BannerArt(e.id, e.name, e.developer, bannerUrl(e), false, e.color, e.short) { onDetail(e) }) }
-        }
-    }
-    val onVita = segment == 3
-    val rail = onVita && vitaAll != null && vita.type >= 1 && vitaRows.isNotEmpty()
-    val railPad = if (rail) 128.dp else 0.dp
-    // Items above the first row: the banners, the sticky bar and (for the Vita list) its filter bar.
-    val headerCount = if (onVita && vitaAll != null) 3 else 2
-    val groups = remember(vitaRows) { vitaRows.map { groupOf(it.name) } }
-    val current by remember(groups, headerCount) {
-        derivedStateOf {
-            if (groups.isEmpty()) "" else groups[(state.firstVisibleItemIndex - headerCount).coerceIn(0, groups.size - 1)]
+            if (cfg.emus) CATALOGUE.take(7).forEach { e -> add(BannerArt(e.id, e.name, e.developer, if (art) bannerUrl(e) else null, false, e.color, e.short) { onDetail(e) }) }
         }
     }
     Box(Modifier.fillMaxSize()) {
@@ -625,18 +667,47 @@ private fun Catalogue(
                 state = state,
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 90.dp),
             ) {
-                item(key = "banners") {
+                if (cfg.style != 2 && banners.isNotEmpty()) item(key = "banners") {
                     // The strip drifts up slower than the list, so it sits a little behind the rows.
                     Box(Modifier.graphicsLayer { translationY = if (state.firstVisibleItemIndex == 0) state.firstVisibleItemScrollOffset * 0.3f else 0f }) {
-                        BannerStrip(banners, railPad)
+                        BannerStrip(banners, railPad, cfg)
                     }
                 }
                 stickyHeader(key = "segments") {
                     Box(Modifier.fillMaxWidth().background(StoreMid)) {
-                        Segmented(listOf("Featured", "Emulators", "Free games", "Vita homebrew", "All"), segment, onSegment)
+                        Segmented(listOf("Featured", "Emulators", "Free games", "Vita homebrew", "All", "My stores"), segment, onSegment)
                     }
                 }
-                if (onVita) {
+                if (segment == 5) {
+                    if (stores.isEmpty()) item(key = "no-stores") {
+                        Column(Modifier.fillMaxWidth().padding(30.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Add a store by its link, and the app reads the page and makes a menu of what it offers to download.", color = SoftText, fontSize = 16.sp, textAlign = TextAlign.Center)
+                            Spacer(Modifier.height(12.dp))
+                            OrangeButton("store:addfirst", "Add a store", onClick = onAddStore)
+                        }
+                    } else items(stores, key = { it.id }) { st ->
+                        Column(Modifier.slideIn()) {
+                            Row(
+                                Modifier.fillMaxWidth().height(74.dp)
+                                    .padClickable("store:ms:${st.id}", corner = 0.dp, ring = false) { onOpenStore(st) }
+                                    .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.14f), Color.White.copy(alpha = 0.04f)))),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Box(Modifier.size(74.dp).background(Brush.verticalGradient(listOf(Color(0xFF2A5BA8), Color.Black.copy(alpha = 0.8f)))).gloss(0.dp, 0.22f), contentAlignment = Alignment.Center) {
+                                    Text(st.name.take(1).uppercase(), color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Black)
+                                }
+                                Column(Modifier.weight(1f).padding(start = 14.dp)) {
+                                    Text(if (st.items.isEmpty()) "Not scanned yet" else "${st.items.size} entries", color = SoftText, fontSize = 13.sp, maxLines = 1)
+                                    Text(st.name, color = Color.White, fontSize = 24.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, style = TitleShadow)
+                                    Text(st.url.removePrefix("https://").removePrefix("http://"), color = DimText, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                                GetButton("store:msopen:${st.id}", "Open") { onOpenStore(st) }
+                            }
+                            Box(Modifier.fillMaxWidth().height(1.dp).background(Color.Black.copy(alpha = 0.25f)))
+                            Box(Modifier.fillMaxWidth().height(1.dp).background(RowLine.copy(alpha = 0.55f)))
+                        }
+                    }
+                } else if (onVita) {
                     if (vitaAll == null) {
                         item(key = "vita-status") { VitaStatus(vita) }
                     } else {
@@ -717,14 +788,14 @@ private class BannerArt(
 )
 
 @Composable
-private fun ArtBanner(b: BannerArt) {
+private fun ArtBanner(b: BannerArt, glare: Boolean) {
     val shape = RoundedCornerShape(8.dp)
     val click = b.onClick
     Box(
         Modifier
             .width(270.dp)
             .height(112.dp)
-            .shadow(10.dp, shape)
+            .shadow(if (glare) 10.dp else 0.dp, shape)
             .then(if (click != null) Modifier.padClickable("store:banner:${b.id}", corner = 8.dp, pad = 3.dp, onClick = click) else Modifier)
             .clip(shape)
             .background(Brush.linearGradient(listOf(Color(b.color), Color.Black.copy(alpha = 0.85f))))
@@ -747,7 +818,7 @@ private fun ArtBanner(b: BannerArt) {
         }
         // A dark band at the foot for the words, and a pale diagonal glare across the corner.
         if (b.title.isNotBlank()) Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f)), 120f, 300f)))
-        Canvas(Modifier.fillMaxSize()) {
+        if (glare) Canvas(Modifier.fillMaxSize()) {
             drawRect(Brush.linearGradient(listOf(Color.White.copy(alpha = 0.30f), Color.Transparent), Offset.Zero, Offset(size.width * 0.65f, size.height * 0.9f)))
         }
         if (b.title.isNotBlank()) Column(Modifier.align(Alignment.BottomStart).padding(start = if (b.portrait && b.image != null) 96.dp else 14.dp, end = 10.dp, bottom = 9.dp)) {
@@ -759,11 +830,11 @@ private fun ArtBanner(b: BannerArt) {
 
 /** The banner strip moves by itself every few seconds (and stops while a finger or the gamepad is scrolling it). */
 @Composable
-private fun BannerStrip(banners: List<BannerArt>, startPad: Dp) {
+private fun BannerStrip(banners: List<BannerArt>, startPad: Dp, cfg: BannerCfg) {
     val strip = rememberLazyListState()
-    LaunchedEffect(banners.size) {
-        while (banners.size > 1) {
-            delay(3500)
+    LaunchedEffect(banners.size, cfg.auto, cfg.seconds) {
+        while (cfg.auto && banners.size > 1) {
+            delay(cfg.seconds * 1000L)
             if (!strip.isScrollInProgress) strip.animateScrollToItem((strip.firstVisibleItemIndex + 1) % banners.size)
         }
     }
@@ -773,13 +844,13 @@ private fun BannerStrip(banners: List<BannerArt>, startPad: Dp) {
         contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 14.dp + startPad, end = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        items(banners, key = { it.id }) { b -> ArtBanner(b) }
+        items(banners, key = { it.id }) { b -> ArtBanner(b, cfg.glare) }
     }
 }
 
 /** A small orange button at the end of a row: one tap starts the download without opening the page. */
 @Composable
-private fun GetButton(key: String, label: String, onClick: () -> Unit) {
+internal fun GetButton(key: String, label: String, onClick: () -> Unit) {
     val lit = padHighlighted(key) || padHovered(key)
     Text(
         label,
@@ -800,7 +871,7 @@ private fun vitaDownload(started: Map<String, DownloadItem>, hb: VitaHb): Downlo
     started["vita:${hb.id}"] ?: DownloadEngine.items.firstOrNull { it.url == hb.download }
 
 @Composable
-private fun Segmented(options: List<String>, selected: Int, onSelect: (Int) -> Unit) {
+internal fun Segmented(options: List<String>, selected: Int, onSelect: (Int) -> Unit) {
     val shape = RoundedCornerShape(10.dp)
     Row(
         Modifier
@@ -1176,7 +1247,7 @@ private fun DownloadRowLarge(d: DownloadItem) {
 }
 
 @Composable
-private fun SmallAction(key: String, label: String, onClick: () -> Unit) {
+internal fun SmallAction(key: String, label: String, onClick: () -> Unit) {
     val lit = padHighlighted(key) || padHovered(key)
     Text(
         label,

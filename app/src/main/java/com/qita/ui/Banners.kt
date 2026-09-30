@@ -147,3 +147,33 @@ object StoreBanners {
         return files.map { it.path }
     }
 }
+
+/**
+ * How the banner strip looks and what it shows.
+ * [style]: 0 artwork (pictures, glare, shadows), 1 classic (plain colour cards with letters), 2 no banners.
+ */
+data class BannerCfg(
+    val style: Int = 0,
+    val vita: Boolean = true,
+    val games: Boolean = true,
+    val pics: Boolean = true,
+    val emus: Boolean = true,
+    val auto: Boolean = true,
+    val seconds: Int = 4,
+    val glare: Boolean = true,
+    val picCount: Int = 6,
+) {
+    companion object {
+        private fun prefs(c: Context) = c.getSharedPreferences("qita_store", Context.MODE_PRIVATE)
+        fun load(c: Context): BannerCfg = prefs(c).let { p ->
+            BannerCfg(
+                p.getInt("bn_style", 0), p.getBoolean("bn_vita", true), p.getBoolean("bn_games", true), p.getBoolean("bn_pics", true),
+                p.getBoolean("bn_emus", true), p.getBoolean("bn_auto", true), p.getInt("bn_seconds", 4), p.getBoolean("bn_glare", true), p.getInt("bn_count", 6),
+            )
+        }
+        fun save(c: Context, b: BannerCfg) {
+            prefs(c).edit().putInt("bn_style", b.style).putBoolean("bn_vita", b.vita).putBoolean("bn_games", b.games).putBoolean("bn_pics", b.pics)
+                .putBoolean("bn_emus", b.emus).putBoolean("bn_auto", b.auto).putInt("bn_seconds", b.seconds).putBoolean("bn_glare", b.glare).putInt("bn_count", b.picCount).apply()
+        }
+    }
+}
