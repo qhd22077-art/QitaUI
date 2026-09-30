@@ -22,6 +22,8 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             signingConfig = signingConfigs.getByName("debug")
+            // Only tells the shrinker which missing optional classes to ignore (the archive libraries mention a few).
+            proguardFiles("proguard-rules.pro")
         }
     }
     compileOptions {
