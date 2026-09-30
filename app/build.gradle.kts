@@ -50,6 +50,10 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.3")
     // Lets the Store's browser stop sending the "X-Requested-With" header that marks a request as coming from an embedded web view.
     implementation("androidx.webkit:webkit:1.12.1")
+    // Opens the archives games come in: 7z, tar (gz, bz2, xz) through Commons Compress, and rar through Junrar.
+    implementation("org.apache.commons:commons-compress:1.27.1")
+    implementation("org.tukaani:xz:1.10")
+    implementation("com.github.junrar:junrar:7.5.5")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")

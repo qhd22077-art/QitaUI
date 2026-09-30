@@ -389,7 +389,7 @@ fun HomeScreen(homePresses: Int = 0) {
                     val system = if (folder.systemId != "auto") systemById(folder.systemId)
                     else DownloadPlacer.candidatesFor(ext).singleOrNull() ?: GameScanner.systemFromName(item.name)
                     val r = withContext(Dispatchers.IO) {
-                        if (plan.unzip && ext == "zip") DownloadPlacer.unzipAndPlace(context, File(path), system, folder, plan.deleteZip)
+                        if (plan.unzip && DownloadPlacer.isArchive(item.name)) DownloadPlacer.unzipAndPlace(context, File(path), system, folder, plan.deleteZip)
                         else DownloadPlacer.place(context, File(path), item.name, system, folder)
                     }
                     toast = r.message
@@ -415,7 +415,7 @@ fun HomeScreen(homePresses: Int = 0) {
                 toast = r.message
                 if (r.ok) DownloadEngine.remove(item)
             }
-            ext == "zip" -> pendingZip = item
+            DownloadPlacer.isArchive(item.name) -> pendingZip = item
             else -> {
                 val candidates = DownloadPlacer.candidatesFor(ext)
                 when {
@@ -1103,10 +1103,10 @@ fun HomeScreen(homePresses: Int = 0) {
         // A finished zip: unzip it into a console's folder, or keep it as it is.
         pendingZip?.let { item ->
             ContextMenu(
-                title = "Unzip ${item.name}?",
+                title = "Unpack ${item.name}?",
                 subtitle = "It was downloaded to the Store's downloads folder",
                 items = listOf(
-                    MenuItem("Unzip into my game folder") {
+                    MenuItem("Unpack into my game folder") {
                         pendingZip = null
                         val zipFile = File(item.finalPath ?: "")
                         val candidates = DownloadPlacer.zipCandidates(zipFile)
@@ -1116,7 +1116,7 @@ fun HomeScreen(homePresses: Int = 0) {
                             else -> pendingPlace = PendingPlace(item, candidates, true)
                         }
                     },
-                    MenuItem("Keep the zip as it is") { pendingZip = null; toast = "Kept in Downloads: ${item.name}" },
+                    MenuItem("Keep it as it is") { pendingZip = null; toast = "Kept in Downloads: ${item.name}" },
                 ),
                 onDismiss = { pendingZip = null },
                 layer = 5,

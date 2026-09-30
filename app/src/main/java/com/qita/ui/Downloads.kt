@@ -466,22 +466,104 @@ object DownloadPlacer {
         Result(true, "Added $name to ${folder.label.ifBlank { system?.name ?: "your game folder" }}")
     }.getOrElse { Result(false, "Could not save the file: ${it.message}") }
 
-    /** Unzips [zip] (no folders, no paths: only the files) and places each one. Blocks. */
-    fun unzipAndPlace(context: Context, zip: File, system: GameSystem?, chosen: GameFolder? = null, deleteZip: Boolean = true): Result = runCatching {
-        val temp = File(zip.parentFile, "unzip_${System.nanoTime()}").apply { mkdirs() }
+    private val ARCHIVE_ENDINGS = listOf(".zip", ".7z", ".rar", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".gz")
+
+    /** Whether [name] is an archive the app can open: zip, 7z, rar, tar (plain, gz, bz2, xz) or a single gz file. */
+    fun isArchive(name: String): Boolean = name.lowercase().let { n -> ARCHIVE_ENDINGS.any { n.endsWith(it) } }
+
+    private fun leaf(name: String) = File(name.replace('\\', '/')).name.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+
+    private fun tarStream(archive: File): java.io.InputStream {
+        val n = archive.name.lowercase()
+        val raw = archive.inputStream().buffered()
+        return when {
+            n.endsWith(".tar.gz") || n.endsWith(".tgz") -> org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream(raw)
+            n.endsWith(".tar.bz2") || n.endsWith(".tbz2") -> org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream(raw)
+            n.endsWith(".tar.xz") || n.endsWith(".txz") -> org.apache.commons.compress.compressors.xz.XZCompressorInputStream(raw)
+            else -> raw
+        }
+    }
+
+    /**
+     * Unpacks [archive] into [outDir], keeping only the files (no folders, no paths from inside the archive). Returns the files.
+     * Blocks. Throws if the archive cannot be read.
+     */
+    fun extractAll(archive: File, outDir: File): List<File> {
+        val n = archive.name.lowercase()
         val files = ArrayList<File>()
-        ZipInputStream(zip.inputStream().buffered()).use { zin ->
-            while (true) {
-                val entry = zin.nextEntry ?: break
-                if (entry.isDirectory) continue
-                // Only the file name is used, never a path from inside the archive.
-                val leaf = File(entry.name).name.replace(Regex("[\\\\/:*?\"<>|]"), "_")
-                if (leaf.isEmpty()) continue
-                val out = File(temp, leaf)
-                FileOutputStream(out).use { zin.copyTo(it) }
-                files.add(out)
+        fun save(name: String, write: (java.io.OutputStream) -> Unit) {
+            val l = leaf(name)
+            if (l.isEmpty()) return
+            val out = File(outDir, l)
+            FileOutputStream(out).use(write)
+            files.add(out)
+        }
+        when {
+            n.endsWith(".zip") -> ZipInputStream(archive.inputStream().buffered()).use { z ->
+                while (true) {
+                    val e = z.nextEntry ?: break
+                    if (!e.isDirectory) save(e.name) { o -> z.copyTo(o) }
+                }
+            }
+            n.endsWith(".7z") -> org.apache.commons.compress.archivers.sevenz.SevenZFile(archive).use { sz ->
+                while (true) {
+                    val e = sz.nextEntry ?: break
+                    if (e.isDirectory) continue
+                    save(e.name) { o ->
+                        val buf = ByteArray(64 * 1024)
+                        while (true) { val r = sz.read(buf); if (r < 0) break; o.write(buf, 0, r) }
+                    }
+                }
+            }
+            n.endsWith(".rar") -> com.github.junrar.Archive(archive).use { rar ->
+                var h = rar.nextFileHeader()
+                while (h != null) {
+                    if (!h.isDirectory) { val header = h; save(header.fileName) { o -> rar.extractFile(header, o) } }
+                    h = rar.nextFileHeader()
+                }
+            }
+            n.endsWith(".tar") || n.endsWith(".tar.gz") || n.endsWith(".tgz") || n.endsWith(".tar.bz2") || n.endsWith(".tbz2") || n.endsWith(".tar.xz") || n.endsWith(".txz") ->
+                org.apache.commons.compress.archivers.tar.TarArchiveInputStream(tarStream(archive)).use { t ->
+                    while (true) {
+                        val e = t.nextEntry ?: break
+                        if (!e.isDirectory) save(e.name) { o -> t.copyTo(o) }
+                    }
+                }
+            n.endsWith(".gz") -> org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream(archive.inputStream().buffered()).use { g ->
+                save(archive.name.dropLast(3)) { o -> g.copyTo(o) }
+            }
+            else -> throw IOException("Not an archive this app can open")
+        }
+        return files
+    }
+
+    /** The names of the files inside [archive], without unpacking it. Empty if it cannot be read. */
+    fun listNames(archive: File): List<String> = runCatching {
+        val n = archive.name.lowercase()
+        val names = ArrayList<String>()
+        when {
+            n.endsWith(".zip") -> ZipInputStream(archive.inputStream().buffered()).use { z ->
+                while (true) { val e = z.nextEntry ?: break; if (!e.isDirectory) names.add(e.name) }
+            }
+            n.endsWith(".7z") -> org.apache.commons.compress.archivers.sevenz.SevenZFile(archive).use { sz ->
+                sz.entries.forEach { if (!it.isDirectory) names.add(it.name) }
+            }
+            n.endsWith(".rar") -> com.github.junrar.Archive(archive).use { rar ->
+                var h = rar.nextFileHeader()
+                while (h != null) { if (!h.isDirectory) names.add(h.fileName); h = rar.nextFileHeader() }
+            }
+            n.endsWith(".gz") && !n.endsWith(".tar.gz") -> names.add(archive.name.dropLast(3))
+            else -> org.apache.commons.compress.archivers.tar.TarArchiveInputStream(tarStream(archive)).use { t ->
+                while (true) { val e = t.nextEntry ?: break; if (!e.isDirectory) names.add(e.name) }
             }
         }
+        names
+    }.getOrDefault(emptyList())
+
+    /** Unpacks [zip] (any archive this app opens; only the files, no paths) and places each one. Blocks. */
+    fun unzipAndPlace(context: Context, zip: File, system: GameSystem?, chosen: GameFolder? = null, deleteZip: Boolean = true): Result = runCatching {
+        val temp = File(zip.parentFile, "unzip_${System.nanoTime()}").apply { mkdirs() }
+        val files = try { extractAll(zip, temp) } catch (e: Exception) { temp.deleteRecursively(); throw e }
         var placed = 0
         var last: Result? = null
         for (f in files) {
@@ -490,19 +572,14 @@ object DownloadPlacer {
             if (r.ok) placed++ else break
         }
         temp.deleteRecursively()
-        if (placed > 0) { if (deleteZip) zip.delete(); Result(true, "Unzipped $placed file${if (placed == 1) "" else "s"} into ${chosen?.label?.ifBlank { null } ?: system?.name ?: "your game folder"}") }
-        else last ?: Result(false, "The zip was empty")
-    }.getOrElse { Result(false, "Could not unzip: ${it.message}") }
+        if (placed > 0) { if (deleteZip) zip.delete(); Result(true, "Unpacked $placed file${if (placed == 1) "" else "s"} into ${chosen?.label?.ifBlank { null } ?: system?.name ?: "your game folder"}") }
+        else last ?: Result(false, "The archive was empty")
+    }.getOrElse { Result(false, "Could not unpack: ${it.message}") }
 
     /** The consoles the files in [zip] could be, from the file types inside it. */
     fun zipCandidates(zip: File): List<GameSystem> = runCatching {
         val seen = LinkedHashSet<String>()
-        ZipInputStream(zip.inputStream().buffered()).use { zin ->
-            while (true) {
-                val entry = zin.nextEntry ?: break
-                if (!entry.isDirectory) seen.add(entry.name.substringAfterLast('.', "").lowercase())
-            }
-        }
+        listNames(zip).forEach { seen.add(it.substringAfterLast('.', "").lowercase()) }
         val lists = seen.map { candidatesFor(it) }.filter { it.isNotEmpty() }
         // A file type that only one console uses decides it; otherwise the user chooses among the first file's consoles.
         lists.firstOrNull { it.size == 1 }?.let { listOf(it[0]) } ?: lists.firstOrNull().orEmpty()

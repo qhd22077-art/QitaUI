@@ -471,7 +471,7 @@ private fun ChoiceChip(key: String, label: String, selected: Boolean, onClick: (
 @Composable
 fun DownloadAskDialog(req: DownloadRequest, folders: List<GameFolder>, onConfirm: (DownloadPlan) -> Unit, onCancel: () -> Unit) {
     val context = LocalContext.current
-    val isZip = req.name.endsWith(".zip", true)
+    val isZip = DownloadPlacer.isArchive(req.name)
     var unzip by remember(req) { mutableStateOf(DownloadPrefs.lastUnzip(context)) }
     var folder by remember(req) { mutableStateOf(DownloadPlacer.suggest(context, folders, req.name)) }
     var deleteZip by remember(req) { mutableStateOf(DownloadPrefs.lastDeleteZip(context)) }
@@ -494,10 +494,10 @@ fun DownloadAskDialog(req: DownloadRequest, folders: List<GameFolder>, onConfirm
                 Text("Download", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, style = TitleShadow)
                 Text(req.name, color = SoftText, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (isZip) {
-                    Text("Unzip it?", color = Color.White, fontSize = 16.sp)
+                    Text("Unpack it?", color = Color.White, fontSize = 16.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ChoiceChip("store:ask:unzip:yes", "Yes, unzip it", unzip) { unzip = true }
-                        ChoiceChip("store:ask:unzip:no", "No, keep it zipped", !unzip) { unzip = false }
+                        ChoiceChip("store:ask:unzip:yes", "Yes, unpack it", unzip) { unzip = true }
+                        ChoiceChip("store:ask:unzip:no", "No, keep it packed", !unzip) { unzip = false }
                     }
                 }
                 Text("Put it in", color = Color.White, fontSize = 16.sp)
@@ -509,8 +509,8 @@ fun DownloadAskDialog(req: DownloadRequest, folders: List<GameFolder>, onConfirm
                 if (isZip && unzip && folder >= 0) {
                     Text("Afterwards", color = Color.White, fontSize = 16.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ChoiceChip("store:ask:zip:delete", "Delete the zip", deleteZip) { deleteZip = true }
-                        ChoiceChip("store:ask:zip:keep", "Keep the zip", !deleteZip) { deleteZip = false }
+                        ChoiceChip("store:ask:zip:delete", "Delete the archive", deleteZip) { deleteZip = true }
+                        ChoiceChip("store:ask:zip:keep", "Keep the archive", !deleteZip) { deleteZip = false }
                     }
                 }
                 Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
