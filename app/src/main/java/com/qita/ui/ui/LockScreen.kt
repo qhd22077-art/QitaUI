@@ -120,6 +120,7 @@ fun LockScreen(settings: Settings, wallpaper: ImageBitmap?, onUnlock: () -> Unit
                 ) {
                     val clockSize = (maxHeight.value * 0.27f).sp
                     val dateSize = (maxHeight.value * 0.072f).sp
+                    val ampmPad = (maxHeight.value * 0.03f).dp
                     // The content fades as the sheet peels, so nothing is cut off abruptly.
                     val fade = { (1f - peel.value / (pageWidth * 0.35f)).coerceIn(0f, 1f) }
                     val shadow = Shadow(Color.Black.copy(alpha = 0.30f), Offset(0f, 3f), 8f)
@@ -148,7 +149,7 @@ fun LockScreen(settings: Settings, wallpaper: ImageBitmap?, onUnlock: () -> Unit
                             if (!settings.use24h) {
                                 Text(
                                     SimpleDateFormat(" a", Locale.getDefault()).format(now).uppercase(Locale.getDefault()),
-                                    Modifier.padding(bottom = (maxHeight.value * 0.03f).dp),
+                                    Modifier.padding(bottom = ampmPad),
                                     color = Color.White, fontSize = dateSize * 1.3f, fontWeight = FontWeight.Light,
                                     fontFamily = FontFamily.SansSerif, style = TextStyle(shadow = shadow),
                                 )
