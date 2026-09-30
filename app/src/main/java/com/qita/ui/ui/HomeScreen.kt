@@ -565,7 +565,7 @@ fun HomeScreen(homePresses: Int = 0) {
                 Box(
                     Modifier.fillMaxSize().graphicsLayer {
                         // The page starts tipped back and swings flat as it opens.
-                        cameraDistance = 14f * density
+                        cameraDistance = 14f * this.density
                         rotationX = -(1f - liveOpen) * 18f
                     },
                 ) {
