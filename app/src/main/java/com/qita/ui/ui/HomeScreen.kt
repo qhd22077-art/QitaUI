@@ -101,6 +101,7 @@ import com.qita.ui.GameSystem
 import com.qita.ui.findMainActivity
 import com.qita.ui.DownloadPlacer
 import com.qita.ui.DownloadItem
+import com.qita.ui.DlState
 import com.qita.ui.DownloadEngine
 import com.qita.ui.DownloadRequest
 import com.qita.ui.DlKind
@@ -439,8 +440,20 @@ fun HomeScreen(homePresses: Int = 0) {
     DisposableEffect(Unit) {
         DownloadEngine.init(context)
         DownloadEngine.onFinished = { handleFinished(it) }
+        DownloadEngine.onMessage = { toast = it }
+        DownloadEngine.onRescan = {
+            DownloadEngine.takePendingRescan()
+            scope.launch {
+                var waited = 0
+                while (gamesBusy != null && waited++ < 40) delay(500)
+                scanGames()
+            }
+        }
         DownloadEngine.asker = { askReq = it }
-        onDispose { DownloadEngine.onFinished = {}; DownloadEngine.asker = null }
+        // Things that finished while the launcher was not on screen: files were added to game folders, or a file is waiting to be handled.
+        if (DownloadEngine.takePendingRescan()) scanGames()
+        DownloadEngine.items.filter { it.state == DlState.DONE && !it.handled && !it.finishing }.forEach { DownloadEngine.markHandled(it); handleFinished(it) }
+        onDispose { DownloadEngine.onFinished = {}; DownloadEngine.onMessage = {}; DownloadEngine.onRescan = {}; DownloadEngine.asker = null }
     }
     /** Turns the launcher between landscape and upright. The choice is kept, so it stays that way. */
     fun rotate() {

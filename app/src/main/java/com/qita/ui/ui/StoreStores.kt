@@ -303,6 +303,18 @@ fun StoreSettings(
             }
         }
         item {
+            var unrestricted by remember { mutableStateOf(runCatching { (context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager).isIgnoringBatteryOptimizations(context.packageName) }.getOrDefault(false)) }
+            SettingRow("Keep downloads running", "Handhelds and phones often stop apps in the background. Allow it to run without battery limits so downloads carry on when the launcher is closed. (Force-stopping the app from Settings still ends them until you open it again.)") {
+                SmallAction("store:dl:battery", if (unrestricted) "Allowed" else "Allow") {
+                    if (!unrestricted) {
+                        val pkg = android.net.Uri.parse("package:" + context.packageName)
+                        runCatching { context.startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, pkg).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                            .onFailure { runCatching { context.startActivity(android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) } }
+                    } else unrestricted = runCatching { (context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager).isIgnoringBatteryOptimizations(context.packageName) }.getOrDefault(false)
+                }
+            }
+        }
+        item {
             SettingRow("Wi-Fi only", "On mobile data a download waits until Wi-Fi is back.") {
                 SmallAction("store:dl:wifi", if (wifiOnly) "On" else "Off") { wifiOnly = !wifiOnly; DownloadPrefs.setWifiOnly(context, wifiOnly) }
             }

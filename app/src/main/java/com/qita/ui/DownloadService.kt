@@ -23,7 +23,7 @@ class DownloadService : Service() {
 
     private val tick = object : Runnable {
         override fun run() {
-            val running = DownloadEngine.items.filter { it.state == DlState.RUNNING }
+            val running = DownloadEngine.items.filter { it.state == DlState.RUNNING || it.finishing }
             if (running.isEmpty()) {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
@@ -39,7 +39,8 @@ class DownloadService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel(CHANNEL, "Downloads", NotificationManager.IMPORTANCE_LOW))
-        val first = buildNotification(DownloadEngine.items.filter { it.state == DlState.RUNNING })
+        DownloadEngine.init(applicationContext)
+        val first = buildNotification(DownloadEngine.items.filter { it.state == DlState.RUNNING || it.finishing })
         if (Build.VERSION.SDK_INT >= 29) startForeground(ID, first, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC) else startForeground(ID, first)
         if (wake == null) {
             wake = runCatching {
@@ -48,7 +49,8 @@ class DownloadService : Service() {
         }
         handler.removeCallbacks(tick)
         handler.postDelayed(tick, 1500)
-        return START_NOT_STICKY
+        // Sticky: if Android kills the process, it brings the service back and the engine resumes what was running.
+        return START_STICKY
     }
 
     override fun onDestroy() {
@@ -66,7 +68,7 @@ class DownloadService : Service() {
         val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, CHANNEL) else @Suppress("DEPRECATION") Notification.Builder(this)
         b.setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle(if (running.size == 1) running[0].name else "${running.size} downloads")
-            .setContentText(if (total > 0) "${(got * 100 / total).toInt()}%" else "Downloading")
+            .setContentText(if (running.any { it.finishing }) "Unpacking…" else if (total > 0) "${(got * 100 / total).toInt()}%" else "Downloading")
             .setOngoing(true).setOnlyAlertOnce(true).setContentIntent(open)
         if (total > 0) b.setProgress(100, (got * 100 / total).toInt().coerceIn(0, 100), false) else b.setProgress(0, 0, true)
         return b.build()
@@ -75,6 +77,16 @@ class DownloadService : Service() {
     companion object {
         private const val CHANNEL = "downloads"
         private const val ID = 4107
+
+        /** A one-off notification saying how filing a finished download went. */
+        fun notifyResult(context: Context, title: String, text: String) {
+            runCatching {
+                val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel(CHANNEL, "Downloads", NotificationManager.IMPORTANCE_LOW))
+                val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(context, CHANNEL) else @Suppress("DEPRECATION") Notification.Builder(context)
+                nm.notify(title.hashCode(), b.setSmallIcon(android.R.drawable.stat_sys_download_done).setContentTitle(title).setContentText(text).setAutoCancel(true).setContentIntent(PendingIntentFor.launcher(context)).build())
+            }
+        }
 
         /** Starts the service if it is not running. Safe to call often; does nothing if Android refuses a start from the background. */
         fun ensure(context: Context) {

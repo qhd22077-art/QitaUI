@@ -106,6 +106,10 @@ class DownloadItem(
     /** True while bytes are actually being fetched; false while it waits for its turn or for Wi-Fi. */
     var active by mutableStateOf(false)
     var waitNote by mutableStateOf("")
+    /** True while the finished file is being unpacked and filed, so the service keeps the process alive for it. */
+    var finishing by mutableStateOf(false)
+    /** Whether whoever handles a finished file (the engine itself, or the launcher) has dealt with it. */
+    var handled = false
 
     val fraction: Float get() = if (total > 0) (bytes.toFloat() / total).coerceIn(0f, 1f) else -1f
 
@@ -139,8 +143,12 @@ object DownloadEngine {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var app: Context? = null
 
-    /** Called on the main thread when a download has finished. */
+    /** Called on the main thread when a download has finished and the engine could not deal with it alone. */
     var onFinished: (DownloadItem) -> Unit = {}
+    /** Called on the main thread with the outcome of filing a finished download (the launcher shows it as a toast). */
+    var onMessage: (String) -> Unit = {}
+    /** Called on the main thread when new files were added to a game folder, so the library should be scanned again. */
+    var onRescan: () -> Unit = {}
 
     private fun prefs() = app!!.getSharedPreferences("qita_downloads", Context.MODE_PRIVATE)
     fun dir(context: Context): File = File(context.getExternalFilesDir(null) ?: context.filesDir, "downloads").apply { mkdirs() }
@@ -148,6 +156,7 @@ object DownloadEngine {
     fun init(context: Context) {
         if (app != null) return
         app = context.applicationContext
+        val resumeList = ArrayList<DownloadItem>()
         runCatching {
             val arr = JSONArray(prefs().getString("items", "[]"))
             for (i in 0 until arr.length()) {
@@ -159,17 +168,29 @@ object DownloadEngine {
                     o.optLong("started"), File(dir(app!!), o.getString("id") + ".part"),
                 )
                 item.referer = o.optString("ref").ifEmpty { null }
+                item.handled = o.optBoolean("handled", true)
                 if (o.has("plan_folder") || o.has("plan_unzip")) item.plan = DownloadPlan(o.optBoolean("plan_unzip"), o.optString("plan_folder").ifEmpty { null }, o.optBoolean("plan_del", true))
                 item.total = o.optLong("total", -1)
                 item.finalPath = o.optString("final").ifEmpty { null }
                 val done = o.optString("state") == "DONE" && item.finalPath != null && File(item.finalPath!!).exists()
                 item.state = if (done) DlState.DONE else if (o.optString("state") == "FAILED") DlState.FAILED else DlState.PAUSED
+                // A download that was running when the process died is still wanted: it starts again below, from the bytes it has.
+                val wanted = !done && o.optString("state") == "RUNNING"
                 item.bytes = if (done) File(item.finalPath!!).length() else item.partFile.length()
                 if (item.state == DlState.FAILED) item.error = o.optString("error").ifEmpty { "failed" }
                 if (done || item.state == DlState.PAUSED || item.state == DlState.FAILED) items.add(item)
+                if (wanted) resumeList.add(item)
             }
         }
+        resumeList.forEach { start(it) }
+        // Downloads that finished while nothing was listening are filed now.
+        items.filter { it.state == DlState.DONE && !it.handled && it.plan != null }.forEach { item ->
+            if (canFinishHeadless(item)) { item.finishing = true; scope.launch { finishHeadless(item) } }
+        }
     }
+
+    /** Marks a finished download as dealt with, so it is not offered again. */
+    fun markHandled(item: DownloadItem) { item.handled = true; persist() }
 
     private fun persist() {
         val arr = JSONArray()
@@ -177,7 +198,7 @@ object DownloadEngine {
             arr.put(
                 JSONObject().put("id", it.id).put("url", it.url).put("name", it.name).put("kind", it.kind.name)
                     .put("cookie", it.cookie ?: "").put("ua", it.userAgent ?: "").put("started", it.startedAt)
-                    .put("total", it.total).put("final", it.finalPath ?: "").put("state", it.state.name).put("error", it.error ?: "").put("ref", it.referer ?: "")
+                    .put("total", it.total).put("final", it.finalPath ?: "").put("state", it.state.name).put("error", it.error ?: "").put("ref", it.referer ?: "").put("handled", it.handled)
                     .also { o -> it.plan?.let { p -> o.put("plan_unzip", p.unzip).put("plan_folder", p.folderUri ?: "").put("plan_del", p.deleteZip) } },
             )
         }
@@ -344,10 +365,13 @@ object DownloadEngine {
             if (!item.partFile.renameTo(out)) item.partFile.copyTo(out, overwrite = true).also { item.partFile.delete() }
             item.finalPath = out.path
             item.bytes = out.length()
+            val headless = canFinishHeadless(item)
+            item.finishing = headless
             item.state = DlState.DONE
             item.active = false
             persist()
-            withContext(Dispatchers.Main) { onFinished(item) }
+            if (headless) finishHeadless(item)
+            else withContext(Dispatchers.Main) { item.handled = true; persist(); onFinished(item) }
         } catch (e: CancellationException) {
             item.active = false
             throw e
@@ -357,6 +381,48 @@ object DownloadEngine {
             item.error = e.message ?: "failed"
             persist()
         }
+    }
+
+    /** Whether the engine can file this download by itself: the user chose a game folder before it began (and it is not an APK). */
+    private fun canFinishHeadless(item: DownloadItem): Boolean {
+        val context = app ?: return false
+        val plan = item.plan ?: return false
+        if (item.kind == DlKind.APK || item.name.endsWith(".apk", true)) return false
+        return GameLibrary.folders(context).any { it.uri == plan.folderUri }
+    }
+
+    /** Unpacks or copies a finished download into the game folder the user chose, with no screen needed, then asks for a rescan. */
+    private suspend fun finishHeadless(item: DownloadItem) {
+        val context = app ?: return
+        item.finishing = true
+        val plan = item.plan
+        val path = item.finalPath
+        val folder = GameLibrary.folders(context).firstOrNull { it.uri == plan?.folderUri }
+        if (plan == null || path == null || folder == null) { item.finishing = false; return }
+        val message = try {
+            withContext(Dispatchers.IO) {
+                val ext = item.name.substringAfterLast('.', "").lowercase()
+                val system = if (folder.systemId != "auto") systemById(folder.systemId)
+                else DownloadPlacer.candidatesFor(ext).singleOrNull() ?: GameScanner.systemFromName(item.name)
+                val r = if (plan.unzip && DownloadPlacer.isArchive(item.name)) DownloadPlacer.unzipAndPlace(context, File(path), system, folder, plan.deleteZip)
+                else DownloadPlacer.place(context, File(path), item.name, system, folder)
+                if (r.ok) { withContext(Dispatchers.Main) { items.remove(item) }; context.getSharedPreferences("qita_downloads", Context.MODE_PRIVATE).edit().putBoolean("pending_rescan", true).apply() }
+                r.message
+            }
+        } catch (e: Exception) { "Could not file ${item.name}: ${e.message}" }
+        item.handled = true
+        item.finishing = false
+        persist()
+        DownloadService.notifyResult(context, item.name, message)
+        withContext(Dispatchers.Main) { onMessage(message); onRescan() }
+    }
+
+    /** True once if files were added to a game folder while the launcher was not there to rescan. */
+    fun takePendingRescan(): Boolean {
+        val p = prefs()
+        val v = p.getBoolean("pending_rescan", false)
+        if (v) p.edit().putBoolean("pending_rescan", false).apply()
+        return v
     }
 
     private const val BROWSER_UA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
