@@ -222,6 +222,7 @@ object DownloadEngine {
         item.state = DlState.RUNNING
         item.error = null
         item.job = scope.launch { run(item) }
+        app?.let { DownloadService.ensure(it) }
     }
 
     fun pause(item: DownloadItem) {
@@ -502,7 +503,7 @@ object DownloadPlacer {
     }.getOrElse { Result(false, "Could not save the file: ${it.message}") }
 
     /** Copies [file] into the game folder for [system]. Blocks. */
-    fun place(context: Context, file: File, name: String, system: GameSystem?, chosen: GameFolder? = null): Result = runCatching {
+    fun place(context: Context, file: File, name: String, system: GameSystem?, chosen: GameFolder? = null, keepSource: Boolean = false): Result = runCatching {
         val folders = GameLibrary.folders(context)
         val folder = chosen ?: folders.firstOrNull { it.systemId == system?.id } ?: folders.firstOrNull { it.systemId == "auto" }
             ?: return Result(false, "Add a game folder in Settings → Games & Emulators first. The file is in Downloads.")
@@ -516,7 +517,7 @@ object DownloadPlacer {
             ?: return Result(false, "Could not write into the game folder")
         resolver.openOutputStream(doc)?.use { out -> file.inputStream().use { it.copyTo(out) } }
             ?: return Result(false, "Could not write into the game folder")
-        file.delete()
+        if (!keepSource) file.delete()
         Result(true, "Added $name to ${folder.label.ifBlank { system?.name ?: "your game folder" }}")
     }.getOrElse { Result(false, "Could not save the file: ${it.message}") }
 
@@ -527,7 +528,7 @@ object DownloadPlacer {
 
     private fun leaf(name: String) = File(name.replace('\\', '/')).name.replace(Regex("[\\\\/:*?\"<>|]"), "_")
 
-    private fun tarStream(archive: File): java.io.InputStream {
+    internal fun tarStream(archive: File): java.io.InputStream {
         val n = archive.name.lowercase()
         val raw = archive.inputStream().buffered()
         return when {

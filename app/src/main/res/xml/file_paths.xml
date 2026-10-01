@@ -3,4 +3,6 @@
     <!-- Downloaded APKs are handed to Android's installer from here. -->
     <external-files-path name="downloads" path="downloads/" />
     <files-path name="internal_downloads" path="downloads/" />
+    <!-- Files opened or shared from the Folders app. -->
+    <external-path name="storage" path="." />
 </paths>

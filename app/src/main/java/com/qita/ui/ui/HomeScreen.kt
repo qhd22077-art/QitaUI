@@ -945,6 +945,7 @@ fun HomeScreen(homePresses: Int = 0) {
                 FoldersScreen(
                     settings = settings,
                     onToast = { toast = it },
+                    onScanGames = { scanGames() },
                     onClose = { showFolders = false },
                 )
             }
