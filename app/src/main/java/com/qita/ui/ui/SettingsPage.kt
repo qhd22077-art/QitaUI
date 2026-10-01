@@ -258,7 +258,8 @@ fun SettingsPage(
                             }
                             CheckRow("set:labels", "A", "Show app names", settings.showLabels) { onChange(settings.copy(showLabels = it)) }
                             CheckRow("set:dots", "•", "Show page dots", settings.showDots) { onChange(settings.copy(showDots = it)) }
-                            SliderRow("set:size", "●", "Bubble size", settings.bubbleScale, 0.7f..1.1f, 0.05f) { onChange(settings.copy(bubbleScale = it)) }
+                            SliderRow("set:size", "●", "Bubble size", settings.bubbleScale, 0.5f..1.1f, 0.05f) { onChange(settings.copy(bubbleScale = it)) }
+                            CheckRow("set:fitnames", "▭", "Keep the bottom row's names on screen (makes the bubbles a little smaller if needed)", settings.fitNames) { onChange(settings.copy(fitNames = it)) }
                             CheckRow("set:newest", "↓", "Sort newest apps first", settings.sortNewest) { onChange(settings.copy(sortNewest = it)) }
                             CheckRow("set:autoadd", "+", "Add newly installed apps to home", settings.autoAdd) { onChange(settings.copy(autoAdd = it)) }
                             MenuRow("set:clearhome", "✕", "Remove all apps from home") { onClearHome() }

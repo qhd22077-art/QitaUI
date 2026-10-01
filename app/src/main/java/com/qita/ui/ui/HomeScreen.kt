@@ -1577,7 +1577,15 @@ private fun BubblePager(
             ) {
                 // The sphere is a quarter of the page height, like the real home screen.
                 val portraitPage = maxWidth < maxHeight
-                val bubble = ((if (portraitPage) minOf(maxHeight * 0.17f, maxWidth * 0.25f) else minOf(maxHeight * 0.25f, maxWidth * 0.14f)) * scale).coerceAtLeast(40.dp)
+                val wanted = ((if (portraitPage) minOf(maxHeight * 0.17f, maxWidth * 0.25f) else minOf(maxHeight * 0.25f, maxWidth * 0.14f)) * scale).coerceAtLeast(40.dp)
+                // The names of the bottom row sit under their bubbles: make the bubbles just small enough that those names
+                // end above the bottom of the page (a folder is a little bigger than a plain bubble).
+                val bubble = if (settings.fitNames && settings.showLabels) {
+                    val lowest = layout.slots.maxOf { it.second }
+                    val lines = if (settings.scrollNames == 0) 2 else 1
+                    val nameHeight = (13f * settings.nameSize * 1.3f * lines + 14f).dp
+                    minOf(wanted, ((maxHeight * (1f - lowest) - nameHeight) * 2f / 1.08f).coerceAtLeast(40.dp))
+                } else wanted
                 val column = bubble + (if (portraitPage) 24.dp else 56.dp)
                 val pageHeightPx = constraints.maxHeight.toFloat()
                 if (editAmt() > 0.01f) {

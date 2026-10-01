@@ -98,6 +98,8 @@ data class Settings(
     val themeIndex: Int = VITA_SILK,
     val particles: Boolean = false,
     val bubbleScale: Float = 1f,
+    /** Shrinks the home bubbles just enough that the names of the bottom row stay on the screen. */
+    val fitNames: Boolean = true,
     val use24h: Boolean = false,
     val showBattery: Boolean = true,
     val sortNewest: Boolean = false,
@@ -199,6 +201,7 @@ class SettingsStore(private val context: Context) {
         themeIndex = prefs.getInt("theme", VITA_SILK),
         particles = prefs.getBoolean("particles", false),
         bubbleScale = prefs.getFloat("bubbleScale", 1f),
+        fitNames = prefs.getBoolean("fitNames", true),
         use24h = prefs.getBoolean("use24h", false),
         showBattery = prefs.getBoolean("showBattery", true),
         sortNewest = prefs.getBoolean("sortNewest", false),
@@ -281,6 +284,7 @@ class SettingsStore(private val context: Context) {
             .putInt("theme", s.themeIndex)
             .putBoolean("particles", s.particles)
             .putFloat("bubbleScale", s.bubbleScale)
+            .putBoolean("fitNames", s.fitNames)
             .putBoolean("use24h", s.use24h)
             .putBoolean("showBattery", s.showBattery)
             .putBoolean("sortNewest", s.sortNewest)

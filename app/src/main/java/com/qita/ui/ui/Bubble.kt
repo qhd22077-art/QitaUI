@@ -241,7 +241,7 @@ fun Bubble(
     ) {
         Box {
             Sphere(
-                app, if (app.folderMembers != null) size * 1.12f else size,
+                app, if (app.folderMembers != null) size * 1.08f else size,
                 // Registered on the sphere itself so the gamepad ring hugs it, not the label.
                 modifier = Modifier.padTarget(padKey, corner = null, app = app, pad = 10.dp, bring = false, ring = false, onClick = onClick),
                 shape = shape,
