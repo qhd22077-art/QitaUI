@@ -389,9 +389,9 @@ fun Modifier.padScroller(scrollBy: suspend (Float) -> Unit): Modifier = composed
  */
 @Composable
 fun PadRing() {
-    val padShown = Controller.padActive && !Controller.cursorMode && Controller.movingPackage == null &&
+    val padShown = Controller.flashInput == null && Controller.padActive && !Controller.cursorMode && Controller.movingPackage == null &&
         PadNav.current != null && PadNav.currentBounds != Rect.Zero && PadNav.currentRing
-    val hoverShown = !padShown && Controller.cursorMode && PadNav.hover != null && PadNav.hoverBounds != Rect.Zero && PadNav.hoverRing
+    val hoverShown = Controller.flashInput == null && !padShown && Controller.cursorMode && PadNav.hover != null && PadNav.hoverBounds != Rect.Zero && PadNav.hoverRing
     val visible = padShown || hoverShown
     val target = if (hoverShown) PadNav.hoverBounds else PadNav.currentBounds
     val corner = if (hoverShown) PadNav.hoverCorner else PadNav.currentCorner

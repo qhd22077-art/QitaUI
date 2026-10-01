@@ -108,6 +108,14 @@ class MainActivity : ComponentActivity() {
         val first = down && event.repeatCount == 0
         val isDpad = code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT ||
             code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN
+        // A Flash game that is open gets every gamepad button first (raw, before the A/B swap).
+        val flash = Controller.flashInput
+        if (flash != null && !injecting && (KeyEvent.isGamepadButton(raw) || raw == KeyEvent.KEYCODE_DPAD_LEFT || raw == KeyEvent.KEYCODE_DPAD_RIGHT ||
+                raw == KeyEvent.KEYCODE_DPAD_UP || raw == KeyEvent.KEYCODE_DPAD_DOWN || raw == KeyEvent.KEYCODE_DPAD_CENTER)
+        ) {
+            Controller.padActive = true
+            if (flash.onKey(event)) return true
+        }
         if (!injecting && (KeyEvent.isGamepadButton(raw) || isDpad)) {
             Controller.padActive = true
             if (isDpad) sawDpadKey = true
@@ -202,6 +210,8 @@ class MainActivity : ComponentActivity() {
 
     override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean {
         val isStick = ev.source and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK
+        val flash = Controller.flashInput
+        if (flash != null && isStick && ev.action == MotionEvent.ACTION_MOVE && flash.onMotion(ev)) return true
         if (isStick && ev.action == MotionEvent.ACTION_MOVE) {
             val x = ev.getAxisValue(MotionEvent.AXIS_X)
             val y = ev.getAxisValue(MotionEvent.AXIS_Y)

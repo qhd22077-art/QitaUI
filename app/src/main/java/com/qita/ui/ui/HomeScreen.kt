@@ -233,6 +233,8 @@ fun HomeScreen(homePresses: Int = 0) {
     var wallpaperRev by remember { mutableIntStateOf(0) }
     val photoHolder = remember { arrayOfNulls<androidx.compose.ui.graphics.ImageBitmap>(1) }
     var showBackgrounds by remember { mutableStateOf(false) }
+    // The Flash game being played, if any.
+    var flashGame by remember { mutableStateOf<Game?>(null) }
     var showIndex by remember { mutableStateOf(false) }
     // Where the LiveArea carousel is right now (fractional while swiping); drives the top bar's indicator.
     val livePosition = remember { mutableFloatStateOf(-1f) }
@@ -366,7 +368,7 @@ fun HomeScreen(homePresses: Int = 0) {
     }
 
     val menuOpen = menuFor != null || showQuickMenu || showNotifs
-    val anyOverlay = showLock || showDesktop || showGames || showStore || showBrowser || showFolders || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null
+    val anyOverlay = showLock || showDesktop || showGames || showStore || showBrowser || showFolders || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null || flashGame != null
 
     // Saved themes: imported Vita themes and .qtheme files.
     var themeList by remember { mutableStateOf(com.qita.ui.ThemePacks.list(context)) }
@@ -564,7 +566,8 @@ fun HomeScreen(homePresses: Int = 0) {
                 val game = app.game
                 if (game != null) {
                     gamePlayed = GameLibrary.markPlayed(context, game.id)
-                    GameLauncher.launch(context, game)?.let { toast = it }
+                    // Flash games are played inside the launcher; everything else goes to its emulator.
+                    if (game.systemId == "flash") flashGame = game else GameLauncher.launch(context, game)?.let { toast = it }
                 } else {
                     AppRepository.launch(context, app)
                 }
@@ -1026,7 +1029,7 @@ fun HomeScreen(homePresses: Int = 0) {
     ) {
     Box(Modifier.fillMaxSize().onSizeChanged { rootWidth = it.width; rootHeight = it.height; PadNav.viewport = Rect(0f, 0f, it.width.toFloat(), it.height.toFloat()) }) {
         BubbleBackground(
-            paused = { showDesktop || showGames || showStore || showBrowser || showFolders || showSettings },
+            paused = { showDesktop || showGames || showStore || showBrowser || showFolders || showSettings || flashGame != null },
             top = settings.theme.top, mid = settings.theme.mid, bottom = settings.theme.bottom, particles = settings.particles,
             wallpaper = when (pageBg[bgPage]) {
                 null -> wallpaper
@@ -1634,7 +1637,9 @@ fun HomeScreen(homePresses: Int = 0) {
                 onCancel = { renameFolderId = null },
             )
         }
-        // The panel for the look of a built-in bubble.
+        // A Flash game being played covers everything else.
+        flashGame?.let { g -> FlashScreen(g) { flashGame = null } }
+        // The panel for the look of a system bubble.
         styleFor?.let { action ->
             BackHandler(enabled = true) { styleFor = null }
             val style = com.qita.ui.BubbleStyles.all[action.id] ?: com.qita.ui.BubbleStyle()

@@ -55,6 +55,12 @@ sealed interface Command {
     data class MoveEnd(val confirm: Boolean) : Command
 }
 
+/** Takes every gamepad button and joystick event first while a Flash game is open (see FlashScreen); returns true if it used the event. */
+interface FlashInput {
+    fun onKey(event: android.view.KeyEvent): Boolean
+    fun onMotion(event: android.view.MotionEvent): Boolean
+}
+
 /**
  * Shared gamepad state. MainActivity writes it from key and joystick events; the UI reads it.
  *
@@ -64,6 +70,8 @@ sealed interface Command {
  */
 object Controller {
     var cursorMode by mutableStateOf(false)
+    /** Set while a Flash game is playing: it gets the gamepad instead of the launcher. */
+    var flashInput by mutableStateOf<FlashInput?>(null)
     var cursor by mutableStateOf(Offset.Zero)
     var viewSize = Size.Zero
     var speed = 1f

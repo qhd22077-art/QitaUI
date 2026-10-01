@@ -97,6 +97,8 @@ val SYSTEMS: List<GameSystem> = listOf(
     GameSystem("genesis", "Mega Drive / Genesis", "MD", setOf("md", "smd", "gen", "bin"), listOf("genesis", "megadrive", "md", "gen"), "Sega - Mega Drive - Genesis", "genesis_plus_gx_libretro_android.so", listOf("retroarch"), 0xFF2A2A30),
     GameSystem("dreamcast", "Dreamcast", "DC", setOf("cdi", "gdi", "chd"), listOf("dreamcast", "dc"), "Sega - Dreamcast", "flycast_libretro_android.so", listOf("flycast", "retroarch"), 0xFFD0702A),
     // PC games run through GameNative (.steam, .epic, .gog, .amazon, .pcgame files holding the game's id) or Winlator (.desktop shortcuts).
+    // Flash games (.swf) are played inside the launcher (see FlashScreen), so no emulator is needed.
+    GameSystem("flash", "Flash", "FLASH", setOf("swf"), listOf("flash", "swf", "flashgames"), null, null, emptyList(), 0xFFD0501E),
     GameSystem("pc", "PC (Windows)", "PC", setOf("steam", "epic", "gog", "amazon", "pcgame", "desktop"), listOf("pc", "windows", "steam", "gamenative", "winlator"), null, null, listOf("gamenative", "winlator"), 0xFF2A3A5A),
 )
 
