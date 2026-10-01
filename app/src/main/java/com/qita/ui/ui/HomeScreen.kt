@@ -116,6 +116,7 @@ import com.qita.ui.EMULATORS
 import com.qita.ui.Game
 import com.qita.ui.GameFolder
 import com.qita.ui.GameLauncher
+import com.qita.ui.FlashLibrary
 import com.qita.ui.GameLibrary
 import com.qita.ui.GameScanner
 import com.qita.ui.SYSTEMS
@@ -608,7 +609,8 @@ fun HomeScreen(homePresses: Int = 0) {
         gamesBusy = "Scanning for games…"
         scope.launch {
             val found = withContext(Dispatchers.IO) {
-                GameScanner.scan(context, GameLibrary.folders(context)).also { GameLibrary.saveGames(context, it) }
+                // The folders the user added, plus the Flash games kept inside the app.
+                (GameScanner.scan(context, GameLibrary.folders(context)) + FlashLibrary.scan(context)).also { GameLibrary.saveGames(context, it) }
             }
             // New games go on the home screen as bubbles, like the Vita's own games; ones seen before (and maybe taken off) do not.
             val known = GameLibrary.known(context)
@@ -663,6 +665,15 @@ fun HomeScreen(homePresses: Int = 0) {
                 val r = withContext(Dispatchers.IO) { DownloadPlacer.saveToPublicDownloads(context, File(path), item.name) }
                 toast = r.message
                 if (r.ok) DownloadEngine.remove(item)
+            }
+            // A Flash game goes into the launcher's own Flash library, where it plays offline.
+            ext == "swf" -> scope.launch {
+                val g = withContext(Dispatchers.IO) { FlashLibrary.add(context, File(path), item.name) }
+                if (g != null) {
+                    DownloadEngine.remove(item)
+                    toast = "Added ${g.title} to Flash games"
+                    scanGames()
+                } else toast = "Could not add ${item.name} to Flash games"
             }
             DownloadPlacer.isArchive(item.name) -> pendingZip = item
             else -> {
@@ -1576,6 +1587,7 @@ fun HomeScreen(homePresses: Int = 0) {
                     MenuItem("Remove from library") {
                         menuFor = null
                         forgetFromHome(app.packageName)
+                        FlashLibrary.deleteFile(context, app.game!!)
                         GameLibrary.remove(context, app.game!!.id)
                         reload++
                     },

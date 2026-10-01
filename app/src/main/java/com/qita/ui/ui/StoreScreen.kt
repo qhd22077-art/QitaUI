@@ -917,6 +917,7 @@ private fun Catalogue(
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val appContext = LocalContext.current
+    val flash = remember { FlashStoreState(appContext, scope) }
     // Covers of the user's own games, already fetched for the Games screen.
     val myGames = remember(snapRev) {
         runCatching {
@@ -981,7 +982,7 @@ private fun Catalogue(
                 }
                 stickyHeader(key = "segments") {
                     Box(Modifier.fillMaxWidth().background(StoreMid)) {
-                        Segmented(listOf("Featured", "Emulators", "Free games", "Vita homebrew", "All", "My stores"), segment, onSegment)
+                        Segmented(listOf("Featured", "Emulators", "Free games", "Vita homebrew", "All", "My stores", "Flash games"), segment, onSegment)
                     }
                 }
                 if (segment == 5) {
@@ -1013,6 +1014,8 @@ private fun Catalogue(
                             Box(Modifier.fillMaxWidth().height(1.dp).background(RowLine.copy(alpha = 0.55f)))
                         }
                     }
+                } else if (segment == 6) {
+                    flashItems(flash)
                 } else if (onVita) {
                     if (vitaAll == null) {
                         item(key = "vita-status") { VitaStatus(vita) }

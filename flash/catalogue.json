@@ -1,0 +1,5 @@
+{
+  "name": "QitaUI Flash game list",
+  "note": "Each game is a title and a direct link to its .swf file. Add yours under \"games\". The app and the website both read this file.",
+  "games": []
+}

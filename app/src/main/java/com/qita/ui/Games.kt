@@ -479,7 +479,7 @@ object Covers {
         true
     }.getOrDefault(false)
 
-    private fun save(context: Context, id: String, source: Bitmap) {
+    fun save(context: Context, id: String, source: Bitmap) {
         val longest = maxOf(source.width, source.height)
         val bmp = if (longest > 512) Bitmap.createScaledBitmap(source, source.width * 512 / longest, source.height * 512 / longest, true) else source
         GameLibrary.coverFile(context, id).outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
