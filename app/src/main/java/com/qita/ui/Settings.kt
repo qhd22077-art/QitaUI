@@ -209,6 +209,7 @@ class SettingsStore(private val context: Context) {
             prefs.edit().putBoolean("nightSeeded", true).apply()
         }
         // The icons of the theme in use are needed before the first bubble is drawn.
+        BubbleStyles.load(context)
         ThemePacks.loadActive(context)
     }
     /** The global wallpaper (page == null) or the photo chosen for one home page. */

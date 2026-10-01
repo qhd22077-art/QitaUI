@@ -4,10 +4,14 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -23,7 +27,17 @@ import com.qita.ui.LaunchableApp
  * apps sit inside as small round icons.
  */
 @Composable
-fun FolderGlass(app: LaunchableApp, size: Dp, modifier: Modifier = Modifier, selected: Boolean = false) {
+fun FolderGlass(
+    app: LaunchableApp,
+    size: Dp,
+    modifier: Modifier = Modifier,
+    selected: Boolean = false,
+    /** What sits inside the glass: the folder's cluster, or for a glass built-in bubble its pictogram. */
+    icon: ImageBitmap = app.icon,
+    iconFraction: Float = 0.84f,
+    /** Colours the glass (a built-in bubble given the glass look); null keeps the folder's pale blue. */
+    bodyTint: Color? = null,
+) {
     Box(
         modifier
             .size(size)
@@ -32,13 +46,18 @@ fun FolderGlass(app: LaunchableApp, size: Dp, modifier: Modifier = Modifier, sel
                 val h = this.size.height
                 val r = w / 2f
                 val c = Offset(r, h / 2f)
-                // Behind the icons: a faint body that darkens the middle a touch and glows blue at the edge.
+                // Behind the icons: a faint body that darkens the middle a touch and glows blue (or the tint) at the edge.
+                val k = if (bodyTint != null) 1.9f else 1f
+                val deep = if (bodyTint != null) lerp(bodyTint, Color.Black, 0.55f) else Color(0xFF071A55)
+                val body = bodyTint ?: Color(0xFF3E78E0)
+                val edge = if (bodyTint != null) lerp(bodyTint, Color.White, 0.45f) else Color(0xFF8FC0FF)
+                val rimTint = if (bodyTint != null) lerp(bodyTint, Color.White, 0.8f) else Color(0xFFD6EAFF)
                 drawCircle(
                     Brush.radialGradient(
-                        0.0f to Color(0xFF071A55).copy(alpha = 0.16f),
-                        0.65f to Color(0xFF3E78E0).copy(alpha = 0.14f),
-                        0.90f to Color(0xFF8FC0FF).copy(alpha = 0.30f),
-                        1.0f to Color(0xFFD6EAFF).copy(alpha = 0.55f),
+                        0.0f to deep.copy(alpha = (0.16f * k).coerceAtMost(1f)),
+                        0.65f to body.copy(alpha = (0.14f * k).coerceAtMost(1f)),
+                        0.90f to edge.copy(alpha = (0.30f * k).coerceAtMost(1f)),
+                        1.0f to rimTint.copy(alpha = (0.55f * (if (bodyTint != null) 1.2f else 1f)).coerceAtMost(1f)),
                         center = Offset(r, h * 0.54f), radius = r,
                     ),
                     radius = r, center = c,
@@ -68,6 +87,7 @@ fun FolderGlass(app: LaunchableApp, size: Dp, modifier: Modifier = Modifier, sel
             },
         contentAlignment = Alignment.Center,
     ) {
-        Image(app.icon, null, Modifier.fillMaxSize(0.84f))
+        // A built-in bubble's own picture is round inside the glass; a folder's cluster already is.
+        Image(icon, null, if (bodyTint != null) Modifier.fillMaxSize(iconFraction).clip(CircleShape) else Modifier.fillMaxSize(iconFraction))
     }
 }

@@ -34,6 +34,9 @@ data class LaunchableApp(
     val game: Game? = null,
     /** Set for a folder bubble on the home screen: the bubbles inside it. */
     val folderMembers: List<LaunchableApp>? = null,
+    /** For a built-in bubble the user gave a clear-glass look: the picture drawn inside the glass, and the glass colour. */
+    val glassIcon: ImageBitmap? = null,
+    val glassTint: Color? = null,
 )
 
 object AppRepository {

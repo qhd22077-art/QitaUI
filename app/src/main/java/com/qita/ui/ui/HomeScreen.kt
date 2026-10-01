@@ -280,12 +280,30 @@ fun HomeScreen(homePresses: Int = 0) {
         }
     }
 
+    // The look of a built-in bubble (translucency, glass, tint, picture), edited in a panel.
+    var styleFor by remember { mutableStateOf<com.qita.ui.SystemAction?>(null) }
+    val stylePicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.GetContent(),
+    ) { uri ->
+        val action = styleFor
+        if (uri != null && action != null) {
+            scope.launch {
+                val ok = withContext(Dispatchers.IO) { com.qita.ui.BubbleStyles.savePicture(context, action.id, uri) }
+                if (ok) com.qita.ui.BubbleStyles.set(action.id, com.qita.ui.BubbleStyles.of(action.id).copy(picture = true))
+                else toast = "That picture could not be used"
+                // The art is bumped even if the file is the same one as before, so the bubble shows the new picture.
+                if (ok) com.qita.ui.SystemIcons.cache = null
+                reload++
+            }
+        }
+    }
+
     // Held upright, the pages use three bubbles across instead of the wide layouts.
     val upright = rootWidth in 1 until rootHeight
     val layout = if (upright) com.qita.ui.PORTRAIT_LAYOUT else LAYOUTS[settings.layoutIndex.coerceIn(LAYOUTS.indices)]
     val pageSize = layout.size
     // Only apps the user has added appear on the home screen; the desktop lists everything.
-    val shown = remember(apps, home, settings.sortNewest, homeFolders) {
+    val shown = remember(apps, home, settings.sortNewest, homeFolders, com.qita.ui.BubbleStyles.artRev) {
         val byPackage = (apps + SYSTEM_APPS).associateBy { it.packageName }
         // A folder is shown as a bubble of its own, made from the bubbles inside it (and hidden while none of them exist any more).
         val folderApps = homeFolders.associate { f ->
@@ -851,7 +869,8 @@ fun HomeScreen(homePresses: Int = 0) {
         // Dropped on a bubble: take its place. Dropped on empty space: go to the end of the visible page.
         val target = list.firstOrNull { it.packageName != app.packageName && rects[it.packageName]?.contains(dragPos) == true }
         // Dropped on the middle of another bubble: they become a folder (or go into that folder). Dropped on its edge: a plain move.
-        if (target != null && settings.dragMakesFolder && app.action == null && app.folderMembers == null && target.action == null) {
+        // (The built-in bubbles can go into folders too; they just cannot be removed from the home screen.)
+        if (target != null && settings.dragMakesFolder && app.folderMembers == null) {
             val r = rects[target.packageName]
             if (r != null && Rect(r.left + r.width * 0.2f, r.top, r.right - r.width * 0.2f, r.top + r.height * 0.65f).contains(dragPos)) {
                 makeFolderOf(target, app)
@@ -1215,7 +1234,8 @@ fun HomeScreen(homePresses: Int = 0) {
                     },
                     onWallpaper = { uri -> store.saveWallpaper(uri)?.let { wallpaper = it } },
                     onClearWallpaper = { store.clearWallpaper(); wallpaper = null },
-                    onClearHome = { home = SYSTEM_IDS; store.saveHome(home) },
+                    // Folders go too, so the built-in bubbles inside them are back on the home screen with the others.
+                    onClearHome = { saveFolders(emptyList()); home = SYSTEM_IDS; store.saveHome(home) },
                     onShowTutorial = { showSettings = false; showTutorial = true },
                     hasCustomFont = remember(fontVersion) { store.hasCustomFont() },
                     onFont = { uri ->
@@ -1443,6 +1463,7 @@ fun HomeScreen(homePresses: Int = 0) {
                     MenuItem("Cancel") { menuFor = null },
                 ) else if (app.action != null) listOf(
                     MenuItem("Open") { menuFor = null; launchApp(app) },
+                    MenuItem("Customise (translucent, glass, tint, picture)") { menuFor = null; styleFor = app.action },
                     MenuItem("Cancel") { menuFor = null },
                 ) else listOf(
                     MenuItem("Open") { menuFor = null; launchApp(app) },
@@ -1495,6 +1516,19 @@ fun HomeScreen(homePresses: Int = 0) {
                     renameFolderId = null
                 },
                 onCancel = { renameFolderId = null },
+            )
+        }
+        // The panel for the look of a built-in bubble.
+        styleFor?.let { action ->
+            BackHandler(enabled = true) { styleFor = null }
+            val style = com.qita.ui.BubbleStyles.all[action.id] ?: com.qita.ui.BubbleStyle()
+            BubbleStylePanel(
+                label = action.label,
+                style = style,
+                onStyle = { com.qita.ui.BubbleStyles.set(action.id, it) },
+                onPicture = { stylePicker.launch("image/*") },
+                onReset = { com.qita.ui.BubbleStyles.reset(action.id) },
+                onClose = { styleFor = null },
             )
         }
 

@@ -60,6 +60,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.qita.ui.BubbleStyles
 import com.qita.ui.LaunchableApp
 import kotlinx.coroutines.delay
 import kotlin.math.sin
@@ -239,13 +240,25 @@ fun Bubble(
             },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box {
+        // A built-in bubble can be made translucent (the name under it stays solid).
+        val styleId = app.action?.id
+        Box(if (styleId != null) Modifier.graphicsLayer { alpha = BubbleStyles.all[styleId]?.alpha ?: 1f } else Modifier) {
             if (app.folderMembers != null) {
                 // A folder is clear glass with its apps inside, not a coloured ball.
                 FolderGlass(
                     app, size * 1.08f,
                     modifier = Modifier.padTarget(padKey, corner = null, app = app, pad = 10.dp, bring = false, ring = false, onClick = onClick),
                     selected = lit,
+                )
+            } else if (app.glassIcon != null) {
+                // A built-in bubble given the glass look: its pictogram inside clear (tinted) glass, like a folder.
+                FolderGlass(
+                    app, size * 1.04f,
+                    modifier = Modifier.padTarget(padKey, corner = null, app = app, pad = 10.dp, bring = false, ring = false, onClick = onClick),
+                    selected = lit,
+                    icon = app.glassIcon,
+                    iconFraction = 0.66f,
+                    bodyTint = app.glassTint ?: app.tint,
                 )
             } else Sphere(
                 app, size,

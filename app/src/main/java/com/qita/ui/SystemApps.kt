@@ -71,11 +71,18 @@ private fun systemApp(
     backBottom: Color = Color(0xFF07080A),
     art: DrawScope.() -> Unit,
 ): LaunchableApp {
-    // A theme can replace the art with its own picture (scaled to the usual size).
-    val themed = SystemIcons.overrides[action]?.let { runCatching { Resample.scaleTo(it.asAndroidBitmap(), ICON, ICON, keepAlpha = true).asImageBitmap() }.getOrNull() }
-    val icon = themed ?: drawIcon {
+    val style = BubbleStyles.of(action.id)
+    // The user's own picture wins, then the theme's picture (if its switch is on); each is scaled to the usual size.
+    val own = if (style.picture) BubbleStyles.picture(action.id)?.let { runCatching { android.graphics.Bitmap.createScaledBitmap(it.asAndroidBitmap(), ICON, ICON, true).asImageBitmap() }.getOrNull() } else null
+    val themed = if (own != null) null else SystemIcons.overrides[action]?.let { runCatching { Resample.scaleTo(it.asAndroidBitmap(), ICON, ICON, keepAlpha = true).asImageBitmap() }.getOrNull() }
+    val picture = own ?: themed
+    // A tint colours the dark backdrop behind the white pictogram.
+    val tinted = style.tint?.let { Color(it) }
+    val top = tinted?.let { androidx.compose.ui.graphics.lerp(it, Color.White, 0.15f) } ?: backTop
+    val bottom = tinted?.let { androidx.compose.ui.graphics.lerp(it, Color.Black, 0.6f) } ?: backBottom
+    val icon = picture ?: drawIcon {
         // A dark backdrop with a faint light in the upper left.
-        drawRect(Brush.linearGradient(listOf(backTop, backBottom), Offset.Zero, Offset(ICON.toFloat(), ICON.toFloat())))
+        drawRect(Brush.linearGradient(listOf(top, bottom), Offset.Zero, Offset(ICON.toFloat(), ICON.toFloat())))
         drawCircle(
             Brush.radialGradient(listOf(Color.White.copy(alpha = 0.16f), Color.Transparent), Offset(ICON * 0.3f, ICON * 0.25f), ICON * 0.55f),
             radius = ICON * 0.55f, center = Offset(ICON * 0.3f, ICON * 0.25f),
@@ -89,6 +96,9 @@ private fun systemApp(
         tint = tint,
         action = action,
         ball = SphereRenderer.render(icon.asAndroidBitmap(), 224, systemBody(action), 0.55f).asImageBitmap(),
+        // Clear glass: just the pictogram (or the picture) inside a glass sphere, coloured by the tint or the bubble's own colour.
+        glassIcon = if (style.glass) (picture ?: drawIcon { art() }) else null,
+        glassTint = if (style.glass) (tinted ?: tint) else null,
     )
 }
 
