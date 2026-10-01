@@ -103,6 +103,7 @@ import com.qita.ui.DownloadPlacer
 import com.qita.ui.DownloadItem
 import com.qita.ui.DlState
 import com.qita.ui.DownloadEngine
+import com.qita.ui.DownloadPrefs
 import com.qita.ui.DownloadRequest
 import com.qita.ui.DlKind
 import com.qita.ui.ApkInstaller
@@ -439,6 +440,7 @@ fun HomeScreen(homePresses: Int = 0) {
     // The download engine starts with the launcher, and tells it when a file has finished.
     DisposableEffect(Unit) {
         DownloadEngine.init(context)
+        DownloadPrefs.loadKeepAwake(context)
         DownloadEngine.onFinished = { handleFinished(it) }
         DownloadEngine.onMessage = { toast = it }
         DownloadEngine.onRescan = {
@@ -454,6 +456,14 @@ fun HomeScreen(homePresses: Int = 0) {
         if (DownloadEngine.takePendingRescan()) scanGames()
         DownloadEngine.items.filter { it.state == DlState.DONE && !it.handled && !it.finishing }.forEach { DownloadEngine.markHandled(it); handleFinished(it) }
         onDispose { DownloadEngine.onFinished = {}; DownloadEngine.onMessage = {}; DownloadEngine.onRescan = {}; DownloadEngine.asker = null }
+    }
+    // Optional: keep the screen on while something downloads (some devices drop the network when the screen sleeps).
+    val downloading = DownloadEngine.items.any { it.state == DlState.RUNNING }
+    val keepAwake = DownloadPrefs.keepAwakeFlag.value
+    DisposableEffect(downloading, keepAwake) {
+        val w = (context as? android.app.Activity)?.window
+        if (downloading && keepAwake) w?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose { w?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     }
     /** Turns the launcher between landscape and upright. The choice is kept, so it stays that way. */
     fun rotate() {
@@ -1150,7 +1160,7 @@ fun HomeScreen(homePresses: Int = 0) {
                 r, gameFolders,
                 onConfirm = { plan ->
                     askReq = null
-                    r.onItem(DownloadEngine.enqueue(r.url, r.name, r.kind, r.cookie, r.userAgent, plan, r.referer))
+                    r.onItem(DownloadEngine.enqueue(r.url, r.name, r.kind, r.cookie, r.userAgent, plan, r.referer, r.post))
                     toast = "Downloading ${r.name}. Progress is in the notification panel."
                 },
                 onCancel = { askReq = null },

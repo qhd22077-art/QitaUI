@@ -37,6 +37,9 @@ enum class DlKind { FILE, APK }
 class DownloadPlan(val unzip: Boolean, val folderUri: String?, val deleteZip: Boolean)
 
 /** A download waiting for the user's answers; [onItem] gets the download once it has started. */
+/** A form a page submitted with POST: the body to send again and its content type. */
+class FormPost(val body: String, val contentType: String)
+
 class DownloadRequest(
     val url: String,
     val name: String,
@@ -45,6 +48,7 @@ class DownloadRequest(
     val userAgent: String?,
     val referer: String?,
     val onItem: (DownloadItem) -> Unit,
+    val post: FormPost? = null,
 )
 
 /** The user's standing choices about downloads, and the last answers (used when the questions are switched off). */
@@ -67,6 +71,11 @@ object DownloadPrefs {
     /** How many downloads transfer at once; the rest wait their turn. */
     fun maxParallel(c: Context): Int = prefs(c).getInt("max_parallel", 3).coerceIn(1, 6)
     fun setMaxParallel(c: Context, n: Int) { prefs(c).edit().putInt("max_parallel", n.coerceIn(1, 6)).apply() }
+
+    /** Keep the screen on while a download runs (for devices that stop the network when the screen sleeps). */
+    val keepAwakeFlag = mutableStateOf(false)
+    fun loadKeepAwake(c: Context) { keepAwakeFlag.value = prefs(c).getBoolean("keep_awake", false) }
+    fun setKeepAwake(c: Context, on: Boolean) { prefs(c).edit().putBoolean("keep_awake", on).apply(); keepAwakeFlag.value = on }
 
     fun lastUnzip(c: Context) = prefs(c).getBoolean("last_unzip", true)
     fun lastDeleteZip(c: Context) = prefs(c).getBoolean("last_delzip", true)
@@ -111,6 +120,10 @@ class DownloadItem(
     var waitNote by mutableStateOf("")
     /** True while the finished file is being unpacked and filed, so the service keeps the process alive for it. */
     var finishing by mutableStateOf(false)
+    /** What the last request was and how the server answered, kept to explain a failure. */
+    var diag = ""
+    /** Set when the site starts the download with a form (POST): that request is sent again instead of a plain GET. */
+    var post: FormPost? = null
     /** Whether whoever handles a finished file (the engine itself, or the launcher) has dealt with it. */
     var handled = false
 
@@ -172,6 +185,7 @@ object DownloadEngine {
                 )
                 item.referer = o.optString("ref").ifEmpty { null }
                 item.handled = o.optBoolean("handled", true)
+                if (o.has("post_body")) item.post = FormPost(o.getString("post_body"), o.optString("post_type", "application/x-www-form-urlencoded"))
                 if (o.has("plan_folder") || o.has("plan_unzip")) item.plan = DownloadPlan(o.optBoolean("plan_unzip"), o.optString("plan_folder").ifEmpty { null }, o.optBoolean("plan_del", true))
                 item.total = o.optLong("total", -1)
                 item.finalPath = o.optString("final").ifEmpty { null }
@@ -192,6 +206,26 @@ object DownloadEngine {
         }
     }
 
+    /** Adds a file the app already has (a download a page built itself) as a finished download and files it like any other. */
+    fun addCompleted(file: File, name: String, plan: DownloadPlan?) {
+        val context = app ?: return
+        val id = java.lang.Long.toHexString(System.nanoTime())
+        val item = DownloadItem(id, "blob:", cleanName(name), DlKind.FILE, null, null, System.currentTimeMillis(), File(dir(context), "$id.part"))
+        val out = unique(dir(context), item.name)
+        if (!file.renameTo(out)) file.copyTo(out, overwrite = true).also { file.delete() }
+        item.plan = plan
+        item.finalPath = out.path
+        item.bytes = out.length()
+        item.total = item.bytes
+        item.state = DlState.DONE
+        items.add(0, item)
+        persist()
+        scope.launch {
+            if (canFinishHeadless(item)) { item.finishing = true; finishHeadless(item) }
+            else withContext(Dispatchers.Main) { item.handled = true; persist(); onFinished(item) }
+        }
+    }
+
     /** Marks a finished download as dealt with, so it is not offered again. */
     fun markHandled(item: DownloadItem) { item.handled = true; persist() }
 
@@ -202,6 +236,7 @@ object DownloadEngine {
                 JSONObject().put("id", it.id).put("url", it.url).put("name", it.name).put("kind", it.kind.name)
                     .put("cookie", it.cookie ?: "").put("ua", it.userAgent ?: "").put("started", it.startedAt)
                     .put("total", it.total).put("final", it.finalPath ?: "").put("state", it.state.name).put("error", it.error ?: "").put("ref", it.referer ?: "").put("handled", it.handled)
+                    .also { o -> it.post?.let { p -> o.put("post_body", p.body).put("post_type", p.contentType) } }
                     .also { o -> it.plan?.let { p -> o.put("plan_unzip", p.unzip).put("plan_folder", p.folderUri ?: "").put("plan_del", p.deleteZip) } },
             )
         }
@@ -209,12 +244,13 @@ object DownloadEngine {
     }
 
     /** Starts a download and returns it. [name] is cleaned of characters a file name cannot hold. */
-    fun enqueue(url: String, name: String, kind: DlKind = DlKind.FILE, cookie: String? = null, userAgent: String? = null, plan: DownloadPlan? = null, referer: String? = null): DownloadItem {
+    fun enqueue(url: String, name: String, kind: DlKind = DlKind.FILE, cookie: String? = null, userAgent: String? = null, plan: DownloadPlan? = null, referer: String? = null, post: FormPost? = null): DownloadItem {
         val context = app ?: error("DownloadEngine.init was not called")
         val id = java.lang.Long.toHexString(System.nanoTime())
         val item = DownloadItem(id, url, cleanName(name), kind, cookie, userAgent, System.currentTimeMillis(), File(dir(context), "$id.part"))
         item.plan = plan
         item.referer = referer
+        item.post = post
         items.add(0, item)
         persist()
         start(item)
@@ -228,14 +264,14 @@ object DownloadEngine {
      * The way the Store starts a download. APKs go straight to the installer's route. Anything else first asks the user (unzip?
      * which folder? keep the zip?), unless they switched the questions off, when their last answers are used.
      */
-    fun request(url: String, name: String, kind: DlKind = DlKind.FILE, cookie: String? = null, userAgent: String? = null, referer: String? = null, onItem: (DownloadItem) -> Unit = {}) {
+    fun request(url: String, name: String, kind: DlKind = DlKind.FILE, cookie: String? = null, userAgent: String? = null, referer: String? = null, onItem: (DownloadItem) -> Unit = {}, post: FormPost? = null) {
         val context = app ?: error("DownloadEngine.init was not called")
         val apk = kind == DlKind.APK || name.endsWith(".apk", true)
         val ask = asker
         if (apk || ask == null || !DownloadPrefs.ask(context)) {
-            onItem(enqueue(url, name, kind, cookie, userAgent, if (apk) null else DownloadPrefs.quietPlan(context), referer))
+            onItem(enqueue(url, name, kind, cookie, userAgent, if (apk) null else DownloadPrefs.quietPlan(context), referer, post))
         } else {
-            ask(DownloadRequest(url, name, kind, cookie, userAgent, referer, onItem))
+            ask(DownloadRequest(url, name, kind, cookie, userAgent, referer, onItem, post))
         }
     }
 
@@ -296,7 +332,9 @@ object DownloadEngine {
             awaitTurn(item)
             var url = fixUrl(item.url)
             var redirects = 0
-            var existing = item.partFile.length()
+            // A request sent again as a POST cannot ask for a part of the file, so it always starts from the beginning.
+            var usePost = item.post != null
+            var existing = if (usePost) { item.partFile.delete(); 0L } else item.partFile.length()
             var useCookie = true
             var useRange = true
             while (true) {
@@ -311,8 +349,21 @@ object DownloadEngine {
                 (item.referer ?: originOf(item.url))?.let { conn.setRequestProperty("Referer", it) }
                 if (useCookie) item.cookie?.let { conn.setRequestProperty("Cookie", it) }
                 if (existing > 0 && useRange) conn.setRequestProperty("Range", "bytes=$existing-")
+                val post = item.post
+                if (usePost && post != null) {
+                    val bytes = post.body.toByteArray(Charsets.UTF_8)
+                    conn.requestMethod = "POST"
+                    conn.doOutput = true
+                    conn.setFixedLengthStreamingMode(bytes.size)
+                    conn.setRequestProperty("Content-Type", post.contentType)
+                    originOf(item.url)?.let { conn.setRequestProperty("Origin", it.trimEnd('/')) }
+                    conn.outputStream.use { it.write(bytes) }
+                }
                 val code = conn.responseCode
+                item.diag = "${if (usePost) "POST" else "GET"} $code ${conn.contentType.orEmpty()} ${url.take(120)}"
                 if (code in 300..399) {
+                    // 301, 302 and 303 turn a POST into a GET; 307 and 308 keep it.
+                    if (code != 307 && code != 308) usePost = false
                     val next = conn.getHeaderField("Location") ?: throw IOException("Bad redirect")
                     conn.disconnect()
                     url = fixUrl(URL(URL(url), next).toString())
@@ -330,13 +381,13 @@ object DownloadEngine {
                     val body = runCatching { conn.errorStream?.bufferedReader()?.use { it.readText().take(400) } }.getOrNull().orEmpty()
                         .replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " ").trim().take(90)
                     conn.disconnect()
-                    throw IOException("Server said $code" + (if (note.isNotBlank()) " ($note)" else "") + (if (body.isNotBlank()) ": $body" else ""))
+                    throw IOException("Server said $code" + (if (note.isNotBlank()) " ($note)" else "") + (if (body.isNotBlank()) ": $body" else "") + " [${item.diag}]")
                 }
                 // A page (a login, a check, an error) where the file should be: saving it would give a "zip" that is really HTML.
                 val ctype = conn.contentType.orEmpty().lowercase()
                 if (ctype.startsWith("text/html") && !item.name.endsWith(".html", true) && !item.name.endsWith(".htm", true)) {
                     conn.disconnect()
-                    throw IOException("The site sent a web page instead of the file (a check, a login or a wrong link). Open the link in the Browser and start the download from there.")
+                    throw IOException("The site sent a web page instead of the file (a check, a login or a wrong link). Open the link in the Browser and start the download from there. [${item.diag}]")
                 }
                 // The server's own file name beats the page's guess when that had no real type ("downloadfile.bin").
                 serverName(conn.getHeaderField("Content-Disposition"))?.let { sn ->

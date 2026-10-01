@@ -380,8 +380,8 @@ fun StoreScreen(
     }
     DisposableEffect(web) {
         web.webViewClient = object : WebViewClient() {
-            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) { if (url != null) pageUrl = url }
-            override fun onPageFinished(view: WebView?, url: String?) { pageTitle = view?.title.orEmpty(); if (url != null) pageUrl = url }
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) { view?.let { FormCapture.inject(it) }; if (url != null) pageUrl = url }
+            override fun onPageFinished(view: WebView?, url: String?) { view?.let { FormCapture.inject(it) }; pageTitle = view?.title.orEmpty(); if (url != null) pageUrl = url }
 
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val u = request.url
@@ -444,11 +444,7 @@ fun StoreScreen(
                 return true
             }
         }
-        web.setDownloadListener { url, userAgent, disposition, mime, _ ->
-            val name = URLUtil.guessFileName(url, disposition, mime)
-            val kind = if (name.endsWith(".apk", true)) DlKind.APK else DlKind.FILE
-            DownloadEngine.request(url, name, kind, CookieManager.getInstance().getCookie(url), userAgent, web.url)
-        }
+        installDownloadHandling(web, context)
         onDispose { web.stopLoading(); web.destroy() }
     }
     fun openPage(url: String) { tab = 1; browsing = true; web.loadUrl(url) }

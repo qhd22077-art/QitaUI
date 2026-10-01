@@ -315,6 +315,12 @@ fun StoreSettings(
             }
         }
         item {
+            var awake by remember { mutableStateOf(DownloadPrefs.keepAwakeFlag.value) }
+            SettingRow("Keep the screen on while downloading", "Stops the screen sleeping while a download runs, for devices that cut the network when the screen turns off. Uses more battery.") {
+                SmallAction("store:dl:awake", if (awake) "On" else "Off") { awake = !awake; DownloadPrefs.setKeepAwake(context, awake) }
+            }
+        }
+        item {
             SettingRow("Wi-Fi only", "On mobile data a download waits until Wi-Fi is back.") {
                 SmallAction("store:dl:wifi", if (wifiOnly) "On" else "Off") { wifiOnly = !wifiOnly; DownloadPrefs.setWifiOnly(context, wifiOnly) }
             }

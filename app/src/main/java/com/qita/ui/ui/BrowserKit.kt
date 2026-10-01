@@ -17,8 +17,104 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.JavascriptInterface
 import com.qita.ui.DlKind
 import com.qita.ui.DownloadEngine
+import com.qita.ui.DownloadPrefs
+import com.qita.ui.FormPost
+import java.io.File
+import java.io.FileOutputStream
+
+/** The latest form a page submitted with POST, so that a download it starts can be asked for again the same way. */
+internal object FormCapture {
+    private class Snap(val action: String, val body: String, val type: String, val time: Long)
+    @Volatile private var last: Snap? = null
+
+    /** Listens for form submissions (and form.submit() calls) and reports the ones sent with POST as plain URL-encoded fields. */
+    private const val SCRIPT = """(function(){if(window.__qitaForms)return;window.__qitaForms=1;
+function snap(f,sub){try{var m=(f.method||'get').toLowerCase();if(m!=='post')return;
+var t=(f.enctype||'application/x-www-form-urlencoded').toLowerCase();if(t.indexOf('multipart')>=0)return;
+var d;try{d=sub?new FormData(f,sub):new FormData(f);}catch(e){d=new FormData(f);}
+var p=new URLSearchParams();d.forEach(function(v,k){if(typeof v==='string')p.append(k,v);});
+QitaBridge.form(new URL(f.action||location.href,location.href).href,p.toString());}catch(e){}}
+document.addEventListener('submit',function(e){snap(e.target,e.submitter);},true);
+var s=HTMLFormElement.prototype.submit;HTMLFormElement.prototype.submit=function(){snap(this,null);return s.apply(this,arguments);};})();"""
+
+    fun inject(web: WebView) { web.evaluateJavascript(SCRIPT, null) }
+
+    fun record(action: String, body: String) { last = Snap(action, body, "application/x-www-form-urlencoded", System.currentTimeMillis()) }
+
+    /** The form to send again for a download from [url], if a POST form to that address was submitted a moment ago. */
+    fun matching(url: String): FormPost? {
+        val s = last ?: return null
+        if (System.currentTimeMillis() - s.time > 20_000) return null
+        fun bare(u: String) = u.substringBefore('#').substringBefore('?').trimEnd('/')
+        return if (bare(s.action) == bare(url)) FormPost(s.body, s.type) else null
+    }
+}
+
+/** What the page's script can call: report a form, or hand over a file the page built itself (a blob). */
+internal class DownloadBridge(private val context: Context) {
+    private var file: File? = null
+    private var out: FileOutputStream? = null
+    private var name = "download"
+
+    @JavascriptInterface fun form(action: String, body: String) { FormCapture.record(action, body) }
+
+    @JavascriptInterface fun blobStart(fileName: String) {
+        runCatching { out?.close() }
+        name = fileName
+        val f = File(DownloadEngine.dir(context), "blob_${System.nanoTime()}.tmp")
+        file = f
+        out = FileOutputStream(f)
+    }
+
+    @JavascriptInterface fun blobChunk(base64: String) {
+        runCatching { out?.write(android.util.Base64.decode(base64, android.util.Base64.DEFAULT)) }
+    }
+
+    @JavascriptInterface fun blobEnd() {
+        val f = file ?: return
+        runCatching { out?.close() }
+        out = null
+        file = null
+        // Answers cannot be asked mid-script, so the last answers (or none) are used.
+        DownloadEngine.addCompleted(f, name, DownloadPrefs.quietPlan(context))
+    }
+
+    @JavascriptInterface fun blobFail(message: String) {
+        runCatching { out?.close() }
+        file?.delete()
+        file = null
+        out = null
+    }
+}
+
+/** Sends the page's own copy of a blob: file to the app, in slices, because only the page can read it. */
+private fun fetchBlob(web: WebView, url: String, name: String) {
+    val js = "(async function(u,n){try{var r=await fetch(u);var b=await r.blob();QitaBridge.blobStart(n);" +
+        "for(var o=0;o<b.size;o+=1048576){var a=new Uint8Array(await b.slice(o,o+1048576).arrayBuffer());var s='';" +
+        "for(var i=0;i<a.length;i+=32768)s+=String.fromCharCode.apply(null,a.subarray(i,i+32768));QitaBridge.blobChunk(btoa(s));}" +
+        "QitaBridge.blobEnd();}catch(e){QitaBridge.blobFail(String(e));}})(" + org.json.JSONObject.quote(url) + "," + org.json.JSONObject.quote(name) + ")"
+    web.post { web.evaluateJavascript(js, null) }
+}
+
+/**
+ * Makes downloads from a web view go through the launcher's engine. Besides plain links this covers sites that start a download
+ * by submitting a form (the form is sent again by the engine) and files a page builds itself (blob: links).
+ */
+internal fun installDownloadHandling(web: WebView, context: Context) {
+    web.addJavascriptInterface(DownloadBridge(context.applicationContext), "QitaBridge")
+    web.setDownloadListener { url, userAgent, disposition, mime, _ ->
+        val name = URLUtil.guessFileName(url, disposition, mime)
+        if (url.startsWith("blob:")) {
+            fetchBlob(web, url, name)
+        } else {
+            val kind = if (name.endsWith(".apk", true)) DlKind.APK else DlKind.FILE
+            DownloadEngine.request(url, name, kind, CookieManager.getInstance().getCookie(url), userAgent, web.url, post = FormCapture.matching(url))
+        }
+    }
+}
 
 /** What a browser tab tells the screen about its page. */
 internal class BrowserHooks(
@@ -60,8 +156,8 @@ internal fun createBrowserWebView(context: Context, desktop: Boolean): WebView =
 /** Connects a browser web view to its screen: page events, certificate warnings, other-app links, new tabs and downloads. */
 internal fun installBrowserClients(web: WebView, context: Context, allowInsecure: MutableSet<String>, hooks: BrowserHooks) {
     web.webViewClient = object : WebViewClient() {
-        override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) { if (url != null) hooks.onPageStarted(url) }
-        override fun onPageFinished(view: WebView?, url: String?) { if (url != null) hooks.onPageFinished(url, view?.title.orEmpty()) }
+        override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) { view?.let { FormCapture.inject(it) }; if (url != null) hooks.onPageStarted(url) }
+        override fun onPageFinished(view: WebView?, url: String?) { view?.let { FormCapture.inject(it) }; if (url != null) hooks.onPageFinished(url, view?.title.orEmpty()) }
 
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
             val u = request.url
@@ -121,9 +217,5 @@ internal fun installBrowserClients(web: WebView, context: Context, allowInsecure
             return true
         }
     }
-    web.setDownloadListener { url, userAgent, disposition, mime, _ ->
-        val name = URLUtil.guessFileName(url, disposition, mime)
-        val kind = if (name.endsWith(".apk", true)) DlKind.APK else DlKind.FILE
-        DownloadEngine.request(url, name, kind, CookieManager.getInstance().getCookie(url), userAgent, web.url)
-    }
+    installDownloadHandling(web, context)
 }
