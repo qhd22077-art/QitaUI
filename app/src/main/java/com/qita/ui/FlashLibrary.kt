@@ -64,7 +64,7 @@ object FlashSources {
     private const val UA = "QitaUI"
 
     /** The game list kept in the QitaUI repository. A copy is bundled in the app and the last good download is cached, so it works offline. */
-    const val LIST_URL = "https://raw.githubusercontent.com/qhd22077-art/QitaUI/main/flash/catalogue.json"
+    const val LIST_URL = "https://raw.githubusercontent.com/qhd22077-art/QitaUI/claude/ps-vita-android-software-w7vqu2/flash/catalogue.json"
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 

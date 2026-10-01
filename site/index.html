@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>QitaUI Flash Games</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>QitaUI Flash games</h1>
+    <p>Download Flash games and play them offline in the QitaUI launcher with a gamepad, or try them in your browser.</p>
+    <nav>
+      <button id="tab-list" class="on" type="button">Game list</button>
+      <button id="tab-ia" type="button">Internet Archive</button>
+    </nav>
+    <form id="search">
+      <input id="q" type="search" placeholder="Search" autocomplete="off">
+      <button type="submit">Search</button>
+    </form>
+  </header>
+  <main>
+    <p id="status"></p>
+    <div id="results"></div>
+  </main>
+  <div id="stage" hidden>
+    <div class="bar"><span id="stage-title"></span><button id="stage-close" type="button">Close</button></div>
+    <div id="stage-player"></div>
+  </div>
+  <footer>
+    <p>In the launcher, open Store, then Flash games: the same list and search, one tap to download, and the games play offline.
+    The game list is <code>flash/catalogue.json</code> in the QitaUI repository.</p>
+    <p>Games belong to their authors. This page only links to files; it hosts none.</p>
+  </footer>
+  <script src="app.js"></script>
+</body>
+</html>
