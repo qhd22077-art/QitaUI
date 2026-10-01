@@ -264,7 +264,7 @@ object DownloadEngine {
      * The way the Store starts a download. APKs go straight to the installer's route. Anything else first asks the user (unzip?
      * which folder? keep the zip?), unless they switched the questions off, when their last answers are used.
      */
-    fun request(url: String, name: String, kind: DlKind = DlKind.FILE, cookie: String? = null, userAgent: String? = null, referer: String? = null, onItem: (DownloadItem) -> Unit = {}, post: FormPost? = null) {
+    fun request(url: String, name: String, kind: DlKind = DlKind.FILE, cookie: String? = null, userAgent: String? = null, referer: String? = null, post: FormPost? = null, onItem: (DownloadItem) -> Unit = {}) {
         val context = app ?: error("DownloadEngine.init was not called")
         val apk = kind == DlKind.APK || name.endsWith(".apk", true)
         val ask = asker
