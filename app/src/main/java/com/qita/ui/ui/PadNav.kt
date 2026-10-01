@@ -22,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -309,7 +310,28 @@ fun Modifier.padClickable(
 ): Modifier = this
     .padTarget(key = key, corner = corner, app = app, pad = pad, ring = ring, onAdjust = onAdjust, overlay = overlay, onClick = onClick)
     .touchLit(key)
-    .clickable(onClick = onClick)
+    .pressShade(key, corner)
+    // No Material ripple: it is a plain rectangle that ignores the button's shape. pressShade shows the press in the button's own shape.
+    .clickable(interactionSource = NoRipple, indication = null, onClick = onClick)
+
+/** Shared by every clickable that draws its own press look instead of the Material ripple. */
+internal val NoRipple = androidx.compose.foundation.interaction.MutableInteractionSource()
+
+/**
+ * A soft white shade over the element, in its own shape ([corner], or fully round when null), while a finger is on it. Replaces the
+ * Material ripple, which is always a plain rectangle (a square flash over a round or pill-shaped button).
+ */
+internal fun Modifier.pressShade(key: Any?, corner: Dp?): Modifier = if (key == null) this else composed {
+    val on = PadNav.touched == key
+    val shade by animateFloatAsState(if (on) 1f else 0f, tween(if (on) 60 else 160), label = "pressShade")
+    Modifier.drawWithContent {
+        drawContent()
+        if (shade > 0.01f) {
+            val r = if (corner == null) size.minDimension / 2f else corner.toPx()
+            drawRoundRect(Color.White.copy(alpha = 0.22f * shade), cornerRadius = CornerRadius(r, r))
+        }
+    }
+}
 
 /**
  * Watches the raw touches on this element (without taking them from the click or from a scrolling parent) and marks [key] as

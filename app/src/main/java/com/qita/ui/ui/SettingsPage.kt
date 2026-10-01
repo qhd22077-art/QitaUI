@@ -136,6 +136,7 @@ fun SettingsPage(
     onPreviewLock: () -> Unit,
     games: GamesSetup,
     themes: ThemesSetup,
+    onCustomise: (com.qita.ui.SystemAction) -> Unit = {},
     startPage: String? = null,
     onClose: () -> Unit,
 ) {
@@ -177,6 +178,8 @@ fun SettingsPage(
     // The settings are tabs; the selected one is [page].
     var page by remember { mutableStateOf(startPage ?: "theme") }
     var lockTab by remember { mutableStateOf(0) }
+    // A destructive row asks first; this holds the question while it is on screen.
+    var ask by remember { mutableStateOf<ConfirmAsk?>(null) }
     // Back closes an open choice list first.
     BackHandler(enabled = optionPicker.value != null) { optionPicker.value = null }
     androidx.compose.runtime.DisposableEffect(Unit) { onDispose { optionPicker.value = null } }
@@ -253,7 +256,9 @@ fun SettingsPage(
                                     if (t.id == themes.activeId) Text("✓", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                                 }) { themes.onApply(t.id) }
                                 MenuRow("set:themepack:export:${t.id}", "↥", "Save “${t.name}” as a file to share") { themeExportId = t.id; themeExporter.launch(t.name.replace(Regex("[^A-Za-z0-9 _-]"), "_") + ".qtheme") }
-                                MenuRow("set:themepack:del:${t.id}", "✕", "Delete “${t.name}”") { themes.onDelete(t.id) }
+                                MenuRow("set:themepack:del:${t.id}", "✕", "Delete “${t.name}”") {
+                                    ask = ConfirmAsk("Delete this theme?", "“${t.name}” is removed from the list. Pictures it already put on your pages stay.", "Delete") { themes.onDelete(t.id) }
+                                }
                             }
                             // The theme's own icons for built-in bubbles: off until chosen, so a theme does not change the default icons.
                             if (themes.iconKeys.isNotEmpty()) {
@@ -273,7 +278,7 @@ fun SettingsPage(
                                 MenuRow("set:theme:$i", "◐", t.name, trailing = {
                                     Box(Modifier.size(22.dp).background(Brush.verticalGradient(listOf(t.top, t.bottom)), CircleShape).border(1.5.dp, Color.White, CircleShape))
                                     if (i == settings.themeIndex) Text("✓", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                                }) { onChange(settings.copy(themeIndex = i)) }
+                                }) { onChange(settings.copy(themeIndex = i, vitaMode = i == com.qita.ui.VITA_SILK)) }
                             }
                             SwatchRow("set:accent", "◎", "Accent colour (selection and highlights)", settings.accent) { onChange(settings.copy(accent = it)) }
                         }
@@ -310,7 +315,11 @@ fun SettingsPage(
                             CheckRow("set:fitnames", "▭", "Keep the bottom row's names on screen (makes the bubbles a little smaller if needed)", settings.fitNames) { onChange(settings.copy(fitNames = it)) }
                             CheckRow("set:newest", "↓", "Sort newest apps first", settings.sortNewest) { onChange(settings.copy(sortNewest = it)) }
                             CheckRow("set:autoadd", "+", "Add newly installed apps to home", settings.autoAdd) { onChange(settings.copy(autoAdd = it)) }
-                            MenuRow("set:clearhome", "✕", "Remove all apps from home") { onClearHome() }
+                            CheckRow("set:dragfolder", "▣", "Dropping a bubble on another one makes a folder", settings.dragMakesFolder) { onChange(settings.copy(dragMakesFolder = it)) }
+                            CheckRow("set:freeplace", "▣", "Put bubbles in any slot (leave empty slots)", settings.freePlacement) { onChange(settings.copy(freePlacement = it)) }
+                            MenuRow("set:clearhome", "✕", "Remove all apps from home") {
+                                ask = ConfirmAsk("Remove everything from home?", "Every bubble and folder leaves the home screen, except the built-in ones. Your apps and games stay on the Desktop and in Games.", "Remove all") { onClearHome() }
+                            }
                         }
                         "bubbles" -> {
                             ChoiceRow("set:glassBubbles", "◌", "Bubble style (Android 13+)", listOf("Opaque", "Glass"), if (settings.glassBubbles) 1 else 0) {
@@ -338,6 +347,11 @@ fun SettingsPage(
                             SliderRow("set:highlight", "✦", "Shine", settings.highlight, 0f..2f, 0.1f) { onChange(settings.copy(highlight = it)) }
                             SliderRow("set:sway", "≈", "Idle sway", settings.sway, 0f..3f, 0.25f) { onChange(settings.copy(sway = it)) }
                             ChoiceRow("set:tapAnim", "↻", "When tapped", listOf("Flip", "Pulse", "Nothing"), settings.tapAnim) { onChange(settings.copy(tapAnim = it)) }
+                            // The built-in bubbles can each be made see-through, glass, tinted or given a picture.
+                            InfoBox("Built-in bubbles: make one see-through, glassy or tinted, or give it a picture of your own.")
+                            com.qita.ui.SystemAction.values().forEach { a ->
+                                MenuRow("set:customise:${a.id}", "✎", "Customise ${a.label}") { onCustomise(a) }
+                            }
                         }
                         "lock" -> {
                             // The start screen, made easy: a live preview, one-tap looks, then a few short tabs.
@@ -423,8 +437,6 @@ fun SettingsPage(
                             // Steps 3 and 4.
                             CheckRow("set:gamesonhome", "⌂", "Put new games on the home screen after a scan", settings.gamesOnHome) { onChange(settings.copy(gamesOnHome = it)) }
                             CheckRow("set:gamefolders", "▣", "Keep new games in a folder for each console (PS2, PSP...)", settings.gameFoldersAuto) { onChange(settings.copy(gameFoldersAuto = it)) }
-                            CheckRow("set:dragfolder", "▣", "Dropping a bubble on another one makes a folder", settings.dragMakesFolder) { onChange(settings.copy(dragMakesFolder = it)) }
-                            CheckRow("set:freeplace", "▣", "Put bubbles in any slot (leave empty slots)", settings.freePlacement) { onChange(settings.copy(freePlacement = it)) }
                             CheckRow("set:gcoverauto", "▦", "Get cover art automatically after a scan", settings.gameCovers) { onChange(settings.copy(gameCovers = it)) }
                             MenuRow("set:gscan", "↻", if (games.busy != null) games.busy else "Scan for games (${games.gameCount} found)") { if (games.busy == null) games.onScan() }
                             MenuRow("set:gcovers", "▦", "Get cover art online for games without one") { if (games.busy == null) games.onCovers() }
@@ -496,10 +508,28 @@ fun SettingsPage(
                         }
                         else -> {}
                     }
+                    // Every page can be put back to how it was when the launcher was new.
+                    val pageName = tabs.firstOrNull { it.first == current }?.second ?: "this page"
+                    MenuRow("set:reset:$current", "↺", "Reset $pageName settings to defaults") {
+                        ask = ConfirmAsk(
+                            "Reset $pageName?", "Every setting on this page goes back to its original value. Your apps, folders, games and pictures are not touched.", "Reset",
+                        ) { onChange(resetPage(current, settings)) }
+                    }
+                    if (current == "system") {
+                        MenuRow("set:resetall", "↺", "Reset all settings to defaults") {
+                            ask = ConfirmAsk(
+                                "Reset all settings?", "Every setting goes back to its original value. Your apps, folders, games, themes and pictures are not touched.", "Reset all",
+                            ) { onChange(Settings()) }
+                        }
+                    }
                 }
             }
         }
         optionPicker.value?.let { p -> OptionPicker(p) { optionPicker.value = null } }
+        ask?.let { a ->
+            BackHandler(enabled = true) { ask = null }
+            ConfirmPrompt(a.title, a.text, a.ok, onOk = { ask = null; a.action() }, onCancel = { ask = null })
+        }
         BackButton(
             onClick = onClose,
             modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 8.dp),
@@ -614,6 +644,11 @@ private val LOCK_FONTS = listOf("Thin sans", "Built-in", "System", "Serif", "Mon
 private fun ChoiceRow(key: String, glyph: String, label: String, options: List<String>, index: Int, onIndex: (Int) -> Unit) {
     val n = options.size
     val i = index.coerceIn(0, n - 1)
+    // A short list shows every choice as its own button: tap the one you want (it can always be changed back).
+    if (n <= 4) {
+        SegmentedRow(key, glyph, label, options, i, onIndex)
+        return
+    }
     MenuRow(
         key, glyph, label,
         trailing = { Text(options[i], color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Medium) },
@@ -621,6 +656,98 @@ private fun ChoiceRow(key: String, glyph: String, label: String, options: List<S
     ) {
         // A long list (the consoles, the themes) opens as a picker; a short one just steps to the next choice.
         if (n > 6) optionPicker.value = OptionPick(label, options, i, onIndex) else onIndex((i + 1) % n)
+    }
+}
+
+/**
+ * A row with every choice of a short list as a button under its label. Touch sets the chosen one directly; the gamepad highlights the
+ * whole row: left/right steps through the choices and A goes to the next.
+ */
+@Composable
+private fun SegmentedRow(key: String, glyph: String, label: String, options: List<String>, index: Int, onIndex: (Int) -> Unit) {
+    val n = options.size
+    val lit = padHighlighted(key) || padHovered(key)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padTarget(key, corner = 0.dp, ring = false, onAdjust = { dir -> onIndex((index + dir + n) % n) }, onClick = { onIndex((index + 1) % n) })
+            .rowBand(lit)
+            .padding(horizontal = 6.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            GlyphBadge(glyph)
+            Text(label, Modifier.weight(1f), color = Color.White, fontSize = 20.sp)
+        }
+        Row(Modifier.fillMaxWidth().padding(start = 48.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            options.forEachIndexed { j, name ->
+                val chosen = j == index
+                val chipKey = "$key:$j"
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .touchLit(chipKey)
+                        .pressShade(chipKey, 16.dp)
+                        .clickable(interactionSource = NoRipple, indication = null) { onIndex(j) }
+                        .background(if (chosen) Color.White else Color.White.copy(alpha = 0.16f), RoundedCornerShape(16.dp))
+                        .border(1.dp, Color.White.copy(alpha = if (chosen) 1f else 0.5f), RoundedCornerShape(16.dp))
+                        .padding(horizontal = 6.dp, vertical = 9.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        name,
+                        color = if (chosen) DeepGreen else Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = if (chosen) FontWeight.Bold else FontWeight.Medium,
+                        maxLines = 2,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** A question shown before something that cannot be undone. */
+private class ConfirmAsk(val title: String, val text: String, val ok: String, val action: () -> Unit)
+
+/** [s] with the settings of one Settings page put back to their original values. */
+private fun resetPage(page: String, s: Settings): Settings {
+    val d = Settings()
+    return when (page) {
+        "theme" -> s.copy(themeIndex = d.themeIndex, vitaMode = d.vitaMode, prevTheme = d.prevTheme, accent = d.accent)
+        "background" -> s.copy(
+            particles = d.particles, particleCount = d.particleCount, bgCustom = d.bgCustom, bgTop = d.bgTop, bgMid = d.bgMid, bgBottom = d.bgBottom,
+            dim = d.dim, symbolCount = d.symbolCount, sceneSpeed = d.sceneSpeed,
+        )
+        "home" -> s.copy(
+            layoutIndex = d.layoutIndex, showLabels = d.showLabels, showDots = d.showDots, bubbleScale = d.bubbleScale, fitNames = d.fitNames,
+            sortNewest = d.sortNewest, autoAdd = d.autoAdd, dragMakesFolder = d.dragMakesFolder, freePlacement = d.freePlacement,
+        )
+        "bubbles" -> s.copy(
+            glassBubbles = d.glassBubbles, glass = d.glass, bubble3d = d.bubble3d, fullArt = d.fullArt, roundedBubbles = d.roundedBubbles,
+            bodyMode = d.bodyMode, bodyColor = d.bodyColor, iconScale = d.iconScale, iconSat = d.iconSat, iconBright = d.iconBright,
+            thickness = d.thickness, dome = d.dome, rimWidth = d.rimWidth, highlight = d.highlight, sway = d.sway, tapAnim = d.tapAnim,
+        )
+        "fonts" -> s.copy(
+            uiFontChoice = d.uiFontChoice, nameFont = d.nameFont, nameSize = d.nameSize, nameWeight = d.nameWeight, nameColor = d.nameColor,
+            namePill = d.namePill, scrollNames = d.scrollNames,
+        )
+        "topbar" -> s.copy(
+            showClock = d.showClock, clockSize = d.clockSize, notifColor = d.notifColor, barOpacity = d.barOpacity, use24h = d.use24h,
+            showBattery = d.showBattery, batteryLow = d.batteryLow, batteryCritical = d.batteryCritical, barColor = d.barColor, indicatorColor = d.indicatorColor,
+        )
+        "status" -> s.copy(use24h = d.use24h, showBattery = d.showBattery)
+        "motion" -> s.copy(lightMode = d.lightMode, reduceMotion = d.reduceMotion, sceneSpeed = d.sceneSpeed, sway = d.sway, tapAnim = d.tapAnim)
+        "lock" -> s.copy(
+            lockScreen = d.lockScreen, lockTapPeel = d.lockTapPeel, lockClockSize = d.lockClockSize, lockClockColor = d.lockClockColor, lockFont = d.lockFont,
+            lockShowDate = d.lockShowDate, lockPanelTint = d.lockPanelTint, lockBorder = d.lockBorder, lockBevel = d.lockBevel, lockFrame = d.lockFrame,
+            lockBgMode = d.lockBgMode, lockTheme = d.lockTheme, lockNotifs = d.lockNotifs, lockNotifCount = d.lockNotifCount, lockClockPos = d.lockClockPos,
+        )
+        "games" -> s.copy(gameCovers = d.gameCovers, gamesOnHome = d.gamesOnHome, gameFoldersAuto = d.gameFoldersAuto)
+        "controller" -> s.copy(cursorMode = d.cursorMode, cursorSpeed = d.cursorSpeed, psLabels = d.psLabels, swapAB = d.swapAB, debugInput = d.debugInput)
+        "system" -> s.copy(orientation = d.orientation, haptics = d.haptics)
+        else -> s
     }
 }
 
@@ -706,6 +833,7 @@ private fun SwatchRow(key: String, glyph: String, label: String, selected: Int, 
                         .size(if (on) 34.dp else 30.dp)
                         .background(Color(c), CircleShape)
                         .border(if (on) 3.dp else 1.5.dp, Color.White.copy(alpha = if (on) 1f else 0.7f), CircleShape)
+                        .clip(CircleShape)
                         .clickable { onPick(c) },
                 )
             }

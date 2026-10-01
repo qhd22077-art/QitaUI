@@ -393,7 +393,9 @@ private fun AppGrid(
                         Modifier
                             .animateItem()
                             .padTarget("grid:${app.packageName}", corner = 12.dp, app = app, pad = 2.dp) { onLaunch(app) }
-                            .combinedClickable(onClick = { onLaunch(app) }, onLongClick = { onLongPress(app) })
+                            .touchLit("grid:${app.packageName}")
+                            .pressShade("grid:${app.packageName}", 12.dp)
+                            .combinedClickable(interactionSource = NoRipple, indication = null, onClick = { onLaunch(app) }, onLongClick = { onLongPress(app) })
                             .padding(6.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
@@ -497,7 +499,9 @@ private fun DockItem(
             Modifier
                 .size(48.dp)
                 .padTarget(key, corner = 12.dp, app = app, pad = 3.dp, onClick = onClick)
-                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                .touchLit(key)
+                .pressShade(key, 12.dp)
+                .combinedClickable(interactionSource = NoRipple, indication = null, onClick = onClick, onLongClick = onLongClick)
                 .padding(4.dp),
             contentAlignment = Alignment.Center,
         ) { content() }
@@ -547,7 +551,9 @@ private fun AppRow(
         modifier
             .fillMaxWidth()
             .padTarget("row:${app.packageName}", corner = 8.dp, app = app, pad = 2.dp) { onLaunch(app) }
-            .combinedClickable(onClick = { onLaunch(app) }, onLongClick = { onLongPress(app) })
+            .touchLit("row:${app.packageName}")
+            .pressShade("row:${app.packageName}", 8.dp)
+            .combinedClickable(interactionSource = NoRipple, indication = null, onClick = { onLaunch(app) }, onLongClick = { onLongPress(app) })
             .padding(horizontal = 6.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),

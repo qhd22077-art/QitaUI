@@ -207,6 +207,26 @@ fun NamePrompt(title: String, value: String, onValue: (String) -> Unit, onOk: ()
     }
 }
 
+/** A question with an OK and a Cancel button, drawn in the screen (not a dialog) so the gamepad keeps working. */
+@Composable
+fun ConfirmPrompt(title: String, text: String, okLabel: String, onOk: () -> Unit, onCancel: () -> Unit) {
+    CompositionLocalProvider(LocalPadLayer provides 4) {
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).pointerInput(Unit) { detectTapGestures { onCancel() } }, contentAlignment = Alignment.Center) {
+            Column(
+                Modifier.padding(24.dp).fillMaxWidth(0.8f).background(Color(0xFF2B2B2B), RoundedCornerShape(16.dp)).pointerInput(Unit) { detectTapGestures { } }.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text(text, color = Color.White.copy(alpha = 0.85f), fontSize = 15.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    BarButton("confirm:cancel", "Cancel") { onCancel() }
+                    BarButton("confirm:ok", okLabel) { onOk() }
+                }
+            }
+        }
+    }
+}
+
 /** A small filter button for an open folder; lit when touched or highlighted by the gamepad. */
 @Composable
 private fun FilterChip(key: String, label: String, selected: Boolean, onClick: () -> Unit) {

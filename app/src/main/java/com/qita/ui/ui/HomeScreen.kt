@@ -1350,6 +1350,7 @@ fun HomeScreen(homePresses: Int = 0) {
                     onLockPicture = { uri -> store.saveWallpaper(uri, -5)?.let { lockWallpaper = it } },
                     onClearLockPicture = { store.clearWallpaper(-5); lockWallpaper = null },
                     onPreviewLock = { showSettings = false; settingsStart = null; showLock = true },
+                    onCustomise = { styleFor = it },
                     themes = ThemesSetup(
                         list = themeList,
                         activeId = activeTheme,
