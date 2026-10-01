@@ -445,7 +445,8 @@ private fun LinkRow(key: String, title: String, url: String, onOpen: () -> Unit,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(title.ifBlank { url }, color = Color.White, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val slide = marqueeOn(lit)
+            Text(title.ifBlank { url }, Modifier.nameMarquee(slide), color = Color.White, fontSize = 16.sp, maxLines = 1, softWrap = !slide, overflow = if (slide) TextOverflow.Clip else TextOverflow.Ellipsis)
             Text(url, color = DimText, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (onRemove != null) {

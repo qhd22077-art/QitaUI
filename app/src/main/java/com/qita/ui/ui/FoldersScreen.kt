@@ -415,7 +415,8 @@ private fun PathList(title: String, paths: List<String>, names: Map<String, Stri
                     .background(Color.White.copy(alpha = if (lit) 0.22f else 0.10f), RoundedCornerShape(10.dp))
                     .padding(horizontal = 12.dp, vertical = 9.dp),
             ) {
-                Text(names[p] ?: File(p).name.ifBlank { p }, color = Color.White, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val slide = marqueeOn(lit)
+                Text(names[p] ?: File(p).name.ifBlank { p }, Modifier.nameMarquee(slide), color = Color.White, fontSize = 16.sp, maxLines = 1, softWrap = !slide, overflow = if (slide) TextOverflow.Clip else TextOverflow.Ellipsis)
                 Text(p, color = DimText, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
@@ -436,7 +437,8 @@ private fun FileRow(item: FileItem, selecting: Boolean, picked: Boolean, onClick
     ) {
         Text(if (selecting) (if (picked) "☑" else "☐") else glyph(item), color = Color.White, fontSize = 20.sp, modifier = Modifier.padding(end = 12.dp))
         Column(Modifier.weight(1f)) {
-            Text(item.name, color = Color.White, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val slide = marqueeOn(lit)
+            Text(item.name, Modifier.nameMarquee(slide), color = Color.White, fontSize = 16.sp, maxLines = 1, softWrap = !slide, overflow = if (slide) TextOverflow.Clip else TextOverflow.Ellipsis)
             Text(
                 (if (item.isDir) "Folder" else sizeText(item.size)) + "  ·  " + DateFormat.getDateInstance(DateFormat.SHORT).format(Date(item.modified)),
                 color = DimText, fontSize = 12.sp, maxLines = 1,

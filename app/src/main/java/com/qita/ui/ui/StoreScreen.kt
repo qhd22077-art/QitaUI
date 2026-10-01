@@ -1223,7 +1223,8 @@ private fun CatalogueRow(e: StoreEntry, download: DownloadItem?, looking: Boolea
             EntryIcon(e, 74.dp)
             Column(Modifier.weight(1f).padding(start = 14.dp)) {
                 Text(if (e.category == 0) "Emulator" else "Free games", color = SoftText, fontSize = 13.sp, maxLines = 1)
-                Text(e.name, color = Color.White, fontSize = 24.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, style = TitleShadow)
+                val slide = marqueeOn(lit)
+                Text(e.name, Modifier.nameMarquee(slide), color = Color.White, fontSize = 24.sp, maxLines = 1, softWrap = !slide, overflow = if (slide) TextOverflow.Clip else TextOverflow.Ellipsis, style = TitleShadow)
                 Text(e.developer, color = DimText, fontSize = 15.sp, maxLines = 1)
             }
             GetButton(
@@ -1603,7 +1604,8 @@ private fun DownloadRowLarge(d: DownloadItem) {
     ) {
         DownloadGlyph(Modifier.size(46.dp))
         Column(Modifier.weight(1f)) {
-            Text(d.name, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val slide = marqueeOn(false)
+            Text(d.name, Modifier.nameMarquee(slide), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = !slide, overflow = if (slide) TextOverflow.Clip else TextOverflow.Ellipsis)
             if (d.state != DlState.DONE) DownloadBar(d, Modifier.padding(vertical = 4.dp))
             Text(d.status(), color = SoftText, fontSize = 13.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
         }

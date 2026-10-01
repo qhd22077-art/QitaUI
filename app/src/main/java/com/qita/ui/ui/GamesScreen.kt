@@ -289,7 +289,8 @@ private fun GameRow(app: LaunchableApp, favourites: Set<String>, played: Map<Str
     ) {
         Image(app.icon, null, Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)), contentScale = ContentScale.Crop)
         Column(Modifier.weight(1f)) {
-            Text(app.label, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val slide = marqueeOn(lit)
+            Text(app.label, Modifier.nameMarquee(slide), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, softWrap = !slide, overflow = if (slide) TextOverflow.Clip else TextOverflow.Ellipsis)
             if (sub.isNotBlank()) Text(sub, color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (game?.id in favourites) Text("★", color = Color(0xFFFFD34D), fontSize = 18.sp)

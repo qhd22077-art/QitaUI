@@ -272,10 +272,13 @@ fun Bubble(
             // The pill behind a name: on the selected bubble, or always if chosen. Dark names on a pale pill keep their contrast.
             val pill = lit || look.namePill
             val pillColor = if (moving) MoveCyan else if (lit) Color.White else Color.White.copy(alpha = 0.85f)
+            // A long name slides across so its end can be read (and starts again), instead of being cut off.
+            val slide = marqueeOn(hot || pressed)
             Text(
                 app.label,
                 Modifier
                     .padding(top = 6.dp)
+                    .nameMarquee(slide)
                     .then(
                         if (pill) Modifier.background(pillColor, RoundedCornerShape(50)).padding(horizontal = 9.dp, vertical = 1.dp)
                         else Modifier,
@@ -285,8 +288,9 @@ fun Bubble(
                 fontFamily = LocalNameFont.current,
                 fontWeight = if (lit) FontWeight.Bold else look.nameWeight,
                 style = TextStyle(shadow = if (pill) null else Shadow(Color.Black.copy(alpha = 0.55f), Offset(0f, 2f), 5f)),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+                maxLines = if (slide) 1 else 2,
+                softWrap = !slide,
+                overflow = if (slide) TextOverflow.Clip else TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
             )
         }

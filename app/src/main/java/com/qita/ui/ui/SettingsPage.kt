@@ -387,6 +387,7 @@ fun SettingsPage(
                             ChoiceRow("set:nameWeight", "A", "App name weight", listOf("Light", "Normal", "Bold"), settings.nameWeight) { onChange(settings.copy(nameWeight = it)) }
                             SwatchRow("set:nameColor", "●", "App name colour", settings.nameColor) { onChange(settings.copy(nameColor = it)) }
                             CheckRow("set:namePill", "▭", "Always show names on a pill", settings.namePill) { onChange(settings.copy(namePill = it)) }
+                            ChoiceRow("set:scrollNames", "↔", "Scroll long names", listOf("Off", "Selected or touched", "Always"), settings.scrollNames) { onChange(settings.copy(scrollNames = it)) }
                         }
                         "topbar" -> {
                             CheckRow("set:showClock", "◷", "Show the clock", settings.showClock) { onChange(settings.copy(showClock = it)) }

@@ -26,6 +26,8 @@ data class Look(
     val nameWeight: FontWeight = FontWeight.Normal,
     val nameColor: Color = Color.White,
     val namePill: Boolean = false,
+    /** Long names slide across: 0 never, 1 only the selected or touched one, 2 always. */
+    val scrollNames: Int = 2,
     val sceneSpeed: Float = 1f,
     val reduceMotion: Boolean = false,
     val showClock: Boolean = true,
@@ -62,6 +64,8 @@ fun Settings.look() = Look(
     nameWeight = when (nameWeight) { 0 -> FontWeight.Light; 2 -> FontWeight.Bold; else -> FontWeight.Normal },
     nameColor = Color(nameColor),
     namePill = namePill,
+    // Light mode keeps the battery: only the one you are on moves.
+    scrollNames = if (lightMode && scrollNames == 2) 1 else scrollNames,
     sceneSpeed = sceneSpeed,
     reduceMotion = reduceMotion,
     showClock = showClock,

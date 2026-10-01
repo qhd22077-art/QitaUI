@@ -12,6 +12,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.delay
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.basicMarquee
 
 /**
  * A looping clock from 0 to 2π as State, to be read while drawing so that only the drawing is redone each tick. Normally it runs at
@@ -94,3 +96,18 @@ fun Modifier.easeIn(originX: Float = 0.5f, originY: Float = 0.5f, from: Float = 
         transformOrigin = androidx.compose.ui.graphics.TransformOrigin(originX, originY)
     }
 }
+
+/** Whether a long name should be sliding right now: the setting says always, or only for the one that is [active] (selected or touched). */
+@androidx.compose.runtime.Composable
+fun marqueeOn(active: Boolean = false): Boolean {
+    val mode = LocalLook.current.scrollNames
+    return mode == 2 || (mode == 1 && active)
+}
+
+/**
+ * Makes a one-line name that does not fit slide sideways so its end comes into view, wait, and start again; a name that fits
+ * stays still. The text must be single-line, without wrapping or an ellipsis, while this is on.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+fun androidx.compose.ui.Modifier.nameMarquee(on: Boolean): androidx.compose.ui.Modifier =
+    if (on) this.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1200, repeatDelayMillis = 1200, velocity = 36.dp) else this

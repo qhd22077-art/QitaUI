@@ -167,6 +167,8 @@ data class Settings(
     val nameWeight: Int = 1,
     val nameColor: Int = 0xFFFFFFFF.toInt(),
     val namePill: Boolean = false,
+    /** Long names slide across: 0 never, 1 only the selected or touched one, 2 always. */
+    val scrollNames: Int = 2,
     val nameFont: Int = 0,
     val uiFontChoice: Int = 0,
     val sceneSpeed: Float = 1f,
@@ -258,6 +260,7 @@ class SettingsStore(private val context: Context) {
         nameWeight = prefs.getInt("nameWeight", 1),
         nameColor = prefs.getInt("nameColor", 0xFFFFFFFF.toInt()),
         namePill = prefs.getBoolean("namePill", false),
+        scrollNames = prefs.getInt("scrollNames", 2).coerceIn(0, 2),
         nameFont = prefs.getInt("nameFont", 0),
         uiFontChoice = prefs.getInt("uiFontChoice", 0),
         sceneSpeed = prefs.getFloat("sceneSpeed", 1f),
@@ -337,6 +340,7 @@ class SettingsStore(private val context: Context) {
             .putInt("nameWeight", s.nameWeight)
             .putInt("nameColor", s.nameColor)
             .putBoolean("namePill", s.namePill)
+            .putInt("scrollNames", s.scrollNames)
             .putInt("nameFont", s.nameFont)
             .putInt("uiFontChoice", s.uiFontChoice)
             .putFloat("sceneSpeed", s.sceneSpeed)
