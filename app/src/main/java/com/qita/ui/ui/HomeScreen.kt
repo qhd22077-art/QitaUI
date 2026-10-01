@@ -329,11 +329,13 @@ fun HomeScreen(homePresses: Int = 0) {
     fun importTheme(uri: android.net.Uri, vita: Boolean) {
         scope.launch {
             val r = withContext(Dispatchers.IO) {
-                runCatching {
+                try {
                     context.contentResolver.openInputStream(uri)?.use { input ->
                         if (vita) com.qita.ui.VitaThemeImport.import(context, input) else com.qita.ui.ThemePacks.importPack(context, input)
                     }
-                }.getOrNull()
+                } catch (e: Throwable) {
+                    com.qita.ui.ThemeImportResult(null, "That file could not be read: ${e.message ?: e.javaClass.simpleName}")
+                }
             }
             themeReport = r?.report ?: "That file could not be read."
             refreshThemes()

@@ -62,7 +62,9 @@ object ThemePacks {
     private fun root(c: Context) = File(c.filesDir, "themes").apply { mkdirs() }
     private fun prefs(c: Context) = c.getSharedPreferences("qita_theme_pack", Context.MODE_PRIVATE)
 
-    fun newId() = "t" + System.currentTimeMillis().toString(36)
+    private val seq = java.util.concurrent.atomic.AtomicInteger()
+
+    fun newId() = "t" + System.currentTimeMillis().toString(36) + seq.incrementAndGet().toString(36)
 
     fun folder(c: Context, id: String) = File(root(c), id.filter { it.isLetterOrDigit() })
 
@@ -93,8 +95,9 @@ object ThemePacks {
         if (pack == null) { SystemIcons.overrides = emptyMap(); return }
         val dir = folder(c, pack.id)
         val map = HashMap<SystemAction, androidx.compose.ui.graphics.ImageBitmap>()
-        for ((key, action) in listOf("settings" to SystemAction.SETTINGS, "browser" to SystemAction.BROWSER, "hostCollabo" to SystemAction.FOLDERS)) {
-            val file = pack.icons[key]?.let { File(dir, it) } ?: continue
+        val icons = pack.icons.mapKeys { it.key.lowercase() }
+        for ((key, action) in listOf("settings" to SystemAction.SETTINGS, "browser" to SystemAction.BROWSER, "hostcollabo" to SystemAction.FOLDERS)) {
+            val file = icons[key]?.let { File(dir, it) } ?: continue
             runCatching { android.graphics.BitmapFactory.decodeFile(file.path) }.getOrNull()?.let { map[action] = it.asImageBitmap() }
         }
         SystemIcons.overrides = map
