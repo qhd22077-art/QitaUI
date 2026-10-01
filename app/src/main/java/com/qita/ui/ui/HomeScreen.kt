@@ -321,6 +321,11 @@ fun HomeScreen(homePresses: Int = 0) {
     var themeReport by remember { mutableStateOf<String?>(null) }
     var activeTheme by remember { mutableStateOf(com.qita.ui.ThemePacks.active(context)) }
     fun refreshThemes() { themeList = com.qita.ui.ThemePacks.list(context); activeTheme = com.qita.ui.ThemePacks.active(context) }
+    // The theme that comes with the app is added to the list the first time.
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) { com.qita.ui.ThemePacks.installBundled(context) }
+        refreshThemes()
+    }
     fun importTheme(uri: android.net.Uri, vita: Boolean) {
         scope.launch {
             val r = withContext(Dispatchers.IO) {

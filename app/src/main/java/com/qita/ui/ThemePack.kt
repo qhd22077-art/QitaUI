@@ -100,6 +100,19 @@ object ThemePacks {
         SystemIcons.overrides = map
     }
 
+    /**
+     * Adds the themes that come with the app (once): "PlayStation Games Vita Themes" by Lich_Kiingg, a free Vita theme, in a smaller
+     * form (the pictures as JPEG, no music). It goes in the list like any imported theme; it is not applied by itself.
+     */
+    fun installBundled(c: Context) {
+        val p = prefs(c)
+        if (p.getBoolean("bundled1", false)) return
+        runCatching {
+            c.assets.open("themes/playstation-games.zip").use { VitaThemeImport.import(c, it) }
+        }
+        p.edit().putBoolean("bundled1", true).apply()
+    }
+
     /** Reads the theme in use at start-up, so its icons are there before the first bubble is drawn. */
     fun loadActive(c: Context) {
         val id = active(c) ?: return
