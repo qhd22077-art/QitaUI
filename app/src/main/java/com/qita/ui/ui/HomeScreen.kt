@@ -231,6 +231,7 @@ fun HomeScreen(homePresses: Int = 0) {
     // Only the photos of the page on screen and its neighbours are kept decoded (see the effect after the pager is made).
     var pageWallpapers by remember { mutableStateOf<Map<Int, androidx.compose.ui.graphics.ImageBitmap>>(emptyMap()) }
     var wallpaperRev by remember { mutableIntStateOf(0) }
+    val photoHolder = remember { arrayOfNulls<androidx.compose.ui.graphics.ImageBitmap>(1) }
     var showBackgrounds by remember { mutableStateOf(false) }
     var showIndex by remember { mutableStateOf(false) }
     // Where the LiveArea carousel is right now (fractional while swiping); drives the top bar's indicator.
@@ -335,7 +336,9 @@ fun HomeScreen(homePresses: Int = 0) {
     val folderMemberSet = remember(homeFolders) { homeFolders.flatMap { it.members }.toSet() }
     // Everything that is on the home screen, including what sits inside folders.
     val onHomeSet = remember(homeSet, folderMemberSet) { homeSet + folderMemberSet }
-    val pageCount = maxOf(1, (homeModel.slots.size + pageSize - 1) / pageSize)
+    // While a bubble is being dragged past the last page there is room for one more (empty) page to drop it on.
+    var sparePage by remember { mutableStateOf(0) }
+    val pageCount = maxOf(1, (homeModel.slots.size + pageSize - 1) / pageSize) + sparePage
     val pagerState = rememberPagerState { pageCount }
     // Where the pages are on screen (root pixels), so a dropped bubble can be put in the nearest free slot.
     var pageArea by remember { mutableStateOf(Rect.Zero) }
@@ -368,6 +371,7 @@ fun HomeScreen(homePresses: Int = 0) {
     var themeReport by remember { mutableStateOf<String?>(null) }
     var activeTheme by remember { mutableStateOf(com.qita.ui.ThemePacks.active(context)) }
     // The theme's icons that fit a built-in bubble, and which of them are switched on (none until the user chooses).
+    var themeUndo by remember { mutableStateOf(store.hasLookBackup()) }
     var themeIconKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
     var themeIconsOn by remember { mutableStateOf(com.qita.ui.ThemePacks.iconsOn(context)) }
     fun refreshThemes() {
@@ -403,7 +407,11 @@ fun HomeScreen(homePresses: Int = 0) {
             val pack = com.qita.ui.ThemePacks.load(context, id)
             if (pack == null) { toast = "That theme could not be read"; return@launch }
             val dir = com.qita.ui.ThemePacks.folder(context, id)
+            val before = pageBg
+            val beforeSettings = settings
             val done = withContext(Dispatchers.IO) {
+                // What was there is kept (once), so the theme can be undone.
+                store.backupLook(before, beforeSettings)
                 // The theme's pictures are copied as they are (no second lossy save); only the lock picture is read now.
                 val pages = pack.pages.indices.filter { i -> store.useWallpaperFile(File(dir, pack.pages[i]), i) }
                 val lockOk = pack.lock?.let { store.useWallpaperFile(File(dir, it), -5) } == true
@@ -429,6 +437,7 @@ fun HomeScreen(homePresses: Int = 0) {
             com.qita.ui.ThemePacks.applyIcons(context, pack)
             reload++
             refreshThemes()
+            themeUndo = store.hasLookBackup()
             toast = "Applied \u201c${pack.name}\u201d"
         }
     }
@@ -883,10 +892,13 @@ fun HomeScreen(homePresses: Int = 0) {
         if (edge != 0) {
             while (true) {
                 delay(700)
-                pagerState.animateScrollToPage((pagerState.currentPage + edge).coerceIn(0, pageCount - 1))
+                // Past the last page: make room for a new one (it goes again if nothing is dropped on it).
+                if (edge == 1 && settings.freePlacement && sparePage == 0 && pagerState.currentPage >= pagerState.pageCount - 1) sparePage = 1
+                pagerState.animateScrollToPage((pagerState.currentPage + edge).coerceIn(0, pagerState.pageCount - 1))
             }
         }
     }
+    LaunchedEffect(dragApp == null) { if (dragApp == null) sparePage = 0 }
 
     LaunchedEffect(selected) {
         val index = openPages.indexOfFirst { it.packageName == selected?.packageName }
@@ -1016,7 +1028,8 @@ fun HomeScreen(homePresses: Int = 0) {
             top = settings.theme.top, mid = settings.theme.mid, bottom = settings.theme.bottom, particles = settings.particles,
             wallpaper = when (pageBg[bgPage]) {
                 null -> wallpaper
-                PAGE_PHOTO -> pageWallpapers[bgPage]
+                // While the photo of a page is still being read, the one before it stays, instead of a flash of the plain scene.
+                PAGE_PHOTO -> (pageWallpapers[bgPage] ?: photoHolder[0]).also { photoHolder[0] = it }
                 else -> null
             },
             particleCount = settings.particleCount, dim = settings.dim,
@@ -1367,6 +1380,27 @@ fun HomeScreen(homePresses: Int = 0) {
                             }
                         },
                         onDelete = { id -> com.qita.ui.ThemePacks.delete(context, id); reload++; refreshThemes() },
+                        canUndo = themeUndo,
+                        onUndo = {
+                            scope.launch {
+                                val current = settings
+                                val r = withContext(Dispatchers.IO) { store.restoreLook(current) }
+                                if (r != null) {
+                                    pageBg = r.second
+                                    settings = r.first
+                                    store.save(r.first)
+                                    pageWallpapers = emptyMap()
+                                    wallpaperRev++
+                                    lockWallpaper = withContext(Dispatchers.IO) { store.loadWallpaper(-5) }
+                                    com.qita.ui.ThemePacks.setActive(context, null)
+                                    com.qita.ui.ThemePacks.applyIcons(context, null)
+                                    themeUndo = false
+                                    reload++
+                                    refreshThemes()
+                                    toast = "Put back what was there before the theme"
+                                }
+                            }
+                        },
                         iconKeys = themeIconKeys,
                         iconsOn = themeIconsOn,
                         onIcon = { key, on ->

@@ -84,6 +84,9 @@ class ThemesSetup(
     val onApply: (String) -> Unit,
     val onExport: (String, Uri) -> Unit,
     val onDelete: (String) -> Unit,
+    /** True while the look from before a theme was applied can be put back, and the action that does it. */
+    val canUndo: Boolean = false,
+    val onUndo: () -> Unit = {},
     /** The active theme's icons that fit a built-in bubble (Vita icon names, lower case), the ones switched on, and the switch. */
     val iconKeys: Set<String> = emptySet(),
     val iconsOn: Set<String> = emptySet(),
@@ -259,6 +262,9 @@ fun SettingsPage(
                                 MenuRow("set:themepack:del:${t.id}", "✕", "Delete “${t.name}”") {
                                     ask = ConfirmAsk("Delete this theme?", "“${t.name}” is removed from the list. Pictures it already put on your pages stay.", "Delete") { themes.onDelete(t.id) }
                                 }
+                            }
+                            if (themes.canUndo) {
+                                MenuRow("set:themeundo", "↺", "Put back my pictures and colours from before the theme") { themes.onUndo() }
                             }
                             // The theme's own icons for built-in bubbles: off until chosen, so a theme does not change the default icons.
                             if (themes.iconKeys.isNotEmpty()) {

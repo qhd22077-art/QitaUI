@@ -555,4 +555,52 @@ class SettingsStore(private val context: Context) {
     fun clearWallpaper(page: Int? = null) {
         wallpaperFile(page).delete()
     }
+
+    private val undoDir get() = File(context.filesDir, "wallpaper_undo").apply { mkdirs() }
+
+    /** True while the look from before the first theme was applied is kept, so it can be put back. */
+    fun hasLookBackup(): Boolean = prefs.getBoolean("undo_has", false)
+
+    /**
+     * Keeps how the home pages and the lock screen look now (their pictures, which pages use a photo, the lock mode and the name, clock
+     * and bar colours) before a theme replaces them. Only the first call counts, so the look from before any theme is what comes back.
+     */
+    fun backupLook(pageBg: Map<Int, Int>, s: Settings) {
+        if (hasLookBackup()) return
+        val dir = undoDir
+        dir.listFiles()?.forEach { it.delete() }
+        for (p in listOf(-5) + (0..9)) {
+            val f = wallpaperFile(p)
+            if (f.exists()) runCatching { f.copyTo(File(dir, "w${p + 5}.jpg"), overwrite = true) }
+        }
+        prefs.edit()
+            .putString("undo_pageBg", pageBg.entries.joinToString(",") { "${it.key}:${it.value}" })
+            .putInt("undo_lockBgMode", s.lockBgMode).putInt("undo_nameColor", s.nameColor).putInt("undo_lockClockColor", s.lockClockColor)
+            .putInt("undo_barColor", s.barColor).putInt("undo_indicatorColor", s.indicatorColor)
+            .putBoolean("undo_has", true).apply()
+    }
+
+    /** Puts back what [backupLook] kept: returns [s] with the saved colours and lock mode, and the saved page backgrounds; null if nothing was kept. */
+    fun restoreLook(s: Settings): Pair<Settings, Map<Int, Int>>? {
+        if (!hasLookBackup()) return null
+        val dir = undoDir
+        for (p in listOf(-5) + (0..9)) {
+            val f = wallpaperFile(p)
+            val b = File(dir, "w${p + 5}.jpg")
+            if (b.exists()) runCatching { b.copyTo(f, overwrite = true) } else f.delete()
+        }
+        val pageBg = prefs.getString("undo_pageBg", "").orEmpty().split(',').mapNotNull {
+            val parts = it.split(':')
+            val page = parts.getOrNull(0)?.toIntOrNull()
+            val value = parts.getOrNull(1)?.toIntOrNull()
+            if (page != null && value != null) page to value else null
+        }.toMap()
+        savePageBg(pageBg)
+        prefs.edit().putBoolean("undo_has", false).apply()
+        return s.copy(
+            lockBgMode = prefs.getInt("undo_lockBgMode", s.lockBgMode), nameColor = prefs.getInt("undo_nameColor", s.nameColor),
+            lockClockColor = prefs.getInt("undo_lockClockColor", s.lockClockColor), barColor = prefs.getInt("undo_barColor", s.barColor),
+            indicatorColor = prefs.getInt("undo_indicatorColor", s.indicatorColor),
+        ) to pageBg
+    }
 }
