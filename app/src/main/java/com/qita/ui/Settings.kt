@@ -181,6 +181,8 @@ data class Settings(
     val scrollNames: Int = 2,
     /** Dropping one bubble on the middle of another makes a folder of them. */
     val dragMakesFolder: Boolean = true,
+    /** A bubble can be put in any free slot of a page, leaving empty slots; off packs the bubbles in order. */
+    val freePlacement: Boolean = true,
     /** New games from a scan go into a folder for their console instead of onto the home screen one by one. */
     val gameFoldersAuto: Boolean = true,
     val nameFont: Int = 0,
@@ -290,6 +292,7 @@ class SettingsStore(private val context: Context) {
         namePill = prefs.getBoolean("namePill", false),
         scrollNames = prefs.getInt("scrollNames", 2).coerceIn(0, 2),
         dragMakesFolder = prefs.getBoolean("dragMakesFolder", true),
+        freePlacement = prefs.getBoolean("freePlacement", true),
         gameFoldersAuto = prefs.getBoolean("gameFoldersAuto", true),
         nameFont = prefs.getInt("nameFont", 0),
         uiFontChoice = prefs.getInt("uiFontChoice", 0),
@@ -375,6 +378,7 @@ class SettingsStore(private val context: Context) {
             .putBoolean("namePill", s.namePill)
             .putInt("scrollNames", s.scrollNames)
             .putBoolean("dragMakesFolder", s.dragMakesFolder)
+            .putBoolean("freePlacement", s.freePlacement)
             .putBoolean("gameFoldersAuto", s.gameFoldersAuto)
             .putInt("nameFont", s.nameFont)
             .putInt("uiFontChoice", s.uiFontChoice)

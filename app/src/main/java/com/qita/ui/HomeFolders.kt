@@ -16,6 +16,17 @@ import org.json.JSONObject
 /** A folder bubble on the home screen: its name and the ids of the bubbles inside it. The home list holds the folder's id in their place. */
 data class HomeFolder(val id: String, val name: String, val members: List<String>)
 
+/** An empty slot on a home page: the home list holds one of these ids where nothing sits, so bubbles can be put in any slot. */
+object HomeGaps {
+    const val PREFIX = "qita.gap."
+
+    fun isGap(id: String) = id.startsWith(PREFIX)
+
+    private val seq = java.util.concurrent.atomic.AtomicLong()
+
+    fun newId() = PREFIX + java.lang.Long.toHexString(System.nanoTime()) + "." + seq.incrementAndGet()
+}
+
 /** Where the folder bubbles are kept. */
 object HomeFolders {
     const val PREFIX = "qita.folder."

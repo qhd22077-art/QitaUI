@@ -106,6 +106,7 @@ import com.qita.ui.DownloadEngine
 import com.qita.ui.FolderArt
 import com.qita.ui.HomeFolder
 import com.qita.ui.HomeFolders
+import com.qita.ui.HomeGaps
 import com.qita.ui.DownloadPrefs
 import com.qita.ui.DownloadRequest
 import com.qita.ui.DlKind
@@ -303,7 +304,7 @@ fun HomeScreen(homePresses: Int = 0) {
     val layout = if (upright) com.qita.ui.PORTRAIT_LAYOUT else LAYOUTS[settings.layoutIndex.coerceIn(LAYOUTS.indices)]
     val pageSize = layout.size
     // Only apps the user has added appear on the home screen; the desktop lists everything.
-    val shown = remember(apps, home, settings.sortNewest, homeFolders, com.qita.ui.BubbleStyles.artRev) {
+    val homeModel = remember(apps, home, settings.sortNewest, homeFolders, com.qita.ui.BubbleStyles.artRev) {
         val byPackage = (apps + SYSTEM_APPS).associateBy { it.packageName }
         // A folder is shown as a bubble of its own, made from the bubbles inside it (and hidden while none of them exist any more).
         val folderApps = homeFolders.associate { f ->
@@ -314,16 +315,34 @@ fun HomeScreen(homePresses: Int = 0) {
                 tint = Color(0xFF9CC4FF), folderMembers = members,
             )
         }
-        val list = home.mapNotNull { id -> byPackage[id] ?: folderApps[id]?.takeIf { it.folderMembers.orEmpty().isNotEmpty() } }
-        // Newest first, with the built-in bubbles staying in front.
-        if (settings.sortNewest) list.sortedWith(compareByDescending<LaunchableApp> { it.action != null }.thenByDescending { it.installTime }) else list
+        // The slots in order (an empty slot is null), the id in each slot, and the ids that match nothing (kept, but not shown).
+        val slots = ArrayList<LaunchableApp?>()
+        val slotIds = ArrayList<String>()
+        val ghosts = ArrayList<String>()
+        for (id in home) {
+            if (HomeGaps.isGap(id)) { slots.add(null); slotIds.add(id); continue }
+            val a = byPackage[id] ?: folderApps[id]?.takeIf { it.folderMembers.orEmpty().isNotEmpty() }
+            if (a != null) { slots.add(a); slotIds.add(id) } else ghosts.add(id)
+        }
+        if (settings.sortNewest) {
+            // Newest first, with the built-in bubbles staying in front (no empty slots then).
+            val sorted = slots.filterNotNull().sortedWith(compareByDescending<LaunchableApp> { it.action != null }.thenByDescending { it.installTime })
+            HomeModel(sorted, sorted.map { it.packageName }, sorted, ghosts)
+        } else HomeModel(slots, slotIds, slots.filterNotNull(), ghosts)
     }
+    val shown = homeModel.shown
     val homeSet = remember(home) { home.toSet() }
     val folderMemberSet = remember(homeFolders) { homeFolders.flatMap { it.members }.toSet() }
     // Everything that is on the home screen, including what sits inside folders.
     val onHomeSet = remember(homeSet, folderMemberSet) { homeSet + folderMemberSet }
-    val pageCount = maxOf(1, (shown.size + pageSize - 1) / pageSize)
+    val pageCount = maxOf(1, (homeModel.slots.size + pageSize - 1) / pageSize)
     val pagerState = rememberPagerState { pageCount }
+    // Where the pages are on screen (root pixels), so a dropped bubble can be put in the nearest free slot.
+    var pageArea by remember { mutableStateOf(Rect.Zero) }
+    // Switching free placement off closes the empty slots up again.
+    LaunchedEffect(settings.freePlacement) {
+        if (!settings.freePlacement && home.any { HomeGaps.isGap(it) }) { home = home.filter { !HomeGaps.isGap(it) }; store.saveHome(home) }
+    }
     // 0 -> 1 as the page edit view (zoomed out, framed, information bar gone) opens.
     val editAmt by animateFloatAsState(if (editMode) 1f else 0f, tween(VitaMotion.Long, easing = VitaMotion.Ease), label = "editAmt")
     fun themeOf(page: Int): Theme {
@@ -414,6 +433,17 @@ fun HomeScreen(homePresses: Int = 0) {
         }
     }
     fun saveFolders(list: List<HomeFolder>) { homeFolders = list; HomeFolders.save(context, list) }
+    /** Takes a bubble out of the home list. With free placement its slot stays empty so the others do not move; otherwise they close up. */
+    fun vacate(list: List<String>, pkg: String): List<String> =
+        if (settings.freePlacement && pkg in list) list.map { if (it == pkg) HomeGaps.newId() else it } else list - pkg
+    /** The home list without empty slots at the end or whole empty pages (the first page stays); ids that match nothing are kept at the end. */
+    fun settle(list: List<String>): List<String> {
+        val ghostSet = homeModel.ghosts.toSet()
+        var slots = list.filter { it !in ghostSet }
+        while (slots.isNotEmpty() && HomeGaps.isGap(slots.last())) slots = slots.dropLast(1)
+        slots = slots.chunked(pageSize).filterIndexed { i, p -> i == 0 || !p.all { HomeGaps.isGap(it) } }.flatten()
+        return slots + list.filter { it in ghostSet }
+    }
     /** Takes folders with nothing left in them off the home screen. */
     fun pruneFolders() {
         val empty = homeFolders.filter { it.members.isEmpty() }.map { it.id }
@@ -425,7 +455,7 @@ fun HomeScreen(homePresses: Int = 0) {
     }
     /** Takes a bubble off the home screen wherever it is, loose or inside a folder. */
     fun forgetFromHome(pkg: String) {
-        home = home - pkg
+        home = settle(vacate(home, pkg))
         store.saveHome(home)
         if (homeFolders.any { pkg in it.members }) saveFolders(homeFolders.map { f -> if (pkg in f.members) f.copy(members = f.members - pkg) else f })
         pruneFolders()
@@ -454,7 +484,7 @@ fun HomeScreen(homePresses: Int = 0) {
         if (target.folderMembers != null) {
             val f = homeFolders.firstOrNull { it.id == target.packageName } ?: return
             saveFolders(homeFolders.map { if (it.id == f.id) it.copy(members = (it.members + dragged.packageName).distinct()) else it })
-            home = home - dragged.packageName
+            home = settle(vacate(home, dragged.packageName))
             store.saveHome(home)
             toast = "Added ${dragged.label} to ${f.name}"
         } else {
@@ -462,7 +492,7 @@ fun HomeScreen(homePresses: Int = 0) {
             val name = if (sameConsole) systemById(target.game!!.systemId)?.short ?: "Folder" else "Folder"
             val id = HomeFolders.newId()
             saveFolders(homeFolders + HomeFolder(id, name, listOf(target.packageName, dragged.packageName)))
-            home = home.map { if (it == target.packageName) id else it }.filter { it != dragged.packageName }
+            home = settle(vacate(home.map { if (it == target.packageName) id else it }, dragged.packageName))
             store.saveHome(home)
             toast = "Folder made. Tap it to open it; edit the home screen to rename or undo it"
         }
@@ -696,30 +726,43 @@ fun HomeScreen(homePresses: Int = 0) {
     }
     fun moveStep(dx: Int, dy: Int) {
         val pkg = Controller.movingPackage ?: return
-        val list = home.toMutableList()
-        val from = list.indexOf(pkg)
+        val ids = homeModel.slotIds.toMutableList()
+        val from = ids.indexOf(pkg)
         if (from < 0) return
         val page = from / pageSize
         val local = layout.step(from % pageSize, dx, dy)
         // Off the page: horizontal steps continue in reading order, vertical steps jump a whole page.
-        val to = when {
+        var to = when {
             local != null -> page * pageSize + local
             dx != 0 -> from + dx
             else -> from + dy * pageSize
-        }.coerceIn(0, list.size - 1)
-        if (to == from) return
-        list.add(to, list.removeAt(from))
-        home = list; store.saveHome(home)
+        }
+        if (settings.freePlacement) {
+            // Any slot can be reached, up to the end of the last page; stepping onto an empty slot swaps with it.
+            to = to.coerceIn(0, maxOf(ids.size, pageCount * pageSize) - 1)
+            if (to == from) return
+            while (ids.size <= to) ids.add(HomeGaps.newId())
+            val occupant = ids[to]
+            if (HomeGaps.isGap(occupant)) { ids[to] = pkg; ids[from] = occupant } else ids.add(to, ids.removeAt(from))
+        } else {
+            to = to.coerceIn(0, ids.size - 1)
+            if (to == from) return
+            ids.add(to, ids.removeAt(from))
+        }
+        // Empty slots at the end are only cleared when the bubble is put down, so the slot being stepped through stays.
+        home = ids + homeModel.ghosts
+        store.saveHome(home)
     }
     fun endMove(confirm: Boolean) {
         val pkg = Controller.movingPackage ?: return
-        if (!confirm) moveOriginal?.let { home = it; store.saveHome(it) }
+        if (confirm) { home = settle(home); store.saveHome(home) }
+        else moveOriginal?.let { home = it; store.saveHome(it) }
         moveOriginal = null
         Controller.movingPackage = null
         PadNav.select("home:$pkg")
     }
     // Keep the carried bubble's page on screen.
-    val movingPage = Controller.movingPackage?.let { home.indexOf(it) / pageSize }
+    val movingPage = Controller.movingPackage?.let { homeModel.slotIds.indexOf(it) / pageSize }
     LaunchedEffect(movingPage) { movingPage?.let { pagerState.animateScrollToPage(it.coerceIn(0, pageCount - 1)) } }
 
     // Gamepad navigation plumbing.
@@ -740,7 +783,7 @@ fun HomeScreen(homePresses: Int = 0) {
     LaunchedEffect(currentKey) {
         val k = currentKey
         if (k is String && k.startsWith("home:")) {
-            val idx = shown.indexOfFirst { "home:${it.packageName}" == k }
+            val idx = homeModel.slotIds.indexOf(k.removePrefix("home:"))
             if (idx >= 0 && pagerState.currentPage != idx / pageSize) pagerState.animateScrollToPage(idx / pageSize)
         }
     }
@@ -862,6 +905,25 @@ fun HomeScreen(homePresses: Int = 0) {
         }
     }
 
+    /** The empty slot (or the bubble's own) on [page] nearest to where the bubble was dropped, as an index into the slot list; null if there is none. */
+    fun nearestFreeSlot(ids: List<String>, own: Int, page: Int): Int? {
+        if (pageArea == Rect.Zero) return null
+        // The pages are zoomed out inside a margin while the home screen is being edited.
+        val padH = with(density) { (44.dp * editAmt).toPx() }
+        val padV = with(density) { (22.dp * editAmt).toPx() }
+        val w = pageArea.width - 2 * padH
+        val h = pageArea.height - 2 * padV
+        return layout.slots.indices
+            .map { page * pageSize + it }
+            .filter { it == own || it >= ids.size || HomeGaps.isGap(ids[it]) }
+            .minByOrNull { idx ->
+                val (fx, fy) = layout.slots[idx - page * pageSize]
+                val dx = pageArea.left + padH + w * fx - dragPos.x
+                val dy = pageArea.top + padV + h * fy - dragPos.y
+                dx * dx + dy * dy
+            }
+    }
+
     fun drop(app: LaunchableApp) {
         val list = shown
         val from = list.indexOfFirst { it.packageName == app.packageName }
@@ -877,14 +939,30 @@ fun HomeScreen(homePresses: Int = 0) {
                 return
             }
         }
-        val to = if (target != null) list.indexOf(target)
-        else minOf(pagerState.currentPage * pageSize + pageSize, list.size) - 1
-        if (to == from) return
-        val moved = list.toMutableList()
-        val item = moved.removeAt(from)
-        moved.add(to.coerceIn(0, moved.size), item)
-        home = moved.map { it.packageName }
-        store.saveHome(home)
+        if (settings.freePlacement) {
+            // Into the nearest empty slot of the page, or (on a bubble) in front of it.
+            val ids = homeModel.slotIds.toMutableList()
+            val fromSlot = ids.indexOf(app.packageName)
+            if (fromSlot < 0) return
+            val page = pagerState.currentPage
+            val dest = if (target != null) ids.indexOf(target.packageName)
+            else nearestFreeSlot(ids, fromSlot, page) ?: (minOf(page * pageSize + pageSize, ids.size) - 1)
+            if (dest < 0 || dest == fromSlot) return
+            while (ids.size <= dest) ids.add(HomeGaps.newId())
+            val occupant = ids[dest]
+            if (HomeGaps.isGap(occupant)) { ids[dest] = app.packageName; ids[fromSlot] = occupant } else ids.add(dest, ids.removeAt(fromSlot))
+            home = settle(ids + homeModel.ghosts)
+            store.saveHome(home)
+        } else {
+            val to = if (target != null) list.indexOf(target)
+            else minOf(pagerState.currentPage * pageSize + pageSize, list.size) - 1
+            if (to == from) return
+            val moved = list.toMutableList()
+            val item = moved.removeAt(from)
+            moved.add(to.coerceIn(0, moved.size), item)
+            home = moved.map { it.packageName }
+            store.saveHome(home)
+        }
         // A manual order replaces the "newest first" sort.
         if (settings.sortNewest) {
             settings = settings.copy(sortNewest = false)
@@ -967,7 +1045,8 @@ fun HomeScreen(homePresses: Int = 0) {
             // Room for the information bar, which is drawn once above everything so it never moves.
             Spacer(Modifier.height(28.dp))
             BubblePager(
-                apps = shown,
+                apps = homeModel.slots,
+                onPageArea = { pageArea = it },
                 pagerState = pagerState,
                 scale = settings.bubbleScale,
                 layout = layout,
@@ -1634,7 +1713,10 @@ fun HomeScreen(homePresses: Int = 0) {
 
 @Composable
 private fun BubblePager(
-    apps: List<LaunchableApp>,
+    /** The slots in order; null is an empty slot. */
+    apps: List<LaunchableApp?>,
+    /** Where the pages are on screen (root pixels), reported as it changes. */
+    onPageArea: (Rect) -> Unit,
     pagerState: PagerState,
     scale: Float,
     layout: PageLayout,
@@ -1679,7 +1761,10 @@ private fun BubblePager(
     Box(
         modifier
             .fillMaxSize()
-            .onGloballyPositioned { origin = it.positionInRoot() }
+            .onGloballyPositioned {
+                origin = it.positionInRoot()
+                onPageArea(Rect(origin, androidx.compose.ui.geometry.Size(it.size.width.toFloat(), it.size.height.toFloat())))
+            }
             // Holding the background (not a bubble) opens the page edit view.
             .pointerInput(Unit) { detectTapGestures(onLongPress = { longPress(origin + it) }) }
             // Swiping sideways on the home screen reaches the open LiveArea pages, as on the Vita.
@@ -1744,7 +1829,9 @@ private fun BubblePager(
                             .vitaPanel(6.dp, 0.9f),
                     )
                 }
-                pageApps.forEachIndexed { i, app ->
+                pageApps.forEachIndexed { i, slotApp ->
+                    // An empty slot draws nothing.
+                    val app = slotApp ?: return@forEachIndexed
                     val (fx, fy) = layout.slots[i]
                     androidx.compose.runtime.key(app.packageName) {
                         DisposableEffect(app.packageName) { onDispose { onDisposed(app.packageName) } }
@@ -1798,6 +1885,17 @@ private fun PageDots(count: Int, current: Int, modifier: Modifier = Modifier) {
         }
     }
 }
+
+/**
+ * What the home list makes of the apps now installed: the slots in order (null is an empty slot), the id in each slot, the bubbles
+ * without the empty slots, and the ids that match nothing (an app not loaded yet or since removed; kept, not shown).
+ */
+private class HomeModel(
+    val slots: List<LaunchableApp?>,
+    val slotIds: List<String>,
+    val shown: List<LaunchableApp>,
+    val ghosts: List<String>,
+)
 
 /** A finished download waiting for the user to say which console it belongs to. */
 private class PendingPlace(val item: DownloadItem, val candidates: List<GameSystem>, val zip: Boolean)

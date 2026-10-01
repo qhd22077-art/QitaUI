@@ -424,6 +424,7 @@ fun SettingsPage(
                             CheckRow("set:gamesonhome", "⌂", "Put new games on the home screen after a scan", settings.gamesOnHome) { onChange(settings.copy(gamesOnHome = it)) }
                             CheckRow("set:gamefolders", "▣", "Keep new games in a folder for each console (PS2, PSP...)", settings.gameFoldersAuto) { onChange(settings.copy(gameFoldersAuto = it)) }
                             CheckRow("set:dragfolder", "▣", "Dropping a bubble on another one makes a folder", settings.dragMakesFolder) { onChange(settings.copy(dragMakesFolder = it)) }
+                            CheckRow("set:freeplace", "▣", "Put bubbles in any slot (leave empty slots)", settings.freePlacement) { onChange(settings.copy(freePlacement = it)) }
                             CheckRow("set:gcoverauto", "▦", "Get cover art automatically after a scan", settings.gameCovers) { onChange(settings.copy(gameCovers = it)) }
                             MenuRow("set:gscan", "↻", if (games.busy != null) games.busy else "Scan for games (${games.gameCount} found)") { if (games.busy == null) games.onScan() }
                             MenuRow("set:gcovers", "▦", "Get cover art online for games without one") { if (games.busy == null) games.onCovers() }
