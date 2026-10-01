@@ -27,7 +27,6 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.zip.ZipInputStream
 
 enum class DlState { RUNNING, PAUSED, DONE, FAILED }
 
@@ -84,13 +83,17 @@ object DownloadPrefs {
 class DownloadItem(
     val id: String,
     val url: String,
-    val name: String,
+    name: String,
     val kind: DlKind,
     val cookie: String?,
     val userAgent: String?,
     val startedAt: Long,
     val partFile: File,
 ) {
+    /** The file name; replaced by the server's own (Content-Disposition) when the page gave only a generic one. */
+    var name by mutableStateOf(name)
+    /** Failed attempts in a row that were put down to the connection; the download tries again from where it is. */
+    var attempts = 0
     var state by mutableStateOf(DlState.RUNNING)
     var bytes by mutableStateOf(0L)
     var total by mutableStateOf(-1L)
@@ -329,6 +332,17 @@ object DownloadEngine {
                     conn.disconnect()
                     throw IOException("Server said $code" + (if (note.isNotBlank()) " ($note)" else "") + (if (body.isNotBlank()) ": $body" else ""))
                 }
+                // A page (a login, a check, an error) where the file should be: saving it would give a "zip" that is really HTML.
+                val ctype = conn.contentType.orEmpty().lowercase()
+                if (ctype.startsWith("text/html") && !item.name.endsWith(".html", true) && !item.name.endsWith(".htm", true)) {
+                    conn.disconnect()
+                    throw IOException("The site sent a web page instead of the file (a check, a login or a wrong link). Open the link in the Browser and start the download from there.")
+                }
+                // The server's own file name beats the page's guess when that had no real type ("downloadfile.bin").
+                serverName(conn.getHeaderField("Content-Disposition"))?.let { sn ->
+                    val generic = item.name.endsWith(".bin", true) || !item.name.contains('.') || item.name.startsWith("downloadfile")
+                    if (generic && sn.contains('.')) { item.name = cleanName(sn); persist() }
+                }
                 val resumed = code == 206 && existing > 0
                 val length = conn.contentLengthLong
                 item.total = if (length >= 0) length + (if (resumed) existing else 0L) else -1L
@@ -377,10 +391,30 @@ object DownloadEngine {
             throw e
         } catch (e: Exception) {
             item.active = false
+            // A dropped connection or a timeout is not the end: try again, from the bytes already saved.
+            val msg = e.message.orEmpty()
+            val hopeless = msg.startsWith("Server said 4") || msg.startsWith("The site sent") || msg.startsWith("Too many") || msg.startsWith("Bad redirect")
+            if (!hopeless && item.attempts < 6) {
+                item.attempts++
+                item.waitNote = "Connection lost, trying again (${item.attempts}/6)"
+                delay(2000L * item.attempts)
+                currentCoroutineContext().ensureActive()
+                return run(item)
+            }
             item.state = DlState.FAILED
-            item.error = e.message ?: "failed"
+            item.error = msg.ifBlank { e.javaClass.simpleName }
             persist()
         }
+    }
+
+    /** The file name in a Content-Disposition header, or null. */
+    private fun serverName(header: String?): String? {
+        if (header.isNullOrBlank()) return null
+        Regex("filename\\*\\s*=\\s*[^']*''([^;]+)", RegexOption.IGNORE_CASE).find(header)?.let { m ->
+            return runCatching { java.net.URLDecoder.decode(m.groupValues[1].trim().trim('"'), "UTF-8") }.getOrNull()
+        }
+        Regex("filename\\s*=\\s*\"?([^\";]+)\"?", RegexOption.IGNORE_CASE).find(header)?.let { return it.groupValues[1].trim() }
+        return null
     }
 
     /** Whether the engine can file this download by itself: the user chose a game folder before it began (and it is not an APK). */
@@ -579,13 +613,24 @@ object DownloadPlacer {
         // An auto folder keeps each console in its own sub-folder, named so the scanner can tell them apart.
         val parentId = if (folder.systemId == "auto" && system != null) subFolder(context, tree, rootId, system) else rootId
         val parent = DocumentsContract.buildDocumentUriUsingTree(tree, parentId)
-        val doc = DocumentsContract.createDocument(resolver, parent, "application/octet-stream", name)
+        // The type matters: with a generic one some providers add ".bin" (game.iso becomes game.iso.bin), and then no console finds it.
+        val mime = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase()) ?: "application/octet-stream"
+        var doc = DocumentsContract.createDocument(resolver, parent, mime, name)
             ?: return Result(false, "Could not write into the game folder")
+        displayNameOf(resolver, doc)?.let { actual ->
+            if (actual.endsWith(".bin", true) && !name.endsWith(".bin", true)) {
+                runCatching { DocumentsContract.renameDocument(resolver, doc, actual.dropLast(4)) }.getOrNull()?.let { doc = it }
+            }
+        }
         resolver.openOutputStream(doc)?.use { out -> file.inputStream().use { it.copyTo(out) } }
             ?: return Result(false, "Could not write into the game folder")
         if (!keepSource) file.delete()
         Result(true, "Added $name to ${folder.label.ifBlank { system?.name ?: "your game folder" }}")
     }.getOrElse { Result(false, "Could not save the file: ${it.message}") }
+
+    private fun displayNameOf(resolver: android.content.ContentResolver, doc: Uri): String? = runCatching {
+        resolver.query(doc, arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+    }.getOrNull()
 
     private val ARCHIVE_ENDINGS = listOf(".zip", ".7z", ".rar", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".gz")
 
@@ -593,6 +638,20 @@ object DownloadPlacer {
     fun isArchive(name: String): Boolean = name.lowercase().let { n -> ARCHIVE_ENDINGS.any { n.endsWith(it) } }
 
     private fun leaf(name: String) = File(name.replace('\\', '/')).name.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+
+    /**
+     * Walks the entries of a zip through its index (so listing a big zip is instant and zip64, stored and deflate64 entries all
+     * work, which the streaming reader cannot do reliably). [block] gets each entry's name, whether it is a folder, and a way to open it.
+     */
+    internal fun forEachZipEntry(archive: File, block: (name: String, dir: Boolean, open: () -> java.io.InputStream) -> Unit) {
+        org.apache.commons.compress.archivers.zip.ZipFile.builder().setFile(archive).get().use { zf ->
+            val entries = zf.entries
+            while (entries.hasMoreElements()) {
+                val e = entries.nextElement()
+                block(e.name, e.isDirectory) { zf.getInputStream(e) }
+            }
+        }
+    }
 
     internal fun tarStream(archive: File): java.io.InputStream {
         val n = archive.name.lowercase()
@@ -620,11 +679,8 @@ object DownloadPlacer {
             files.add(out)
         }
         when {
-            n.endsWith(".zip") -> ZipInputStream(archive.inputStream().buffered()).use { z ->
-                while (true) {
-                    val e = z.nextEntry ?: break
-                    if (!e.isDirectory) save(e.name) { o -> z.copyTo(o) }
-                }
+            n.endsWith(".zip") -> forEachZipEntry(archive) { name, dir, open ->
+                if (!dir) save(name) { o -> open().use { it.copyTo(o) } }
             }
             n.endsWith(".7z") -> org.apache.commons.compress.archivers.sevenz.SevenZFile(archive).use { sz ->
                 while (true) {
@@ -663,9 +719,7 @@ object DownloadPlacer {
         val n = archive.name.lowercase()
         val names = ArrayList<String>()
         when {
-            n.endsWith(".zip") -> ZipInputStream(archive.inputStream().buffered()).use { z ->
-                while (true) { val e = z.nextEntry ?: break; if (!e.isDirectory) names.add(e.name) }
-            }
+            n.endsWith(".zip") -> forEachZipEntry(archive) { name, dir, _ -> if (!dir) names.add(name) }
             n.endsWith(".7z") -> org.apache.commons.compress.archivers.sevenz.SevenZFile(archive).use { sz ->
                 sz.entries.forEach { if (!it.isDirectory) names.add(it.name) }
             }

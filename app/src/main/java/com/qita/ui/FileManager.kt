@@ -12,7 +12,6 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.OutputStream
-import java.util.zip.ZipInputStream
 
 /** One entry of a folder listing. */
 data class FileItem(val file: File, val isDir: Boolean, val size: Long, val modified: Long) {
@@ -187,8 +186,8 @@ object FileManager {
         }
         val n = archive.name.lowercase()
         when {
-            n.endsWith(".zip") -> ZipInputStream(archive.inputStream().buffered()).use { z ->
-                while (true) { val e = z.nextEntry ?: break; write(e.name, e.isDirectory) { o -> z.copyTo(o) } }
+            n.endsWith(".zip") -> DownloadPlacer.forEachZipEntry(archive) { name, dir, open ->
+                write(name, dir) { o -> open().use { it.copyTo(o) } }
             }
             n.endsWith(".7z") -> org.apache.commons.compress.archivers.sevenz.SevenZFile(archive).use { sz ->
                 while (true) {

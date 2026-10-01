@@ -39,9 +39,10 @@ class DownloadService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel(CHANNEL, "Downloads", NotificationManager.IMPORTANCE_LOW))
-        DownloadEngine.init(applicationContext)
+        // Must come first: Android ends an app whose service starts as a foreground one and does not say so within seconds.
         val first = buildNotification(DownloadEngine.items.filter { it.state == DlState.RUNNING || it.finishing })
         if (Build.VERSION.SDK_INT >= 29) startForeground(ID, first, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC) else startForeground(ID, first)
+        runCatching { DownloadEngine.init(applicationContext) }
         if (wake == null) {
             wake = runCatching {
                 (getSystemService(POWER_SERVICE) as PowerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "qitaui:downloads").apply { acquire(6 * 60 * 60 * 1000L) }
