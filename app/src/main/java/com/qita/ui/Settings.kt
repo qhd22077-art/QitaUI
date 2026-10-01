@@ -372,7 +372,7 @@ class SettingsStore(private val context: Context) {
         if (!prefs.getBoolean("systemSeeded", false)) {
             val seeded = SYSTEM_IDS.filter { it !in saved } + saved
             saveHome(seeded)
-            prefs.edit().putBoolean("systemSeeded", true).putBoolean("gamesSeeded", true).putBoolean("browserFoldersSeeded", true).apply()
+            prefs.edit().putBoolean("systemSeeded", true).putBoolean("gamesSeeded", true).putBoolean("browserFoldersSeeded", true).putBoolean("androidSettingsSeeded", true).apply()
             return seeded
         }
         // The Games bubble arrived later: put it on the home screen once for installs that already had the others.
@@ -386,6 +386,12 @@ class SettingsStore(private val context: Context) {
             saved = listOf(SystemAction.BROWSER.id, SystemAction.FOLDERS.id).filter { it !in saved } + saved
             saveHome(saved)
             prefs.edit().putBoolean("browserFoldersSeeded", true).apply()
+        }
+        // And the System Settings bubble.
+        if (!prefs.getBoolean("androidSettingsSeeded", false)) {
+            saved = if (SystemAction.ANDROID.id in saved) saved else saved + SystemAction.ANDROID.id
+            saveHome(saved)
+            prefs.edit().putBoolean("androidSettingsSeeded", true).apply()
         }
         return saved
     }

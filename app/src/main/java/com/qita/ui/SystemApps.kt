@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
@@ -29,6 +30,7 @@ enum class SystemAction(val id: String, val label: String, val blurb: String) {
     GAMES("qita.sys.games", "Games", "Your games from every console, and the emulators that play them."),
     BROWSER("qita.sys.browser", "Browser", "Browse the web with tabs, bookmarks and history. Downloads go through the launcher."),
     FOLDERS("qita.sys.folders", "Folders", "Look through the files on this device, and copy, move, unpack or send them to a game folder."),
+    ANDROID("qita.sys.android", "System Settings", "Open Android's own settings: Wi-Fi, Bluetooth, sound, display, apps and storage."),
 }
 
 /** Ids of the built-in bubbles, in the order they start on the home screen. */
@@ -47,6 +49,7 @@ val SYSTEM_APPS: List<LaunchableApp> by lazy {
         systemApp(SystemAction.GAMES, Color(0xFF7A4FD0)) { drawGamepad() },
         systemApp(SystemAction.BROWSER, Color(0xFF1FA3C9)) { drawGlobe() },
         systemApp(SystemAction.FOLDERS, Color(0xFFD9A21E)) { drawFolder() },
+        systemApp(SystemAction.ANDROID, Color(0xFF3DA35D)) { drawGear() },
     )
 }
 
@@ -165,6 +168,15 @@ private fun DrawScope.drawFolder() {
     drawPath(back, Color(0xFFD7DCE3))
     drawRoundRect(white(110f, 210f), Offset(32f, 112f), Size(192f, 96f), CornerRadius(14f))
     drawRect(Ink, Offset(32f, 138f), Size(192f, 5f))
+}
+
+/** A cog: Android's own settings. */
+private fun DrawScope.drawGear() {
+    val c = Offset(128f, 128f)
+    val metal = Color(0xFFD7DCE3)
+    for (i in 0 until 8) rotate(i * 45f, c) { drawRoundRect(metal, Offset(112f, 34f), Size(32f, 50f), CornerRadius(7f)) }
+    drawCircle(metal, radius = 66f, center = c)
+    drawCircle(Ink, radius = 28f, center = c)
 }
 
 /** The ARGB colour of the glass body behind a built-in bubble's art. */

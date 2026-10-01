@@ -5,6 +5,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +43,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.qita.ui.LaunchableApp
+import com.qita.ui.SYSTEMS
 
 /**
  * An open folder: a big glass bubble over the home screen with the folder's bubbles inside, as in the Vita. Tap one to open it,
@@ -50,9 +57,35 @@ fun FolderView(
     onOpen: (LaunchableApp) -> Unit,
     onMenu: (LaunchableApp) -> Unit,
     onRename: () -> Unit,
+    favourites: Set<String> = emptySet(),
+    played: Map<String, Long> = emptyMap(),
 ) {
     BackHandler(enabled = backEnabled) { onClose() }
     val members = folder.folderMembers.orEmpty()
+    // Search and filters: by name, by kind (games or apps), favourites, and console.
+    var query by remember(folder.packageName) { mutableStateOf("") }
+    var filter by remember(folder.packageName) { mutableStateOf("all") }
+    var sort by remember(folder.packageName) { mutableStateOf(0) }
+    val systems = remember(members) { members.mapNotNull { it.game?.systemId }.distinct() }
+    val hasGames = members.any { it.game != null }
+    val hasApps = members.any { it.game == null }
+    val hasFav = members.any { it.game?.id in favourites }
+    val shownMembers = remember(members, query, filter, sort, favourites, played) {
+        val matching = members.filter { a ->
+            (query.isBlank() || a.label.contains(query.trim(), true)) && when (filter) {
+                "all" -> true
+                "fav" -> a.game?.id in favourites
+                "game" -> a.game != null
+                "app" -> a.game == null
+                else -> a.game?.systemId == filter
+            }
+        }
+        when (sort) {
+            1 -> matching.sortedBy { it.label.lowercase() }
+            2 -> matching.sortedByDescending { played[it.game?.id] ?: 0L }
+            else -> matching
+        }
+    }
     val config = LocalConfiguration.current
     val maxHeight = (config.screenHeightDp * 0.80f).dp
     val width = (config.screenWidthDp * 0.86f).coerceAtMost(720f).dp
@@ -87,7 +120,38 @@ fun FolderView(
                 Text(folder.label, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("✎", color = Color.White.copy(alpha = 0.8f), fontSize = 16.sp)
             }
-            Text("${members.size} ${if (members.size == 1) "item" else "items"}", color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp, bottom = 6.dp))
+            Text(
+                if (shownMembers.size == members.size) "${members.size} ${if (members.size == 1) "item" else "items"}" else "${shownMembers.size} of ${members.size}",
+                color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp, bottom = 6.dp),
+            )
+            // The search box and the order.
+            Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                BasicTextField(
+                    value = query, onValueChange = { query = it }, singleLine = true,
+                    textStyle = TextStyle(color = Color.White, fontSize = 15.sp), cursorBrush = SolidColor(Color.White),
+                    modifier = Modifier.weight(1f).padClickable("folder:search", corner = 12.dp, pad = 2.dp, ring = false) { },
+                    decorationBox = { inner ->
+                        Box(Modifier.fillMaxWidth().heightIn(min = 40.dp).background(Color.Black.copy(alpha = 0.28f), RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 9.dp)) {
+                            if (query.isEmpty()) Text("Search this folder", color = Color.White.copy(alpha = 0.6f), fontSize = 15.sp)
+                            inner()
+                        }
+                    },
+                )
+                FilterChip("folder:sort", "Sort: " + listOf("Folder", "A-Z", "Recent")[sort], false) { sort = (sort + 1) % 3 }
+            }
+            // The filters: only the ones that mean something for what is inside.
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip("folder:f:all", "All", filter == "all") { filter = "all" }
+                if (hasFav) FilterChip("folder:f:fav", "★ Favourites", filter == "fav") { filter = "fav" }
+                if (hasGames && hasApps) {
+                    FilterChip("folder:f:game", "Games", filter == "game") { filter = "game" }
+                    FilterChip("folder:f:app", "Apps", filter == "app") { filter = "app" }
+                }
+                if (systems.size > 1) systems.forEach { id ->
+                    FilterChip("folder:f:$id", SYSTEMS.firstOrNull { it.id == id }?.short ?: id, filter == id) { filter = id }
+                }
+            }
+            if (shownMembers.isEmpty()) Text("Nothing matches", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.padding(16.dp))
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(112.dp),
                 state = state,
@@ -96,7 +160,7 @@ fun FolderView(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                items(members, key = { it.packageName }) { app ->
+                items(shownMembers, key = { it.packageName }) { app ->
                     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
                         Bubble(
                             app, 72.dp,
@@ -141,4 +205,20 @@ fun NamePrompt(title: String, value: String, onValue: (String) -> Unit, onOk: ()
             }
         }
     }
+}
+
+/** A small filter button for an open folder; lit when touched or highlighted by the gamepad. */
+@Composable
+private fun FilterChip(key: String, label: String, selected: Boolean, onClick: () -> Unit) {
+    val lit = padHighlighted(key) || padHovered(key)
+    Text(
+        label,
+        Modifier
+            .padClickable(key, corner = 14.dp, pad = 2.dp, ring = false, onClick = onClick)
+            .litEdge(lit, 14.dp)
+            .background(if (selected) Color.White.copy(alpha = 0.42f) else Color.White.copy(alpha = if (lit) 0.30f else 0.14f), RoundedCornerShape(14.dp))
+            .border(if (lit) 2.dp else 1.dp, Color.White.copy(alpha = if (lit || selected) 0.95f else 0.45f), RoundedCornerShape(14.dp))
+            .padding(horizontal = 14.dp, vertical = 9.dp),
+        color = Color.White, fontSize = 14.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 1,
+    )
 }

@@ -417,6 +417,11 @@ fun HomeScreen(homePresses: Int = 0) {
             SystemAction.STORE -> { selected = null; showStore = true }
             SystemAction.BROWSER -> { selected = null; showBrowser = true }
             SystemAction.FOLDERS -> { selected = null; showFolders = true }
+            SystemAction.ANDROID -> {
+                selected = null
+                runCatching { context.startActivity(android.content.Intent(android.provider.Settings.ACTION_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    .onFailure { toast = "This device would not open its settings" }
+            }
             null -> {
                 val game = app.game
                 if (game != null) {
@@ -1368,6 +1373,8 @@ fun HomeScreen(homePresses: Int = 0) {
                         onOpen = { a -> openFolderId = null; openLiveArea(a, null) },
                         onMenu = { a -> menuFor = a },
                         onRename = { renameText = f.label; renameFolderId = f.packageName },
+                        favourites = gameFavs,
+                        played = gamePlayed,
                     )
                 }
             }
