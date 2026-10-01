@@ -90,13 +90,23 @@ object ThemePacks {
         if (active(c) == id) { setActive(c, null); SystemIcons.overrides = emptyMap() }
     }
 
-    /** Puts the theme's icons on the built-in bubbles that have a matching Vita icon. */
+    /** The Vita icon names (lower case) that have a matching built-in bubble. */
+    val ICON_KEYS = listOf("settings", "browser", "hostcollabo")
+
+    /** Which of the theme's icons the user has switched on (by Vita icon name, lower case). None by default: a theme leaves the built-in art alone. */
+    fun iconsOn(c: Context): Set<String> = prefs(c).getStringSet("iconsOn", null)?.toSet().orEmpty()
+
+    fun setIconsOn(c: Context, keys: Set<String>) { prefs(c).edit().putStringSet("iconsOn", HashSet(keys)).apply() }
+
+    /** Puts the theme's icons on the built-in bubbles that have a matching Vita icon, for the ones switched on. */
     fun applyIcons(c: Context, pack: ThemePack?) {
         if (pack == null) { SystemIcons.overrides = emptyMap(); return }
         val dir = folder(c, pack.id)
         val map = HashMap<SystemAction, androidx.compose.ui.graphics.ImageBitmap>()
         val icons = pack.icons.mapKeys { it.key.lowercase() }
+        val on = iconsOn(c)
         for ((key, action) in listOf("settings" to SystemAction.SETTINGS, "browser" to SystemAction.BROWSER, "hostcollabo" to SystemAction.FOLDERS)) {
+            if (key !in on) continue
             val file = icons[key]?.let { File(dir, it) } ?: continue
             runCatching { android.graphics.BitmapFactory.decodeFile(file.path) }.getOrNull()?.let { map[action] = it.asImageBitmap() }
         }
@@ -109,11 +119,18 @@ object ThemePacks {
      */
     fun installBundled(c: Context) {
         val p = prefs(c)
-        if (p.getBoolean("bundled1", false)) return
-        runCatching {
+        if (p.getBoolean("bundled2", false)) return
+        // The first version (sharpened pictures came later) is replaced, keeping the choice of the active theme.
+        val old = list(c).firstOrNull { it.author == "Lich_Kiingg" }?.id
+        val result = runCatching {
             c.assets.open("themes/playstation-games.zip").use { VitaThemeImport.import(c, it) }
+        }.getOrNull()
+        if (result?.id != null && old != null) {
+            val wasActive = active(c) == old
+            delete(c, old)
+            if (wasActive) setActive(c, result.id)
         }
-        p.edit().putBoolean("bundled1", true).apply()
+        p.edit().putBoolean("bundled2", true).apply()
     }
 
     /** Reads the theme in use at start-up, so its icons are there before the first bubble is drawn. */

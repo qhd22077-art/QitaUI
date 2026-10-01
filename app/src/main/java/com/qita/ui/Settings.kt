@@ -493,6 +493,12 @@ class SettingsStore(private val context: Context) {
         upright.asImageBitmap()
     }.getOrNull()
 
+    /** Uses a picture file that is already the right size (a theme's) as the wallpaper as it is, without a second lossy save. */
+    fun useWallpaperFile(file: File, page: Int? = null): Boolean = runCatching {
+        file.copyTo(wallpaperFile(page), overwrite = true)
+        true
+    }.getOrDefault(false)
+
     private val fontFile get() = File(context.filesDir, "custom_font.ttf")
 
     fun hasCustomFont(): Boolean = fontFile.exists()

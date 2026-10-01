@@ -227,7 +227,9 @@ fun HomeScreen(homePresses: Int = 0) {
     var crashTrace by remember { mutableStateOf(CrashReporter.read(context)) }
     // Each home page can have its own background: a theme, or its own photo. Pages not listed use the global one.
     var pageBg by remember { mutableStateOf(store.loadPageBg()) }
-    var pageWallpapers by remember { mutableStateOf(store.loadPageWallpapers(pageBg)) }
+    // Only the photos of the page on screen and its neighbours are kept decoded (see the effect after the pager is made).
+    var pageWallpapers by remember { mutableStateOf<Map<Int, androidx.compose.ui.graphics.ImageBitmap>>(emptyMap()) }
+    var wallpaperRev by remember { mutableIntStateOf(0) }
     var showBackgrounds by remember { mutableStateOf(false) }
     var showIndex by remember { mutableStateOf(false) }
     // Where the LiveArea carousel is right now (fractional while swiping); drives the top bar's indicator.
@@ -312,6 +314,14 @@ fun HomeScreen(homePresses: Int = 0) {
     }
     // The page whose photo (if any) is shown: the nearest one while swiping.
     val bgPage by remember { derivedStateOf { (pagerState.currentPage + pagerState.currentPageOffsetFraction).roundToInt().coerceAtLeast(0) } }
+    // Keep the photos of the page on screen and its neighbours decoded and drop the rest, so many big pictures cost little memory.
+    LaunchedEffect(bgPage, pageBg, settings.lightMode, wallpaperRev) {
+        val near = if (settings.lightMode) listOf(bgPage) else listOf(bgPage, bgPage + 1, bgPage - 1)
+        val want = near.filter { it >= 0 && pageBg[it] == PAGE_PHOTO }
+        val have = pageWallpapers
+        val loaded = withContext(Dispatchers.IO) { want.filter { it !in have }.mapNotNull { p -> store.loadWallpaper(p)?.let { p to it } } }
+        pageWallpapers = pageWallpapers.filterKeys { it in want } + loaded
+    }
 
     val menuOpen = menuFor != null || showQuickMenu || showNotifs
     val anyOverlay = showLock || showDesktop || showGames || showStore || showBrowser || showFolders || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null
@@ -320,7 +330,16 @@ fun HomeScreen(homePresses: Int = 0) {
     var themeList by remember { mutableStateOf(com.qita.ui.ThemePacks.list(context)) }
     var themeReport by remember { mutableStateOf<String?>(null) }
     var activeTheme by remember { mutableStateOf(com.qita.ui.ThemePacks.active(context)) }
-    fun refreshThemes() { themeList = com.qita.ui.ThemePacks.list(context); activeTheme = com.qita.ui.ThemePacks.active(context) }
+    // The theme's icons that fit a built-in bubble, and which of them are switched on (none until the user chooses).
+    var themeIconKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var themeIconsOn by remember { mutableStateOf(com.qita.ui.ThemePacks.iconsOn(context)) }
+    fun refreshThemes() {
+        themeList = com.qita.ui.ThemePacks.list(context)
+        activeTheme = com.qita.ui.ThemePacks.active(context)
+        themeIconKeys = activeTheme?.let { com.qita.ui.ThemePacks.load(context, it) }?.icons?.keys?.map { it.lowercase() }
+            ?.filter { it in com.qita.ui.ThemePacks.ICON_KEYS }?.toSet().orEmpty()
+        themeIconsOn = com.qita.ui.ThemePacks.iconsOn(context)
+    }
     // The theme that comes with the app is added to the list the first time.
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) { com.qita.ui.ThemePacks.installBundled(context) }
@@ -348,16 +367,18 @@ fun HomeScreen(homePresses: Int = 0) {
             if (pack == null) { toast = "That theme could not be read"; return@launch }
             val dir = com.qita.ui.ThemePacks.folder(context, id)
             val done = withContext(Dispatchers.IO) {
-                val pages = LinkedHashMap<Int, androidx.compose.ui.graphics.ImageBitmap>()
-                pack.pages.forEachIndexed { i, name -> store.saveWallpaper(android.net.Uri.fromFile(File(dir, name)), i)?.let { pages[i] = it } }
-                val lockBmp = pack.lock?.let { store.saveWallpaper(android.net.Uri.fromFile(File(dir, it)), -5) }
-                pages to lockBmp
+                // The theme's pictures are copied as they are (no second lossy save); only the lock picture is read now.
+                val pages = pack.pages.indices.filter { i -> store.useWallpaperFile(File(dir, pack.pages[i]), i) }
+                val lockOk = pack.lock?.let { store.useWallpaperFile(File(dir, it), -5) } == true
+                pages to (if (lockOk) store.loadWallpaper(-5) else null)
             }
             var bg = pageBg
-            done.first.keys.forEach { bg = bg + (it to PAGE_PHOTO) }
+            done.first.forEach { bg = bg + (it to PAGE_PHOTO) }
             store.savePageBg(bg)
             pageBg = bg
-            pageWallpapers = pageWallpapers + done.first
+            // The page photos are read again, for the pages near the one on screen.
+            pageWallpapers = emptyMap()
+            wallpaperRev++
             done.second?.let { lockWallpaper = it }
             settings = settings.copy(
                 nameColor = pack.nameColor ?: settings.nameColor,
@@ -1246,6 +1267,14 @@ fun HomeScreen(homePresses: Int = 0) {
                             }
                         },
                         onDelete = { id -> com.qita.ui.ThemePacks.delete(context, id); reload++; refreshThemes() },
+                        iconKeys = themeIconKeys,
+                        iconsOn = themeIconsOn,
+                        onIcon = { key, on ->
+                            com.qita.ui.ThemePacks.setIconsOn(context, if (on) themeIconsOn + key else themeIconsOn - key)
+                            activeTheme?.let { com.qita.ui.ThemePacks.applyIcons(context, com.qita.ui.ThemePacks.load(context, it)) }
+                            reload++
+                            refreshThemes()
+                        },
                     ),
                     games = GamesSetup(
                         folders = gameFolders,

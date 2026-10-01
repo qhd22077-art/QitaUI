@@ -72,7 +72,7 @@ private fun systemApp(
     art: DrawScope.() -> Unit,
 ): LaunchableApp {
     // A theme can replace the art with its own picture (scaled to the usual size).
-    val themed = SystemIcons.overrides[action]?.let { runCatching { android.graphics.Bitmap.createScaledBitmap(it.asAndroidBitmap(), ICON, ICON, true).asImageBitmap() }.getOrNull() }
+    val themed = SystemIcons.overrides[action]?.let { runCatching { Resample.scaleTo(it.asAndroidBitmap(), ICON, ICON, keepAlpha = true).asImageBitmap() }.getOrNull() }
     val icon = themed ?: drawIcon {
         // A dark backdrop with a faint light in the upper left.
         drawRect(Brush.linearGradient(listOf(backTop, backBottom), Offset.Zero, Offset(ICON.toFloat(), ICON.toFloat())))

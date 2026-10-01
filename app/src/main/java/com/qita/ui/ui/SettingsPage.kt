@@ -84,6 +84,10 @@ class ThemesSetup(
     val onApply: (String) -> Unit,
     val onExport: (String, Uri) -> Unit,
     val onDelete: (String) -> Unit,
+    /** The active theme's icons that fit a built-in bubble (Vita icon names, lower case), the ones switched on, and the switch. */
+    val iconKeys: Set<String> = emptySet(),
+    val iconsOn: Set<String> = emptySet(),
+    val onIcon: (String, Boolean) -> Unit = { _, _ -> },
 )
 
 class GamesSetup(
@@ -250,6 +254,14 @@ fun SettingsPage(
                                 }) { themes.onApply(t.id) }
                                 MenuRow("set:themepack:export:${t.id}", "↥", "Save “${t.name}” as a file to share") { themeExportId = t.id; themeExporter.launch(t.name.replace(Regex("[^A-Za-z0-9 _-]"), "_") + ".qtheme") }
                                 MenuRow("set:themepack:del:${t.id}", "✕", "Delete “${t.name}”") { themes.onDelete(t.id) }
+                            }
+                            // The theme's own icons for built-in bubbles: off until chosen, so a theme does not change the default icons.
+                            if (themes.iconKeys.isNotEmpty()) {
+                                InfoBox("This theme has its own icons for some built-in bubbles. They stay off unless you switch them on here.")
+                                for (key in com.qita.ui.ThemePacks.ICON_KEYS.filter { it in themes.iconKeys }) {
+                                    val label = when (key) { "settings" -> "Settings"; "browser" -> "Browser"; else -> "Folders" }
+                                    CheckRow("set:themeicon:$key", "◉", "Use the theme's $label icon", key in themes.iconsOn) { on -> themes.onIcon(key, on) }
+                                }
                             }
                             CheckRow("set:vita", "◉", "PS Vita mode (silk wallpaper, glass bubbles)", settings.vitaMode) { on ->
                                 onChange(

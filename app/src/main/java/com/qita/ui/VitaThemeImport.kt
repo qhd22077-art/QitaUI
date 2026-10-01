@@ -9,6 +9,7 @@ import java.io.File
 import java.io.InputStream
 import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
+import kotlin.math.roundToInt
 
 /**
  * Reads a Vita custom theme (the folder of `theme.xml` and pictures that the Vita Theme Builder makes, given as a zip or .vpk) into a
@@ -103,11 +104,14 @@ object VitaThemeImport {
         val notes = ArrayList<String>()
         val bad = ArrayList<String>()
         // Saves the first of the given pictures that can be read, as a JPEG at the screen's size (not as a big bitmap).
-        fun picture(refs: List<String?>, out: String, maxWidth: Int): String? {
+        fun picture(refs: List<String?>, out: String, maxWidth: Int, enlarge: Boolean = false): String? {
             val named = refs.filter { !it.isNullOrBlank() }
             for (ref in named) {
                 val bmp = decode(pack.find(ref) ?: continue, maxWidth) ?: continue
-                File(dir, out).outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 88, it) }
+                // Small pictures are enlarged once, properly, so they are not soft when drawn over a big screen.
+                val big = if (enlarge) enlarged(bmp) else bmp
+                File(dir, out).outputStream().use { big.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+                if (big !== bmp) big.recycle()
                 bmp.recycle()
                 return out
             }
@@ -124,13 +128,13 @@ object VitaThemeImport {
         val params = VitaThemeXml.all(home, "BackgroundParam")
         val pages = ArrayList<String>()
         params.take(10).forEach { p ->
-            picture(listOf(VitaThemeXml.value(p, "m_imageFilePath"), VitaThemeXml.value(p, "m_thumbnailFilePath")), "page${pages.size}.jpg", 1920)
+            picture(listOf(VitaThemeXml.value(p, "m_imageFilePath"), VitaThemeXml.value(p, "m_thumbnailFilePath")), "page${pages.size}.jpg", 1920, enlarge = true)
                 ?.let { pages.add(it) }
         }
         if (params.size > pages.size) notes.add("${params.size - pages.size} page background(s) could not be read")
         if (pages.isEmpty()) {
             namedLike("bg", "background", "wallpaper").take(10).forEach { n ->
-                picture(listOf(n), "page${pages.size}.jpg", 1920)?.let { pages.add(it) }
+                picture(listOf(n), "page${pages.size}.jpg", 1920, enlarge = true)?.let { pages.add(it) }
             }
         }
         val nameColor = params.firstNotNullOfOrNull { VitaThemeXml.color(VitaThemeXml.value(it, "m_fontColor")) }
@@ -138,7 +142,7 @@ object VitaThemeImport {
 
         val lock = picture(
             listOf(VitaThemeXml.value(startScreen, "m_filePath")) + namedLike("lock", "start").take(1),
-            "lock.jpg", 1920,
+            "lock.jpg", 1920, enlarge = true,
         )
         val preview = picture(listOf(VitaThemeXml.value(info, "m_homePreviewFilePath")) + pack.byBase.keys.filter { it.startsWith("preview") }.take(1), "preview.jpg", 480)
         val dateColor = VitaThemeXml.color(VitaThemeXml.value(startScreen, "m_dateColor"))
@@ -168,7 +172,7 @@ object VitaThemeImport {
             val colours = listOfNotNull(nameColor, dateColor, barColor, indicatorColor).size
             if (colours > 0) add("$colours colour${if (colours == 1) "" else "s"}")
             val mapped = icons.keys.count { it.lowercase() in setOf("settings", "browser", "hostcollabo") }
-            if (mapped > 0) add("$mapped icon${if (mapped == 1) "" else "s"} for built-in bubbles")
+            if (mapped > 0) add("$mapped icon${if (mapped == 1) "" else "s"} for built-in bubbles (off until you switch them on in Settings, Theme)")
         }
         if (bad.isNotEmpty()) notes.add("pictures that could not be read: ${bad.take(5).joinToString(", ")}")
         if (pack.skipped > 0) notes.add("${pack.skipped} file(s) skipped for size")
@@ -227,6 +231,13 @@ object VitaThemeImport {
             out.write(buf, 0, n)
         }
         return out.toByteArray()
+    }
+
+    /** The picture at up to twice its size (the long edge at most 2400), smoothly, or as it is if that is not worth it or fails. */
+    private fun enlarged(bmp: Bitmap): Bitmap {
+        val s = minOf(2.0, 2400.0 / maxOf(bmp.width, bmp.height))
+        if (s < 1.15) return bmp
+        return runCatching { Resample.scaleTo(bmp, (bmp.width * s).roundToInt(), (bmp.height * s).roundToInt(), sharpen = 0.4f) }.getOrDefault(bmp)
     }
 
     private fun decode(bytes: ByteArray, maxWidth: Int): Bitmap? = runCatching {
