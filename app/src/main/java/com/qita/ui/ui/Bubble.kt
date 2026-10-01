@@ -240,8 +240,15 @@ fun Bubble(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box {
-            Sphere(
-                app, if (app.folderMembers != null) size * 1.08f else size,
+            if (app.folderMembers != null) {
+                // A folder is clear glass with its apps inside, not a coloured ball.
+                FolderGlass(
+                    app, size * 1.08f,
+                    modifier = Modifier.padTarget(padKey, corner = null, app = app, pad = 10.dp, bring = false, ring = false, onClick = onClick),
+                    selected = lit,
+                )
+            } else Sphere(
+                app, size,
                 // Registered on the sphere itself so the gamepad ring hugs it, not the label.
                 modifier = Modifier.padTarget(padKey, corner = null, app = app, pad = 10.dp, bring = false, ring = false, onClick = onClick),
                 shape = shape,
