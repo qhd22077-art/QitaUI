@@ -171,10 +171,10 @@ private val CATALOGUE: List<StoreEntry> = listOf(
     StoreEntry("libretro", "Libretro content", "Libretro", "Free games, demos and homebrew for RetroArch.", 1, "LIB", 0xFF5A5A8A, null, "https://docs.libretro.com/guides/download-content/"),
 )
 
-private class Preset(val title: String, val url: String, val blurb: String)
+internal class Preset(val title: String, val url: String, val blurb: String)
 
 /** A few set pages to start from: official emulator sites and free-game sites. */
-private val PRESETS = listOf(
+internal val PRESETS = listOf(
     Preset("RetroArch", "https://www.retroarch.com", "Many consoles in one app"),
     Preset("PPSSPP", "https://www.ppsspp.org", "PlayStation Portable"),
     Preset("Dolphin", "https://dolphin-emu.org", "GameCube and Wii"),
@@ -203,7 +203,7 @@ private fun chromeToken(context: Context): String =
  * The mobile layout or the desktop site. The identity is the one a real Chrome of the same version would give (the stock web view's
  * tells, "; wv", "Version/4.0" and a full build number, are left out), because bot checks compare it with what the engine really is.
  */
-private fun applyWebMode(context: Context, web: WebView, desktop: Boolean) {
+internal fun applyWebMode(context: Context, web: WebView, desktop: Boolean) {
     val ws = web.settings
     val chrome = chromeToken(context)
     if (desktop) {
@@ -222,7 +222,7 @@ private fun applyWebMode(context: Context, web: WebView, desktop: Boolean) {
 }
 
 /** A page shown in place of one that would not load, saying why, with buttons to try again (or, for https, over http or despite the certificate). */
-private fun showPageError(view: WebView, url: String, reason: String, certificate: Boolean) {
+internal fun showPageError(view: WebView, url: String, reason: String, certificate: Boolean) {
     fun esc(t: String) = android.text.TextUtils.htmlEncode(t)
     val http = if (url.startsWith("https://")) "http://" + url.removePrefix("https://") else null
     val extra = buildString {
@@ -1405,7 +1405,7 @@ private fun BrowserTab(
 }
 
 @Composable
-private fun BarButton(key: String, label: String, onClick: () -> Unit) {
+internal fun BarButton(key: String, label: String, onClick: () -> Unit) {
     val lit = padHighlighted(key) || padHovered(key)
     Text(
         label,
@@ -1419,12 +1419,12 @@ private fun BarButton(key: String, label: String, onClick: () -> Unit) {
     )
 }
 
-private fun loadBookmarks(context: Context): List<Pair<String, String>> = runCatching {
+internal fun loadBookmarks(context: Context): List<Pair<String, String>> = runCatching {
     val arr = JSONArray(context.getSharedPreferences("qita_store", Context.MODE_PRIVATE).getString("bookmarks", "[]"))
     (0 until arr.length()).map { arr.getJSONObject(it).let { o -> o.getString("t") to o.getString("u") } }
 }.getOrDefault(emptyList())
 
-private fun saveBookmarks(context: Context, list: List<Pair<String, String>>) {
+internal fun saveBookmarks(context: Context, list: List<Pair<String, String>>) {
     val arr = JSONArray()
     list.forEach { arr.put(JSONObject().put("t", it.first).put("u", it.second)) }
     context.getSharedPreferences("qita_store", Context.MODE_PRIVATE).edit().putString("bookmarks", arr.toString()).apply()

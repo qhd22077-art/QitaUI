@@ -352,19 +352,24 @@ class SettingsStore(private val context: Context) {
      * Desktop) are put in front once, so existing installs get them too.
      */
     fun loadHome(): List<String> {
-        val saved = prefs.getString("home", "").orEmpty().split('\n').filter { it.isNotBlank() }
+        var saved = prefs.getString("home", "").orEmpty().split('\n').filter { it.isNotBlank() }
         if (!prefs.getBoolean("systemSeeded", false)) {
             val seeded = SYSTEM_IDS.filter { it !in saved } + saved
             saveHome(seeded)
-            prefs.edit().putBoolean("systemSeeded", true).putBoolean("gamesSeeded", true).apply()
+            prefs.edit().putBoolean("systemSeeded", true).putBoolean("gamesSeeded", true).putBoolean("browserFoldersSeeded", true).apply()
             return seeded
         }
         // The Games bubble arrived later: put it on the home screen once for installs that already had the others.
         if (!prefs.getBoolean("gamesSeeded", false)) {
-            val withGames = if (SystemAction.GAMES.id in saved) saved else listOf(SystemAction.GAMES.id) + saved
-            saveHome(withGames)
+            saved = if (SystemAction.GAMES.id in saved) saved else listOf(SystemAction.GAMES.id) + saved
+            saveHome(saved)
             prefs.edit().putBoolean("gamesSeeded", true).apply()
-            return withGames
+        }
+        // So did Browser and Folders.
+        if (!prefs.getBoolean("browserFoldersSeeded", false)) {
+            saved = listOf(SystemAction.BROWSER.id, SystemAction.FOLDERS.id).filter { it !in saved } + saved
+            saveHome(saved)
+            prefs.edit().putBoolean("browserFoldersSeeded", true).apply()
         }
         return saved
     }
