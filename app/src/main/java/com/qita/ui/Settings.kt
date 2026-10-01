@@ -37,10 +37,15 @@ val THEMES = listOf(
     // The real Vita wallpapers: glossy silk ribbons, and glass symbols over deep blue.
     Theme("Vita Silk", Color(0xFF1B6FCB), Color(0xFF1850A8), Color(0xFF0C1F6B), Scene.SILK),
     Theme("Vita Symbols", Color(0xFF021238), Color(0xFF063488), Color(0xFF0A4FA8), Scene.SYMBOLS),
+    // The real menu's deep PlayStation navy: nearly black at the top, a rich blue only at the bottom, with the pale silk ribbons over it.
+    Theme("Vita Night", Color(0xFF010514), Color(0xFF04134A), Color(0xFF0A2F82), Scene.SILK),
 )
 
 /** Index of the Vita Silk theme in [THEMES], the look of PS Vita mode. */
 const val VITA_SILK = 12
+
+/** The darker PlayStation blue, the default look. */
+const val VITA_NIGHT = 14
 
 /**
  * Where bubbles sit on a page, as fractions (x, y) of the page area, in reading order. The bubble
@@ -95,7 +100,7 @@ val LAYOUTS = listOf(
 )
 
 data class Settings(
-    val themeIndex: Int = VITA_SILK,
+    val themeIndex: Int = VITA_NIGHT,
     val particles: Boolean = false,
     val bubbleScale: Float = 1f,
     /** Shrinks the home bubbles just enough that the names of the bottom row stay on the screen. */
@@ -193,12 +198,20 @@ data class Settings(
 /** Persists [Settings] in SharedPreferences and the custom wallpaper as a file in app storage. */
 class SettingsStore(private val context: Context) {
     private val prefs = context.getSharedPreferences("qita_settings", Context.MODE_PRIVATE)
+
+    init {
+        // Once: the old default blue (Vita Silk) becomes the darker default; a theme the user chose themselves is left alone.
+        if (!prefs.getBoolean("nightSeeded", false)) {
+            if (prefs.getInt("theme", VITA_SILK) == VITA_SILK) prefs.edit().putInt("theme", VITA_NIGHT).apply()
+            prefs.edit().putBoolean("nightSeeded", true).apply()
+        }
+    }
     /** The global wallpaper (page == null) or the photo chosen for one home page. */
     private fun wallpaperFile(page: Int? = null) =
         File(context.filesDir, if (page == null) "wallpaper.jpg" else "wallpaper_page_$page.jpg")
 
     fun load() = Settings(
-        themeIndex = prefs.getInt("theme", VITA_SILK),
+        themeIndex = prefs.getInt("theme", VITA_NIGHT),
         particles = prefs.getBoolean("particles", false),
         bubbleScale = prefs.getFloat("bubbleScale", 1f),
         fitNames = prefs.getBoolean("fitNames", true),

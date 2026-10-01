@@ -130,13 +130,14 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 // The colours of the real PlayStation Store, measured from photos of it.
-private val StoreTop = Color(0xFF22428F)
-internal val StoreMid = Color(0xFF1A3379)
-private val StoreBottom = Color(0xFF142460)
-private val StoreIndigo = Color(0xFF2A2A94)
-private val BarTop = Color(0xFF6F79B0)
-private val BarBottom = Color(0xFF36408F)
-internal val TabDark = Color(0xFF172248)
+// Deep PlayStation navy, much darker than before.
+private val StoreTop = Color(0xFF0C1C52)
+internal val StoreMid = Color(0xFF081540)
+private val StoreBottom = Color(0xFF040C2C)
+private val StoreIndigo = Color(0xFF181876)
+private val BarTop = Color(0xFF4A5598)
+private val BarBottom = Color(0xFF232C72)
+internal val TabDark = Color(0xFF0A1236)
 internal val RowLine = Color(0xFF4F66AC)
 internal val SoftText = Color(0xFFA6B4E8)
 internal val DimText = Color(0xFF8798D2)
