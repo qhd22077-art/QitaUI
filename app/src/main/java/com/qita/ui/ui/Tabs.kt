@@ -101,7 +101,7 @@ fun TabStrip(
                         if (lit) Brush.verticalGradient(listOf(Color.White, Color.White)) else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.75f), Color.Black.copy(alpha = 0.35f))),
                         shape,
                     )
-                    .padding(horizontal = 14.dp, vertical = 7.dp),
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(label, color = if (on) selectedText else Color.White, fontSize = 15.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium, maxLines = 1)

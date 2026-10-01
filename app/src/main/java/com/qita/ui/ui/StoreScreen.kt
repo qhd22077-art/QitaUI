@@ -22,7 +22,17 @@ import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Canvas
@@ -258,6 +268,8 @@ fun StoreScreen(
     val scope = rememberCoroutineScope()
     var tab by remember { mutableStateOf(0) }
     var segment by remember { mutableStateOf(0) }
+    // The catalogue's scroll position survives a visit to another tab or a detail page.
+    val catalogueState = rememberLazyListState()
     var detail by remember { mutableStateOf<StoreEntry?>(null) }
     var searching by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
@@ -522,12 +534,22 @@ fun StoreScreen(
 
     BackHandler(enabled = updateLines != null) { updateLines = null }
     BackHandler(enabled = menu) { menu = false }
-    BackHandler(enabled = !menu && tab == 3) { tab = 0 }
-    BackHandler(enabled = !menu && tab == 0 && openStoreId != null && vitaDetail == null) { storeBack() }
-    BackHandler(enabled = !menu && tab == 0 && vitaDetail != null) { vitaDetail = null }
-    BackHandler(enabled = !menu && tab == 0 && detail != null) { detail = null }
-    BackHandler(enabled = !menu && tab == 1 && browsing && web.canGoBack()) { web.goBack() }
-    BackHandler(enabled = !menu && tab == 1 && browsing && !web.canGoBack()) { browsing = false }
+    // Inside a catalogue page (a detail page, a Vita page, one of the user's own stores)?
+    val inner = tab == 0 && (vitaDetail != null || openStoreId != null || detail != null)
+    // One place decides what "back" does, for the round button, the B button and the swipe: it always steps back one level.
+    fun goBack() {
+        when {
+            tab == 0 && vitaDetail != null -> vitaDetail = null
+            tab == 0 && openStoreId != null -> storeBack()
+            tab == 0 && detail != null -> detail = null
+            tab == 1 && browsing && web.canGoBack() -> web.goBack()
+            tab == 1 && browsing -> browsing = false
+            tab != 0 -> tab = 0
+            else -> onClose()
+        }
+    }
+    BackHandler(enabled = !menu && (tab != 0 || inner)) { goBack() }
+    val dlBadge = DownloadEngine.items.count { it.state == DlState.RUNNING || it.state == DlState.FAILED }
 
     Box(Modifier.fillMaxSize().background(storeBackground()).pointerInput(Unit) { detectTapGestures { } }) {
         // A soft indigo wash on the right and a light sheen across the top, as in the real store.
@@ -539,9 +561,38 @@ fun StoreScreen(
         }
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             StatusBar(settings.use24h, settings.showBattery, showHome = false)
-            TabBar(tab, onTab = { tab = it; if (it == 0) { detail = null; vitaDetail = null } }, onSearch = { searching = !searching; tab = if (tab == 2 || tab == 3) 0 else tab }, onSettings = { tab = 3 })
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                when (tab) {
+            TabBar(tab, dlBadge, onTab = { if (it == tab && it == 0 && !inner) scope.launch { catalogueState.animateScrollToItem(0) } else { tab = it; if (it == 0) { detail = null; vitaDetail = null } } }, onSearch = { searching = !searching; tab = if (tab == 2 || tab == 3) 0 else tab }, onSettings = { tab = 3 })
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    // A swipe sideways steps back (right) or on to the next tab (left); the Browser tab keeps its own drags.
+                    .pointerInput(tab, inner, menu) {
+                        if (tab == 1 || menu) return@pointerInput
+                        var total = 0f
+                        detectHorizontalDragGestures(
+                            onDragStart = { total = 0f },
+                            onDragCancel = { total = 0f },
+                            onDragEnd = {
+                                val limit = 90.dp.toPx()
+                                if (total > limit && (tab != 0 || inner)) goBack()
+                                else if (total < -limit && !inner) { if (tab == 0) tab = 1 else if (tab == 2) tab = 3 }
+                                total = 0f
+                            },
+                        ) { _, d -> total += d }
+                    },
+            ) {
+                AnimatedContent(
+                    targetState = tab,
+                    modifier = Modifier.fillMaxSize(),
+                    transitionSpec = {
+                        val dir = if (targetState > initialState) 1 else -1
+                        (fadeIn(tween(180)) + slideInHorizontally(tween(220)) { dir * it / 10 }) togetherWith
+                            (fadeOut(tween(120)) + slideOutHorizontally(tween(220)) { -dir * it / 10 })
+                    },
+                    label = "storeTab",
+                ) { shownTab ->
+                when (shownTab) {
                     0 -> if (vitaDetail != null) {
                         val hb = vitaDetail!!
                         VitaDetailPage(
@@ -560,6 +611,7 @@ fun StoreScreen(
                         segment, { segment = it }, detail, { detail = it }, searching, query, { query = it },
                         started, looking, ::download, ::openPage, pics, snapRev, cfg, stores, ::openStore, { tab = 3 },
                         VitaUi(vita, vitaLoading, vitaError, vitaType, { vitaType = it }, { vitaDetail = it }, ::downloadVita, { loadVita(true) }, { openPage(VitaDb.SITE) }, started),
+                        catalogueState,
                     )
                     1 -> BrowserTab(
                         web, browsing, pageUrl, progress, ::go, ::openPage, context, onToast, { browsing = false; web.loadUrl("about:blank") },
@@ -585,10 +637,11 @@ fun StoreScreen(
                         onDetectFolder = ::detectFolder,
                     )
                 }
+                }
             }
         }
         RoundButton(
-            onClick = { if (tab == 3) tab = 0 else if (tab == 0 && openStoreId != null && vitaDetail == null) storeBack() else if (tab == 0 && vitaDetail != null) vitaDetail = null else if (tab == 0 && detail != null) detail = null else if (tab == 1 && browsing && web.canGoBack()) web.goBack() else onClose() },
+            onClick = { goBack() },
             modifier = Modifier.align(Alignment.BottomStart).padding(start = 6.dp, bottom = 6.dp),
             key = "store:back", dots = false,
         )
@@ -597,6 +650,24 @@ fun StoreScreen(
             modifier = Modifier.align(Alignment.BottomEnd).padding(end = 6.dp, bottom = 6.dp),
             key = "store:more", dots = true,
         )
+        val showTop by remember { derivedStateOf { catalogueState.firstVisibleItemIndex > 5 } }
+        AnimatedVisibility(
+            visible = tab == 0 && !inner && showTop,
+            enter = fadeIn() + scaleIn(),
+            exit = fadeOut() + scaleOut(),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 18.dp, bottom = 80.dp),
+        ) {
+            val lit = padHighlighted("store:top") || padHovered("store:top")
+            Box(
+                Modifier
+                    .size(52.dp)
+                    .padClickable("store:top", corner = null, onClick = { scope.launch { catalogueState.animateScrollToItem(0) } })
+                    .clip(CircleShape)
+                    .background(if (lit) TabDark else TabDark.copy(alpha = 0.85f))
+                    .border(if (lit) 2.dp else 1.5.dp, Color.White.copy(alpha = if (lit) 1f else 0.7f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) { Text("▲", color = Color.White, fontSize = 20.sp) }
+        }
         updateLines?.let { lines ->
             com.qita.ui.ui.ContextMenu(
                 title = "Emulator updates",
@@ -611,19 +682,23 @@ fun StoreScreen(
                 title = "Store",
                 subtitle = "${DownloadEngine.items.count { it.state == DlState.RUNNING }} downloading",
                 items = listOfNotNull(
-                    MenuItem("Downloads") { menu = false; tab = 2 },
+                    MenuItem("Go to", true),
+                    MenuItem("Catalogue") { menu = false; tab = 0; detail = null; vitaDetail = null },
+                    MenuItem("Downloads" + if (dlBadge > 0) " ($dlBadge)" else "") { menu = false; tab = 2 },
                     MenuItem("Notifications") { menu = false; onOpenNotifications() },
-                    MenuItem("Catalogue") { menu = false; tab = 0; detail = null },
+                    MenuItem("Screen", true),
                     MenuItem("Rotate screen") { menu = false; onRotate() },
+                    MenuItem("Updates and banners", true),
                     MenuItem("Check emulator updates") { menu = false; checkUpdates() },
                     MenuItem(if (picFolder) "Change banner folder" else "Choose a banner folder") { menu = false; folderPicker.launch(null) },
                     if (picFolder) MenuItem("Shuffle banner pictures") { menu = false; StoreBanners.shuffle(context); picRev++; onToast("Picked another few pictures") } else null,
                     if (picFolder) MenuItem("Stop using my folder") { menu = false; StoreBanners.clearFolder(context); picFolder = false; picRev++; onToast("Banner folder removed") } else null,
+                    MenuItem("Leave", true),
                     MenuItem("Close the Store") { menu = false; onClose() },
-                    MenuItem("Cancel") { menu = false },
                 ),
                 onDismiss = { menu = false },
                 layer = 5,
+                footer = true,
             )
         }
     }
@@ -634,12 +709,12 @@ fun StoreScreen(
 // ------------------------------------------------------------------------------------------------------------------------
 
 @Composable
-private fun TabBar(tab: Int, onTab: (Int) -> Unit, onSearch: () -> Unit, onSettings: () -> Unit) {
+private fun TabBar(tab: Int, badge: Int, onTab: (Int) -> Unit, onSearch: () -> Unit, onSettings: () -> Unit) {
     val compact = LocalConfiguration.current.screenWidthDp < 600
     Row(
         Modifier
             .fillMaxWidth()
-            .height(46.dp)
+            .height(52.dp)
             .background(Brush.verticalGradient(listOf(BarTop, BarBottom)))
             .gloss(0.dp, 0.20f)
             .drawLine(),
@@ -660,7 +735,7 @@ private fun TabBar(tab: Int, onTab: (Int) -> Unit, onSearch: () -> Unit, onSetti
                     .background(if (on) TabDark else if (lit) Color.White.copy(alpha = 0.18f) else Color.Transparent),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(label, color = Color.White, fontSize = if (compact) 13.sp else 19.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
+                Text(if (i == 2 && badge > 0) "$label  $badge" else label, color = Color.White, fontSize = if (compact) 13.sp else 19.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
             }
         }
         val litSet = padHighlighted("store:settings") || padHovered("store:settings")
@@ -670,7 +745,7 @@ private fun TabBar(tab: Int, onTab: (Int) -> Unit, onSearch: () -> Unit, onSetti
                 .padClickable("store:settings", corner = 8.dp, ring = false, onClick = onSettings)
                 .background(if (litSet || tab == 3) TabDark.copy(alpha = 0.9f) else TabDark.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
                 .border(1.dp, Color.White.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
-                .padding(horizontal = 12.dp, vertical = 7.dp),
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             color = Color.White, fontSize = if (compact) 12.sp else 15.sp, maxLines = 1,
         )
         val lit = padHighlighted("store:search") || padHovered("store:search")
@@ -681,7 +756,7 @@ private fun TabBar(tab: Int, onTab: (Int) -> Unit, onSearch: () -> Unit, onSetti
                 .padClickable("store:search", corner = 8.dp, ring = false, onClick = onSearch)
                 .background(if (lit) TabDark.copy(alpha = 0.9f) else TabDark.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
                 .border(1.dp, Color.White.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
-                .padding(horizontal = if (compact) 8.dp else 14.dp, vertical = 7.dp),
+                .padding(horizontal = if (compact) 8.dp else 14.dp, vertical = 10.dp),
             color = Color.White, fontSize = if (compact) 12.sp else 15.sp, maxLines = 1,
         )
     }
@@ -815,6 +890,7 @@ private fun Catalogue(
     onOpenStore: (UserStore) -> Unit,
     onAddStore: () -> Unit,
     vita: VitaUi,
+    state: androidx.compose.foundation.lazy.LazyListState,
 ) {
     if (detail != null) {
         DetailPage(detail, started[detail.id], looking[detail.id] == true, onDownload, onOpenPage, onDetail)
@@ -837,7 +913,6 @@ private fun Catalogue(
         // "New" keeps the list's own order (newest first); the others run A to Z.
         if (vita.type == 0) rows else rows.sortedBy { it.name.trim().uppercase() }
     }
-    val state = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val appContext = LocalContext.current
@@ -1410,7 +1485,7 @@ internal fun BarButton(key: String, label: String, onClick: () -> Unit) {
             .litEdge(lit, 8.dp)
             .background(if (lit) TabDark else TabDark.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
             .border(1.dp, Color.White.copy(alpha = if (lit) 0.9f else 0.45f), RoundedCornerShape(8.dp))
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+            .padding(horizontal = 14.dp, vertical = 11.dp),
         color = Color.White, fontSize = 15.sp, maxLines = 1,
     )
 }
@@ -1537,7 +1612,7 @@ internal fun SmallAction(key: String, label: String, onClick: () -> Unit) {
             .litEdge(lit, 8.dp)
             .background(if (lit) TabDark else TabDark.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
             .border(1.dp, Color.White.copy(alpha = if (lit) 0.9f else 0.5f), RoundedCornerShape(8.dp))
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         color = Color.White, fontSize = 14.sp, maxLines = 1,
     )
 }

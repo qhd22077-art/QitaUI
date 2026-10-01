@@ -23,6 +23,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -96,6 +100,8 @@ object PadNav {
 
     /** The item under the on-screen cursor (cursor mode). */
     var hover by mutableStateOf<Any?>(null)
+    /** The button a finger is on right now (or was a moment ago), so touching shows the same highlight as the gamepad or cursor. */
+    var touched by mutableStateOf<Any?>(null)
         private set
     var hoverBounds by mutableStateOf(Rect.Zero)
         private set
@@ -238,7 +244,7 @@ object PadNav {
 
 /** True while the on-screen cursor is over [key]. */
 @Composable
-fun padHovered(key: Any?): Boolean = key != null && Controller.cursorMode && PadNav.hover == key
+fun padHovered(key: Any?): Boolean = key != null && ((Controller.cursorMode && PadNav.hover == key) || PadNav.touched == key)
 
 /** True while the gamepad highlight is on [key]. */
 @Composable
@@ -302,7 +308,45 @@ fun Modifier.padClickable(
     onClick: () -> Unit,
 ): Modifier = this
     .padTarget(key = key, corner = corner, app = app, pad = pad, ring = ring, onAdjust = onAdjust, overlay = overlay, onClick = onClick)
+    .touchLit(key)
     .clickable(onClick = onClick)
+
+/**
+ * Watches the raw touches on this element (without taking them from the click or from a scrolling parent) and marks [key] as
+ * touched while a finger is down on it. Dragging away (a scroll) cancels it, and a quick tap stays lit for a moment after.
+ */
+internal fun Modifier.touchLit(key: Any?): Modifier = if (key == null) this else composed {
+    DisposableEffect(key) { onDispose { if (PadNav.touched == key) PadNav.touched = null } }
+    Modifier.pointerInput(key) {
+        coroutineScope {
+            var releaseJob: Job? = null
+            awaitPointerEventScope {
+                var downAt: Offset? = null
+                while (true) {
+                    val e = awaitPointerEvent(PointerEventPass.Initial)
+                    val c = e.changes.firstOrNull() ?: continue
+                    if (c.pressed && !c.previousPressed) {
+                        releaseJob?.cancel()
+                        downAt = c.position
+                        PadNav.touched = key
+                    } else if (c.pressed) {
+                        val start = downAt
+                        if (start != null && (c.position - start).getDistance() > viewConfiguration.touchSlop * 1.5f) {
+                            downAt = null
+                            PadNav.touched = null
+                        }
+                    } else if (c.previousPressed) {
+                        if (downAt != null) {
+                            releaseJob?.cancel()
+                            releaseJob = launch { delay(150); if (PadNav.touched == key) PadNav.touched = null }
+                        }
+                        downAt = null
+                    }
+                }
+            }
+        }
+    }
+}
 
 /** Lets the gamepad scroll this list when the highlight reaches its edge. Place it before the scroll modifier. */
 fun Modifier.padScroller(scrollBy: suspend (Float) -> Unit): Modifier = composed {

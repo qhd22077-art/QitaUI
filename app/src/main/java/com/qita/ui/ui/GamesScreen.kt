@@ -203,7 +203,7 @@ private fun Chip(key: String, label: String, selected: Boolean, onClick: () -> U
             .litEdge(lit, 14.dp)
             .background(fill, RoundedCornerShape(14.dp))
             .border(if (lit) 2.dp else 1.dp, Color.White.copy(alpha = if (lit) 1f else 0.6f), RoundedCornerShape(14.dp))
-            .padding(horizontal = 12.dp, vertical = 5.dp),
-        color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+            .padding(horizontal = 14.dp, vertical = 9.dp),
+        color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium,
     )
 }
