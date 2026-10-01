@@ -137,6 +137,7 @@ class DownloadItem(
         DlState.FAILED -> "Failed: ${error ?: "unknown error"}"
         DlState.DONE -> "Done  (${mb(bytes)})" + if (stage.isNotBlank()) "  ·  $stage" else ""
         DlState.RUNNING -> if (!active) (waitNote.ifEmpty { "Waiting for its turn" }) else {
+            val rate = if (speed > 1f) "  ·  " + (if (speed >= 1048576f) "%.1f MB/s".format(speed / 1048576f) else "${(speed / 1024f).toInt()} KB/s") else ""
             val left = if (speed > 1f && total > 0) ((total - bytes) / speed).toLong() else -1L
             val eta = when {
                 left < 0 -> "Downloading"
@@ -144,7 +145,7 @@ class DownloadItem(
                 left < 3600 -> "${left / 60} Minute${if (left / 60 == 1L) "" else "s"} Left"
                 else -> "${left / 3600} Hour${if (left / 3600 == 1L) "" else "s"} Left"
             }
-            eta + if (total > 0) "  (${mb(bytes)} / ${mb(total)})" else "  (${mb(bytes)})"
+            eta + (if (total > 0) "  (${mb(bytes)} / ${mb(total)})" else "  (${mb(bytes)})") + rate
         }
     }
 
@@ -234,7 +235,8 @@ object DownloadEngine {
 
     private fun persist() {
         val arr = JSONArray()
-        items.forEach {
+        // A copy: other threads add and remove downloads while this walks the list.
+        items.toList().forEach {
             arr.put(
                 JSONObject().put("id", it.id).put("url", it.url).put("name", it.name).put("kind", it.kind.name)
                     .put("cookie", it.cookie ?: "").put("ua", it.userAgent ?: "").put("started", it.startedAt)
@@ -270,6 +272,13 @@ object DownloadEngine {
      */
     fun request(url: String, name: String, kind: DlKind = DlKind.FILE, cookie: String? = null, userAgent: String? = null, referer: String? = null, post: FormPost? = null, onItem: (DownloadItem) -> Unit = {}) {
         val context = app ?: error("DownloadEngine.init was not called")
+        // The same link already on its way: carry on with that one instead of starting a second copy.
+        items.firstOrNull { it.url == url && (it.state == DlState.RUNNING || it.state == DlState.PAUSED) }?.let { existing ->
+            if (existing.state == DlState.PAUSED) resume(existing)
+            onMessage("Already downloading ${existing.name}")
+            onItem(existing)
+            return
+        }
         val apk = kind == DlKind.APK || name.endsWith(".apk", true)
         val ask = asker
         if (apk || ask == null || !DownloadPrefs.ask(context)) {
@@ -401,6 +410,10 @@ object DownloadEngine {
                 val resumed = code == 206 && existing > 0
                 val length = conn.contentLengthLong
                 item.total = if (length >= 0) length + (if (resumed) existing else 0L) else -1L
+                // Say so now if the file will not fit, instead of failing after hours of downloading.
+                val needed = if (item.total > 0) item.total - (if (resumed) existing else 0L) else 0L
+                val free = item.partFile.parentFile?.usableSpace ?: Long.MAX_VALUE
+                if (needed > 0 && free < needed + 32L * 1048576) { conn.disconnect(); throw IOException("Not enough free space: ${needed / 1048576} MB needed, ${free / 1048576} MB free") }
                 if (!resumed) item.partFile.delete()
                 var done = if (resumed) existing else 0L
                 item.bytes = done
@@ -448,7 +461,7 @@ object DownloadEngine {
             item.active = false
             // A dropped connection or a timeout is not the end: try again, from the bytes already saved.
             val msg = e.message.orEmpty()
-            val hopeless = msg.startsWith("Server said 4") || msg.startsWith("The site sent") || msg.startsWith("Too many") || msg.startsWith("Bad redirect")
+            val hopeless = msg.startsWith("Not enough") || msg.startsWith("Server said 4") || msg.startsWith("The site sent") || msg.startsWith("Too many") || msg.startsWith("Bad redirect")
             if (!hopeless && item.attempts < 6) {
                 item.attempts++
                 item.waitNote = "Connection lost, trying again (${item.attempts}/6)"

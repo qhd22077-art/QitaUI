@@ -439,18 +439,33 @@ object Covers {
         return if (f.exists()) BitmapFactory.decodeFile(f.path) else null
     }
 
-    /** Downloads the box art for [game]. Blocks, so call it off the main thread. Returns whether it worked. */
+    /**
+     * Downloads the cover art for [game]. Blocks, so call it off the main thread. Returns whether it worked.
+     * The file name is tried as it is, then tidied (underscores, scene tags), then matched against the names the cover server
+     * really has for that console (ignoring tags, word order of "Name, The" and small spelling differences), and last the
+     * title-screen picture is used if there is no box art.
+     */
     fun fetch(context: Context, game: Game): Boolean = runCatching {
         val system = systemById(game.systemId) ?: return false
         val folder = system.thumbs ?: return false
-        val name = game.raw.replace(Regex("[&*/:`<>?\\\\|\"]"), "_")
-        val url = URL("https://thumbnails.libretro.com/${enc(folder)}/Named_Boxarts/${enc(name)}.png")
-        val conn = url.openConnection() as HttpURLConnection
-        conn.connectTimeout = 8000
-        conn.readTimeout = 10000
-        if (conn.responseCode != 200) { conn.disconnect(); return false }
-        val bmp = conn.inputStream.use { BitmapFactory.decodeStream(it) } ?: return false
-        conn.disconnect()
+        fun get(kind: String, name: String): Bitmap? = runCatching {
+            val safe = name.replace(Regex("[&*/:`<>?\\\\|\"]"), "_")
+            val conn = URL("https://thumbnails.libretro.com/${enc(folder)}/$kind/${enc(safe)}.png").openConnection() as HttpURLConnection
+            conn.connectTimeout = 8000
+            conn.readTimeout = 10000
+            if (conn.responseCode != 200) { conn.disconnect(); return@runCatching null }
+            val bmp = conn.inputStream.use { BitmapFactory.decodeStream(it) }
+            conn.disconnect()
+            bmp
+        }.getOrNull()
+        val tidy = CoverMatch.tidy(game.raw)
+        var bmp = get("Named_Boxarts", game.raw) ?: if (tidy != game.raw) get("Named_Boxarts", tidy) else null
+        if (bmp == null) {
+            val match = CoverMatch.best(game.raw, CoverIndex.names(context, system))
+            if (match != null) bmp = get("Named_Boxarts", match)
+        }
+        if (bmp == null) bmp = get("Named_Titles", game.raw) ?: get("Named_Titles", tidy)
+        if (bmp == null) return false
         save(context, game.id, bmp)
         true
     }.getOrDefault(false)
@@ -469,6 +484,94 @@ object Covers {
     }
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
+}
+
+/** The cover names the cover server has for a console, fetched once a week, so a game can be matched when its file name differs a little. */
+object CoverIndex {
+    private val memory = HashMap<String, List<String>>()
+
+    @Synchronized fun names(context: Context, system: GameSystem): List<String> {
+        val folder = system.thumbs ?: return emptyList()
+        memory[folder]?.let { return it }
+        val dir = File(context.filesDir, "cover_index").apply { mkdirs() }
+        val file = File(dir, "${folder.hashCode()}.txt")
+        val fresh = file.exists() && System.currentTimeMillis() - file.lastModified() < 7L * 24 * 3600 * 1000
+        if (fresh) return file.readLines().also { memory[folder] = it }
+        val fetched = runCatching { listing(folder) }.getOrNull()
+        if (!fetched.isNullOrEmpty()) {
+            file.writeText(fetched.joinToString("\n"))
+            memory[folder] = fetched
+            return fetched
+        }
+        return if (file.exists()) file.readLines().also { memory[folder] = it } else emptyList()
+    }
+
+    private fun listing(folder: String): List<String> {
+        val conn = URL("https://thumbnails.libretro.com/${URLEncoder.encode(folder, "UTF-8").replace("+", "%20")}/Named_Boxarts/").openConnection() as HttpURLConnection
+        conn.connectTimeout = 10000
+        conn.readTimeout = 30000
+        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) QitaUI")
+        if (conn.responseCode != 200) { conn.disconnect(); return emptyList() }
+        // The page is a plain list of links, a megabyte or two for a big console; read it with a limit.
+        val text = conn.inputStream.use { input ->
+            val out = java.io.ByteArrayOutputStream()
+            val buf = ByteArray(64 * 1024)
+            while (out.size() < 16 * 1024 * 1024) { val n = input.read(buf); if (n < 0) break; out.write(buf, 0, n) }
+            out.toString("UTF-8")
+        }
+        conn.disconnect()
+        return Regex("href=\"([^\"]+?)\\.png\"").findAll(text).map {
+            runCatching { java.net.URLDecoder.decode(it.groupValues[1].replace("+", "%2B"), "UTF-8") }.getOrDefault(it.groupValues[1])
+        }.map { it.replace("&amp;", "&") }.distinct().toList()
+    }
+}
+
+/** Matching a game's file name with the cover server's names. */
+object CoverMatch {
+    /** A file name with the clutter taken off: underscores, dots between words, scene tags in brackets and version marks. */
+    fun tidy(raw: String): String = raw.replace('_', ' ').replace(Regex("\\[[^]]*]"), " ")
+        .replace(Regex("(?i)\\bv\\d+(\\.\\d+)*\\b"), " ").replace(Regex("\\s+"), " ").trim().ifEmpty { raw }
+
+    /** The comparable form: lowercase words with the tags in brackets dropped and "Name, The" turned into "The Name". */
+    fun key(name: String): String {
+        var t = name.replace('_', ' ').replace(Regex("\\([^)]*\\)|\\[[^]]*]"), " ").trim()
+        Regex("^(.*?),\\s*(the|a|an)(\\s+-\\s+.*)?$", RegexOption.IGNORE_CASE).find(t)?.let { m ->
+            t = m.groupValues[2] + " " + m.groupValues[1] + m.groupValues[3]
+        }
+        return t.lowercase().replace('&', ' ').replace(Regex("[^a-z0-9]+"), " ").replace(Regex("\\b(and)\\b"), " ").replace(Regex("\\s+"), " ").trim()
+    }
+
+    /** Prefer the release most people want: USA, then World, then Europe; avoid demos and prototypes. */
+    private fun rank(name: String): Int {
+        val n = name.lowercase()
+        var s = 0
+        if ("(usa" in n) s += 4 else if ("(world" in n) s += 3 else if ("(europe" in n) s += 2 else if ("(japan" in n) s += 1
+        if ("(demo" in n || "(beta" in n || "(proto" in n || "(sample" in n || "(unl" in n || "(pirate" in n) s -= 6
+        if ("(rev" in n) s -= 0
+        return s
+    }
+
+    /** The server name that best fits [raw], or null if nothing fits well enough. */
+    fun best(raw: String, names: List<String>): String? {
+        if (names.isEmpty()) return null
+        val want = key(raw)
+        if (want.isEmpty()) return null
+        val exact = names.filter { key(it) == want }
+        if (exact.isNotEmpty()) return exact.maxByOrNull { rank(it) }
+        val wantWords = want.split(' ').toSet()
+        var best: String? = null
+        var bestScore = 0.0
+        for (n in names) {
+            val k = key(n)
+            if (k.isEmpty() || k[0] != want[0]) continue
+            val words = k.split(' ').toSet()
+            val common = wantWords.intersect(words).size.toDouble()
+            val score = common / (wantWords.size + words.size - common)
+            val total = score + rank(n) * 0.01
+            if (score >= 0.8 && total > bestScore) { bestScore = total; best = n }
+        }
+        return best
+    }
 }
 
 /** The picture a game gets until it has cover art: the system's colour with its short name. */

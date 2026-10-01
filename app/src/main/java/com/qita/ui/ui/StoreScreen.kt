@@ -1545,13 +1545,30 @@ private fun DownloadsTab(onToast: (String) -> Unit) {
                 } else onToast("Paste a full link that starts with http")
             }
         }
-        if (list.any { it.state == DlState.FAILED || it.state == DlState.PAUSED }) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SmallAction("store:dl:retry", "Retry failed and paused") {
+        if (list.isNotEmpty()) {
+            val running = list.filter { it.state == DlState.RUNNING }
+            val rate = running.sumOf { it.speed.toDouble() }
+            val summary = buildString {
+                append(if (running.isEmpty()) "Nothing downloading" else "${running.size} downloading")
+                if (rate > 1.0) append("  ·  " + (if (rate >= 1048576.0) "%.1f MB/s".format(rate / 1048576.0) else "${(rate / 1024.0).toInt()} KB/s"))
+                val failed = list.count { it.state == DlState.FAILED }
+                if (failed > 0) append("  ·  $failed failed")
+            }
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(summary, color = SoftText, fontSize = 13.sp, maxLines = 1)
+                if (running.isNotEmpty()) SmallAction("store:dl:pauseall", "Pause all") { running.forEach { DownloadEngine.pause(it) } }
+                if (list.any { it.state == DlState.FAILED || it.state == DlState.PAUSED }) SmallAction("store:dl:retry", "Resume or retry all") {
                     list.filter { it.state == DlState.FAILED || it.state == DlState.PAUSED }.forEach { DownloadEngine.resume(it) }
                 }
+                if (list.any { it.state == DlState.FAILED }) SmallAction("store:dl:clearfailed", "Clear failed") {
+                    list.filter { it.state == DlState.FAILED }.toList().forEach { DownloadEngine.cancel(it) }
+                }
                 if (list.any { it.state == DlState.DONE }) SmallAction("store:dl:clearall", "Clear finished") {
-                    list.filter { it.state == DlState.DONE }.forEach { DownloadEngine.remove(it) }
+                    list.filter { it.state == DlState.DONE }.toList().forEach { DownloadEngine.remove(it) }
                 }
             }
         }
@@ -1574,6 +1591,8 @@ private fun DownloadsTab(onToast: (String) -> Unit) {
 
 @Composable
 private fun DownloadRowLarge(d: DownloadItem) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     Row(
         Modifier
             .fillMaxWidth()
@@ -1592,7 +1611,19 @@ private fun DownloadRowLarge(d: DownloadItem) {
             DlState.RUNNING -> SmallAction("store:dl:pause:${d.id}", "Pause") { DownloadEngine.pause(d) }
             DlState.PAUSED, DlState.FAILED -> SmallAction("store:dl:resume:${d.id}", "Resume") { DownloadEngine.resume(d) }
             DlState.DONE -> {
-                if (d.plan?.folderUri != null && !d.finishing) SmallAction("store:dl:file:${d.id}", "File it") { DownloadEngine.refile(d) }
+                val path = d.finalPath
+                val isApk = d.kind == DlKind.APK || d.name.endsWith(".apk", true)
+                if (!d.finishing && path != null) {
+                    if (isApk) SmallAction("store:dl:install:${d.id}", "Install") { com.qita.ui.ApkInstaller.install(context, java.io.File(path))?.let { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show() } }
+                    else if (d.plan?.folderUri != null) SmallAction("store:dl:file:${d.id}", "File it") { DownloadEngine.refile(d) }
+                    else SmallAction("store:dl:save:${d.id}", "Save to Downloads") {
+                        scope.launch {
+                            val r = withContext(Dispatchers.IO) { com.qita.ui.DownloadPlacer.saveToPublicDownloads(context, java.io.File(path), d.name) }
+                            android.widget.Toast.makeText(context, r.message, android.widget.Toast.LENGTH_LONG).show()
+                            if (r.ok) DownloadEngine.remove(d)
+                        }
+                    }
+                }
                 SmallAction("store:dl:clear:${d.id}", "Clear") { DownloadEngine.remove(d) }
             }
         }
