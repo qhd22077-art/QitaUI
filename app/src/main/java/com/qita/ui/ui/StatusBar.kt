@@ -57,7 +57,14 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-internal data class Status(val battery: Int, val charging: Boolean, val wifi: Boolean, val bluetooth: Boolean)
+internal data class Status(
+    val battery: Int, val charging: Boolean, val wifi: Boolean, val bluetooth: Boolean,
+    /** Mobile data is the connection in use. */
+    val cellular: Boolean = false,
+    val airplane: Boolean = false,
+    /** The ringer is silent or on vibrate. */
+    val silent: Boolean = false,
+)
 
 /**
  * The Vita information bar: a thin black strip with Wi-Fi and Bluetooth on the left, the home
@@ -123,8 +130,10 @@ fun StatusBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(9.dp),
         ) {
-            if (status.wifi) WifiIcon()
+            if (status.airplane) AirplaneIcon()
+            if (status.wifi) WifiIcon() else if (status.cellular) SignalIcon()
             if (status.bluetooth) BluetoothIcon()
+            if (status.silent) SilentIcon()
             ScreenRotator.onRotate?.let { rotate ->
                 Box(Modifier.clip(CircleShape).clickable(onClick = rotate).padding(horizontal = 6.dp, vertical = 4.dp)) { RotateIcon() }
             }
@@ -403,6 +412,68 @@ internal fun readStatus(context: Context): Status {
     val wifi = runCatching {
         cm.getNetworkCapabilities(cm.activeNetwork)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
     }.getOrDefault(false)
-    val bluetooth = runCatching { AndroidSettings.Global.getInt(context.contentResolver, "bluetooth_on", 0) == 1 }.getOrDefault(false)
-    return Status(if (level < 0) 0 else level * 100 / scale, plugged, wifi, bluetooth)
+    // Ask the adapter first (it needs no permission to say whether it is on); the system setting is the fallback.
+    val bluetooth = runCatching { (context.getSystemService(Context.BLUETOOTH_SERVICE) as android.bluetooth.BluetoothManager).adapter?.isEnabled }.getOrNull()
+        ?: runCatching { AndroidSettings.Global.getInt(context.contentResolver, "bluetooth_on", 0) == 1 }.getOrDefault(false)
+    val cellular = runCatching { !wifi && cm.getNetworkCapabilities(cm.activeNetwork)?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true }.getOrDefault(false)
+    val airplane = runCatching { AndroidSettings.Global.getInt(context.contentResolver, AndroidSettings.Global.AIRPLANE_MODE_ON, 0) == 1 }.getOrDefault(false)
+    val silent = runCatching { (context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager).ringerMode != android.media.AudioManager.RINGER_MODE_NORMAL }.getOrDefault(false)
+    return Status(if (level < 0) 0 else level * 100 / scale, plugged, wifi, bluetooth, cellular, airplane, silent)
+}
+
+/** Four rising bars: mobile data. */
+@Composable
+private fun SignalIcon() {
+    Canvas(Modifier.size(width = 16.dp, height = 15.dp)) {
+        val bar = size.width / 7f
+        for (i in 0..3) {
+            val h = size.height * (0.30f + 0.23f * i)
+            drawRect(Color.White, Offset(i * bar * 1.75f, size.height - h), Size(bar, h))
+        }
+    }
+}
+
+/** A small aeroplane: airplane mode is on. */
+@Composable
+private fun AirplaneIcon() {
+    Canvas(Modifier.size(16.dp)) {
+        val w = size.width
+        val p = Path().apply {
+            moveTo(w * 0.50f, w * 0.02f)
+            lineTo(w * 0.58f, w * 0.34f)
+            lineTo(w * 0.98f, w * 0.60f)
+            lineTo(w * 0.98f, w * 0.72f)
+            lineTo(w * 0.58f, w * 0.60f)
+            lineTo(w * 0.56f, w * 0.84f)
+            lineTo(w * 0.72f, w * 0.94f)
+            lineTo(w * 0.72f, w * 1.00f)
+            lineTo(w * 0.50f, w * 0.94f)
+            lineTo(w * 0.28f, w * 1.00f)
+            lineTo(w * 0.28f, w * 0.94f)
+            lineTo(w * 0.44f, w * 0.84f)
+            lineTo(w * 0.42f, w * 0.60f)
+            lineTo(w * 0.02f, w * 0.72f)
+            lineTo(w * 0.02f, w * 0.60f)
+            lineTo(w * 0.42f, w * 0.34f)
+            close()
+        }
+        drawPath(p, Color.White)
+    }
+}
+
+/** A speaker crossed out: the ringer is silent or on vibrate. */
+@Composable
+private fun SilentIcon() {
+    Canvas(Modifier.size(width = 17.dp, height = 15.dp)) {
+        val w = size.width
+        val h = size.height
+        val speaker = Path().apply {
+            moveTo(0f, h * 0.36f); lineTo(w * 0.22f, h * 0.36f); lineTo(w * 0.50f, h * 0.10f)
+            lineTo(w * 0.50f, h * 0.90f); lineTo(w * 0.22f, h * 0.64f); lineTo(0f, h * 0.64f); close()
+        }
+        drawPath(speaker, Color.White)
+        val stroke = 1.6.dp.toPx()
+        drawLine(Color.White, Offset(w * 0.64f, h * 0.30f), Offset(w * 0.96f, h * 0.70f), stroke, StrokeCap.Round)
+        drawLine(Color.White, Offset(w * 0.96f, h * 0.30f), Offset(w * 0.64f, h * 0.70f), stroke, StrokeCap.Round)
+    }
 }
