@@ -342,6 +342,8 @@ fun HomeScreen(homePresses: Int = 0) {
     val pagerState = rememberPagerState { pageCount }
     // Where the pages are on screen (root pixels), so a dropped bubble can be put in the nearest free slot.
     var pageArea by remember { mutableStateOf(Rect.Zero) }
+    // PS Vita mode makes the system bubbles clear glass (unless a bubble was given its own choice in Customise).
+    LaunchedEffect(settings.vitaMode) { com.qita.ui.BubbleStyles.setAuto(settings.vitaMode) }
     // Switching free placement off closes the empty slots up again.
     LaunchedEffect(settings.freePlacement) {
         if (!settings.freePlacement && home.any { HomeGaps.isGap(it) }) { home = home.filter { !HomeGaps.isGap(it) }; store.saveHome(home) }
@@ -1553,7 +1555,7 @@ fun HomeScreen(homePresses: Int = 0) {
             val onHome = app.packageName in onHomeSet
             ContextMenu(
                 title = app.label,
-                subtitle = if (app.game != null) (systemById(app.game!!.systemId)?.name ?: "Game") else if (app.action != null) "Built in" else app.packageName,
+                subtitle = if (app.game != null) (systemById(app.game!!.systemId)?.name ?: "Game") else if (app.action != null) "System bubble" else app.packageName,
                 items = (if (inFolder != null) listOf(MenuItem("Take out of ${inFolder.name}") { menuFor = null; takeOutOfFolder(app.packageName) }) else emptyList()) + (if (app.folderMembers != null) listOf(
                     MenuItem("Open") { menuFor = null; openFolderId = app.packageName },
                     MenuItem("Rename") { menuFor = null; renameText = app.label; renameFolderId = app.packageName },
@@ -1577,7 +1579,7 @@ fun HomeScreen(homePresses: Int = 0) {
                     MenuItem("Cancel") { menuFor = null },
                 ) else if (app.action != null) listOf(
                     MenuItem("Open") { menuFor = null; launchApp(app) },
-                    MenuItem("Customise (translucent, glass, tint, picture)") { menuFor = null; styleFor = app.action },
+                    MenuItem("Customise this system bubble (translucent, glass, tint, picture)") { menuFor = null; styleFor = app.action },
                     MenuItem("Cancel") { menuFor = null },
                 ) else listOf(
                     MenuItem("Open") { menuFor = null; launchApp(app) },

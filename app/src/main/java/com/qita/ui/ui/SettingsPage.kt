@@ -268,7 +268,7 @@ fun SettingsPage(
                             }
                             // The theme's own icons for built-in bubbles: off until chosen, so a theme does not change the default icons.
                             if (themes.iconKeys.isNotEmpty()) {
-                                InfoBox("This theme has its own icons for some built-in bubbles. They stay off unless you switch them on here.")
+                                InfoBox("This theme has its own icons for some system bubbles. They stay off unless you switch them on here.")
                                 for (key in com.qita.ui.ThemePacks.ICON_KEYS.filter { it in themes.iconKeys }) {
                                     val label = when (key) { "settings" -> "Settings"; "browser" -> "Browser"; else -> "Folders" }
                                     CheckRow("set:themeicon:$key", "◉", "Use the theme's $label icon", key in themes.iconsOn) { on -> themes.onIcon(key, on) }
@@ -324,7 +324,7 @@ fun SettingsPage(
                             CheckRow("set:dragfolder", "▣", "Dropping a bubble on another one makes a folder", settings.dragMakesFolder) { onChange(settings.copy(dragMakesFolder = it)) }
                             CheckRow("set:freeplace", "▣", "Put bubbles in any slot (leave empty slots)", settings.freePlacement) { onChange(settings.copy(freePlacement = it)) }
                             MenuRow("set:clearhome", "✕", "Remove all apps from home") {
-                                ask = ConfirmAsk("Remove everything from home?", "Every bubble and folder leaves the home screen, except the built-in ones. Your apps and games stay on the Desktop and in Games.", "Remove all") { onClearHome() }
+                                ask = ConfirmAsk("Remove everything from home?", "Every bubble and folder leaves the home screen, except the system bubbles. Your apps and games stay on the Desktop and in Games.", "Remove all") { onClearHome() }
                             }
                         }
                         "bubbles" -> {
@@ -354,7 +354,7 @@ fun SettingsPage(
                             SliderRow("set:sway", "≈", "Idle sway", settings.sway, 0f..3f, 0.25f) { onChange(settings.copy(sway = it)) }
                             ChoiceRow("set:tapAnim", "↻", "When tapped", listOf("Flip", "Pulse", "Nothing"), settings.tapAnim) { onChange(settings.copy(tapAnim = it)) }
                             // The built-in bubbles can each be made see-through, glass, tinted or given a picture.
-                            InfoBox("Built-in bubbles: make one see-through, glassy or tinted, or give it a picture of your own.")
+                            InfoBox("System bubbles (Settings, Store, Desktop, Games, Browser, Folders, System Settings): make one see-through, glassy or tinted, or give it a picture of your own.")
                             com.qita.ui.SystemAction.values().forEach { a ->
                                 MenuRow("set:customise:${a.id}", "✎", "Customise ${a.label}") { onCustomise(a) }
                             }

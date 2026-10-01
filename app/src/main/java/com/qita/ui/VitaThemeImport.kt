@@ -172,7 +172,7 @@ object VitaThemeImport {
             val colours = listOfNotNull(nameColor, dateColor, barColor, indicatorColor).size
             if (colours > 0) add("$colours colour${if (colours == 1) "" else "s"}")
             val mapped = icons.keys.count { it.lowercase() in setOf("settings", "browser", "hostcollabo") }
-            if (mapped > 0) add("$mapped icon${if (mapped == 1) "" else "s"} for built-in bubbles (off until you switch them on in Settings, Theme)")
+            if (mapped > 0) add("$mapped icon${if (mapped == 1) "" else "s"} for system bubbles (off until you switch them on in Settings, Theme)")
         }
         if (bad.isNotEmpty()) notes.add("pictures that could not be read: ${bad.take(5).joinToString(", ")}")
         if (pack.skipped > 0) notes.add("${pack.skipped} file(s) skipped for size")

@@ -89,9 +89,13 @@ fun BubbleStylePanel(
                     )
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    StyleChip("bstyle:glass", if (style.glass) "Glass look: on" else "Glass look: off", style.glass) { onStyle(style.copy(glass = !style.glass)) }
+                Text("Glass look", color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StyleChip("bstyle:glass:auto", "Automatic", style.glass == null) { onStyle(style.copy(glass = null)) }
+                    StyleChip("bstyle:glass:on", "On", style.glass == true) { onStyle(style.copy(glass = true)) }
+                    StyleChip("bstyle:glass:off", "Off", style.glass == false) { onStyle(style.copy(glass = false)) }
                 }
+                Text("Automatic means glass while PS Vita mode is on.", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
 
                 Text("Tint", color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

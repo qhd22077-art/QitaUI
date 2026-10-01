@@ -72,6 +72,8 @@ private fun systemApp(
     art: DrawScope.() -> Unit,
 ): LaunchableApp {
     val style = BubbleStyles.of(action.id)
+    // Glass if the user chose it, else whatever PS Vita mode says.
+    val glass = style.glass ?: BubbleStyles.autoGlass
     // The user's own picture wins, then the theme's picture (if its switch is on); each is scaled to the usual size.
     val own = if (style.picture) BubbleStyles.picture(action.id)?.let { runCatching { android.graphics.Bitmap.createScaledBitmap(it.asAndroidBitmap(), ICON, ICON, true).asImageBitmap() }.getOrNull() } else null
     val themed = if (own != null) null else SystemIcons.overrides[action]?.let { runCatching { Resample.scaleTo(it.asAndroidBitmap(), ICON, ICON, keepAlpha = true).asImageBitmap() }.getOrNull() }
@@ -97,8 +99,8 @@ private fun systemApp(
         action = action,
         ball = SphereRenderer.render(icon.asAndroidBitmap(), 224, systemBody(action), 0.55f).asImageBitmap(),
         // Clear glass: just the pictogram (or the picture) inside a glass sphere, coloured by the tint or the bubble's own colour.
-        glassIcon = if (style.glass) (picture ?: drawIcon { art() }) else null,
-        glassTint = if (style.glass) (tinted ?: tint) else null,
+        glassIcon = if (glass) (picture ?: drawIcon { art() }) else null,
+        glassTint = if (glass) (tinted ?: tint) else null,
     )
 }
 

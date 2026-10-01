@@ -21,7 +21,7 @@ const val PAGE_PHOTO = -2
 data class Theme(val name: String, val top: Color, val mid: Color, val bottom: Color, val scene: Scene = Scene.WAVES)
 
 val THEMES = listOf(
-    Theme("Vita Blue", Color(0xFF0A2C9A), Color(0xFF1B5BD8), Color(0xFFB4D8FF)),
+    Theme("Vita Blue", Color(0xFF031038), Color(0xFF0B2F8A), Color(0xFF5A8FE0)),
     Theme("Cloud", Color(0xFF9DB4E8), Color(0xFFC5D2F2), Color(0xFFF1F5FF)),
     Theme("Emerald", Color(0xFF0B6B2B), Color(0xFF2FB344), Color(0xFFB8F5B0)),
     Theme("Violet", Color(0xFF3A1C8F), Color(0xFF6B44D6), Color(0xFFD8C8FF)),
@@ -35,7 +35,7 @@ val THEMES = listOf(
     Theme("Neon Grid", Color(0xFF120033), Color(0xFFC2185B), Color(0xFFFF7043), Scene.GRID),
     Theme("Dunes", Color(0xFF3B1552), Color(0xFFE0567A), Color(0xFFFFB25B), Scene.DUNES),
     // The real Vita wallpapers: glossy silk ribbons, and glass symbols over deep blue.
-    Theme("Vita Silk", Color(0xFF1B6FCB), Color(0xFF1850A8), Color(0xFF0C1F6B), Scene.SILK),
+    Theme("Vita Silk", Color(0xFF04164A), Color(0xFF072C7A), Color(0xFF0A3A9A), Scene.SILK),
     Theme("Vita Symbols", Color(0xFF021238), Color(0xFF063488), Color(0xFF0A4FA8), Scene.SYMBOLS),
     // The real menu's deep PlayStation navy: nearly black at the top, a rich blue only at the bottom, with the pale silk ribbons over it.
     Theme("Vita Night", Color(0xFF010514), Color(0xFF04134A), Color(0xFF0A2F82), Scene.SILK),
@@ -212,6 +212,7 @@ class SettingsStore(private val context: Context) {
         }
         // The icons of the theme in use are needed before the first bubble is drawn.
         BubbleStyles.load(context)
+        BubbleStyles.initAuto(prefs.getBoolean("vitaMode", true))
         ThemePacks.loadActive(context)
     }
     /** The global wallpaper (page == null) or the photo chosen for one home page. */

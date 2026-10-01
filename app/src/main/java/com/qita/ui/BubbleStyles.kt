@@ -20,13 +20,14 @@ import java.io.File
 data class BubbleStyle(
     /** 1 = solid, lower = more translucent. */
     val alpha: Float = 1f,
-    val glass: Boolean = false,
+    /** True = clear glass, false = solid, null = automatic (glass while PS Vita mode is on). */
+    val glass: Boolean? = null,
     /** ARGB tint for the bubble's background (or, with [glass], its glass), or null for the usual look. */
     val tint: Int? = null,
     /** True when the user chose a picture (kept in a file, see [BubbleStyles.picture]). */
     val picture: Boolean = false,
 ) {
-    val isDefault: Boolean get() = alpha >= 0.999f && !glass && tint == null && !picture
+    val isDefault: Boolean get() = alpha >= 0.999f && glass == null && tint == null && !picture
 }
 
 /** The looks the user gave the built-in bubbles, kept in the app's storage. */
@@ -39,6 +40,21 @@ object BubbleStyles {
     var artRev by mutableIntStateOf(0)
         private set
 
+    /** Whether a system bubble with no glass choice of its own is glass: true while PS Vita mode is on. */
+    @Volatile var autoGlass = false
+        private set
+
+    /** Sets the automatic glass at start-up (no redraw needed yet). */
+    fun initAuto(on: Boolean) { autoGlass = on }
+
+    /** PS Vita mode was switched: the system bubbles that follow it are redrawn. */
+    fun setAuto(on: Boolean) {
+        if (on == autoGlass) return
+        autoGlass = on
+        SystemIcons.cache = null
+        artRev++
+    }
+
     private var prefs: SharedPreferences? = null
     private var dir: File? = null
 
@@ -50,7 +66,13 @@ object BubbleStyles {
             val o = JSONObject(p.getString("styles", "{}") ?: "{}")
             o.keys().asSequence().associateWith { k ->
                 val s = o.getJSONObject(k)
-                BubbleStyle(s.optDouble("a", 1.0).toFloat(), s.optBoolean("g"), if (s.has("t")) s.getInt("t") else null, s.optBoolean("p"))
+                // "gm": 0 automatic, 1 glass, 2 solid. Older saves had a plain "g": true meant glass, false only meant "not chosen".
+                val glass: Boolean? = when {
+                    s.has("gm") -> when (s.getInt("gm")) { 1 -> true; 2 -> false; else -> null }
+                    s.optBoolean("g") -> true
+                    else -> null
+                }
+                BubbleStyle(s.optDouble("a", 1.0).toFloat(), glass, if (s.has("t")) s.getInt("t") else null, s.optBoolean("p"))
             }
         }.getOrDefault(emptyMap())
     }
@@ -62,7 +84,7 @@ object BubbleStyles {
         all = if (style.isDefault) all - id else all + (id to style)
         val o = JSONObject()
         for ((k, s) in all) {
-            val j = JSONObject().put("a", s.alpha.toDouble()).put("g", s.glass).put("p", s.picture)
+            val j = JSONObject().put("a", s.alpha.toDouble()).put("gm", when (s.glass) { true -> 1; false -> 2; null -> 0 }).put("p", s.picture)
             if (s.tint != null) j.put("t", s.tint)
             o.put(k, j)
         }
