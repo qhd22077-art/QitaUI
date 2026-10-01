@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Cover art for games is downloaded from the libretro thumbnail server. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Lets the top bar ask whether Bluetooth is on (Android 11 and older need it declared). -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <!-- Downloads keep going in the background: a foreground service with a notification, and a wake lock while they run. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
