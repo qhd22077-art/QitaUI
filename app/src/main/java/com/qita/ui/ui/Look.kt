@@ -32,6 +32,8 @@ data class Look(
     val reduceMotion: Boolean = false,
     val showClock: Boolean = true,
     val barOpacity: Float = 1f,
+    val barColor: Color = Color.Black,
+    val indicatorColor: Color = Color.White,
     val clockSize: Float = 1f,
     /** 0 opaque discs .. 1 clear glass (PS Vita mode). */
     val glass: Float = 0f,
@@ -70,6 +72,8 @@ fun Settings.look() = Look(
     reduceMotion = reduceMotion,
     showClock = showClock,
     barOpacity = barOpacity,
+    barColor = Color(barColor),
+    indicatorColor = Color(indicatorColor),
     clockSize = clockSize,
     glass = if (glassBubbles) glass else 0f,
     symbols = if (lightMode) minOf(symbolCount, 18) else symbolCount,

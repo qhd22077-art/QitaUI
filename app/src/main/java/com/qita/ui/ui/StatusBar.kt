@@ -123,7 +123,7 @@ fun StatusBar(
         modifier
             .fillMaxWidth()
             .height(28.dp)
-            .background(Brush.verticalGradient(listOf(Color(0xFF000000).copy(alpha = look.barOpacity), Color(0xFF0C0C0C).copy(alpha = look.barOpacity)))),
+            .background(Brush.verticalGradient(listOf(look.barColor.copy(alpha = look.barOpacity), lerp(look.barColor, Color.White, 0.05f).copy(alpha = look.barOpacity)))),
     ) {
         Row(
             Modifier.align(Alignment.CenterStart).padding(start = 14.dp),
@@ -173,11 +173,11 @@ fun StatusBar(
         ) {
             val clock = if (use24h) SimpleDateFormat("HH:mm", Locale.getDefault()) else SimpleDateFormat("h:mm", Locale.getDefault())
             if (look.showClock) Row(verticalAlignment = Alignment.Bottom) {
-                Text(clock.format(now), color = Color.White, fontSize = (17f * look.clockSize).sp, fontWeight = FontWeight.Medium)
+                Text(clock.format(now), color = look.indicatorColor, fontSize = (17f * look.clockSize).sp, fontWeight = FontWeight.Medium)
                 if (!use24h) {
                     Text(
                         SimpleDateFormat(" a", Locale.getDefault()).format(now).uppercase(Locale.getDefault()),
-                        Modifier.padding(bottom = 2.dp), color = Color.White, fontSize = 10.sp,
+                        Modifier.padding(bottom = 2.dp), color = look.indicatorColor, fontSize = 10.sp,
                     )
                 }
             }

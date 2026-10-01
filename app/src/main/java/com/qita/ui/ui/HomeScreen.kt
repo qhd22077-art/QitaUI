@@ -316,6 +316,57 @@ fun HomeScreen(homePresses: Int = 0) {
     val menuOpen = menuFor != null || showQuickMenu || showNotifs
     val anyOverlay = showLock || showDesktop || showGames || showStore || showBrowser || showFolders || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null
 
+    // Saved themes: imported Vita themes and .qtheme files.
+    var themeList by remember { mutableStateOf(com.qita.ui.ThemePacks.list(context)) }
+    var themeReport by remember { mutableStateOf<String?>(null) }
+    var activeTheme by remember { mutableStateOf(com.qita.ui.ThemePacks.active(context)) }
+    fun refreshThemes() { themeList = com.qita.ui.ThemePacks.list(context); activeTheme = com.qita.ui.ThemePacks.active(context) }
+    fun importTheme(uri: android.net.Uri, vita: Boolean) {
+        scope.launch {
+            val r = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        if (vita) com.qita.ui.VitaThemeImport.import(context, input) else com.qita.ui.ThemePacks.importPack(context, input)
+                    }
+                }.getOrNull()
+            }
+            themeReport = r?.report ?: "That file could not be read."
+            refreshThemes()
+            toast = if (r?.id != null) "Theme imported. Tap it in the list to use it." else "Nothing could be imported"
+        }
+    }
+    fun applyThemePack(id: String) {
+        scope.launch {
+            val pack = com.qita.ui.ThemePacks.load(context, id)
+            if (pack == null) { toast = "That theme could not be read"; return@launch }
+            val dir = com.qita.ui.ThemePacks.folder(context, id)
+            val done = withContext(Dispatchers.IO) {
+                val pages = LinkedHashMap<Int, androidx.compose.ui.graphics.ImageBitmap>()
+                pack.pages.forEachIndexed { i, name -> store.saveWallpaper(android.net.Uri.fromFile(File(dir, name)), i)?.let { pages[i] = it } }
+                val lockBmp = pack.lock?.let { store.saveWallpaper(android.net.Uri.fromFile(File(dir, it)), -5) }
+                pages to lockBmp
+            }
+            var bg = pageBg
+            done.first.keys.forEach { bg = bg + (it to PAGE_PHOTO) }
+            store.savePageBg(bg)
+            pageBg = bg
+            pageWallpapers = pageWallpapers + done.first
+            done.second?.let { lockWallpaper = it }
+            settings = settings.copy(
+                nameColor = pack.nameColor ?: settings.nameColor,
+                lockBgMode = if (done.second != null) 2 else settings.lockBgMode,
+                lockClockColor = pack.dateColor ?: settings.lockClockColor,
+                barColor = pack.barColor ?: settings.barColor,
+                indicatorColor = pack.indicatorColor ?: settings.indicatorColor,
+            )
+            store.save(settings)
+            com.qita.ui.ThemePacks.setActive(context, id)
+            com.qita.ui.ThemePacks.applyIcons(context, pack)
+            reload++
+            refreshThemes()
+            toast = "Applied \u201c${pack.name}\u201d"
+        }
+    }
     fun saveFolders(list: List<HomeFolder>) { homeFolders = list; HomeFolders.save(context, list) }
     /** Takes folders with nothing left in them off the home screen. */
     fun pruneFolders() {
@@ -1172,6 +1223,23 @@ fun HomeScreen(homePresses: Int = 0) {
                     onLockPicture = { uri -> store.saveWallpaper(uri, -5)?.let { lockWallpaper = it } },
                     onClearLockPicture = { store.clearWallpaper(-5); lockWallpaper = null },
                     onPreviewLock = { showSettings = false; settingsStart = null; showLock = true },
+                    themes = ThemesSetup(
+                        list = themeList,
+                        activeId = activeTheme,
+                        report = themeReport,
+                        onImportVita = { importTheme(it, true) },
+                        onImportPack = { importTheme(it, false) },
+                        onApply = { applyThemePack(it) },
+                        onExport = { id, uri ->
+                            scope.launch {
+                                val ok = withContext(Dispatchers.IO) {
+                                    runCatching { context.contentResolver.openOutputStream(uri)?.use { com.qita.ui.ThemePacks.export(context, id, it) } != null }.getOrDefault(false)
+                                }
+                                toast = if (ok) "Theme saved" else "Could not save the theme"
+                            }
+                        },
+                        onDelete = { id -> com.qita.ui.ThemePacks.delete(context, id); reload++; refreshThemes() },
+                    ),
                     games = GamesSetup(
                         folders = gameFolders,
                         installed = emuInstalled,

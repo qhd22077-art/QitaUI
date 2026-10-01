@@ -73,6 +73,19 @@ import kotlin.math.roundToInt
 private val DeepGreen = Color(0xFF0B6A14)
 
 /** What the Games & Emulators setup page shows and does; built by the home screen, which owns the scanning. */
+/** The saved themes (imported Vita themes and our own .qtheme files) and what can be done with them. */
+class ThemesSetup(
+    val list: List<com.qita.ui.ThemePackInfo>,
+    val activeId: String?,
+    /** What the last import did, or null. */
+    val report: String?,
+    val onImportVita: (Uri) -> Unit,
+    val onImportPack: (Uri) -> Unit,
+    val onApply: (String) -> Unit,
+    val onExport: (String, Uri) -> Unit,
+    val onDelete: (String) -> Unit,
+)
+
 class GamesSetup(
     val folders: List<com.qita.ui.GameFolder>,
     val installed: List<Pair<com.qita.ui.Emulator, String>>,
@@ -118,6 +131,7 @@ fun SettingsPage(
     onClearLockPicture: () -> Unit,
     onPreviewLock: () -> Unit,
     games: GamesSetup,
+    themes: ThemesSetup,
     startPage: String? = null,
     onClose: () -> Unit,
 ) {
@@ -141,6 +155,17 @@ fun SettingsPage(
     }
     val lockPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) onLockPicture(uri)
+    }
+    val vitaThemePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) themes.onImportVita(uri)
+    }
+    val packPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) themes.onImportPack(uri)
+    }
+    var themeExportId by remember { mutableStateOf<String?>(null) }
+    val themeExporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        val id = themeExportId
+        if (uri != null && id != null) themes.onExport(id, uri)
     }
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) games.onAddFolder(uri)
@@ -215,6 +240,17 @@ fun SettingsPage(
                 ) {
                     when (current) {
                         "theme" -> {
+                            // Themes made elsewhere: a Vita custom theme (a zip with theme.xml and pictures) or a .qtheme from QitaUI.
+                            MenuRow("set:themeimport:vita", "⇩", "Import a Vita theme (.zip)") { vitaThemePicker.launch("*/*") }
+                            MenuRow("set:themeimport:pack", "⇩", "Import a QitaUI theme (.qtheme)") { packPicker.launch("*/*") }
+                            themes.report?.let { InfoBox(it) }
+                            themes.list.forEach { t ->
+                                MenuRow("set:themepack:${t.id}", "◐", t.name + if (t.author.isNotBlank()) "  ·  ${t.author}" else "", trailing = {
+                                    if (t.id == themes.activeId) Text("✓", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                                }) { themes.onApply(t.id) }
+                                MenuRow("set:themepack:export:${t.id}", "↥", "Save “${t.name}” as a file to share") { themeExportId = t.id; themeExporter.launch(t.name.replace(Regex("[^A-Za-z0-9 _-]"), "_") + ".qtheme") }
+                                MenuRow("set:themepack:del:${t.id}", "✕", "Delete “${t.name}”") { themes.onDelete(t.id) }
+                            }
                             CheckRow("set:vita", "◉", "PS Vita mode (silk wallpaper, glass bubbles)", settings.vitaMode) { on ->
                                 onChange(
                                     if (on) settings.copy(vitaMode = true, prevTheme = settings.themeIndex, themeIndex = com.qita.ui.VITA_SILK)

@@ -148,6 +148,9 @@ data class Settings(
     val lockClockPos: Int = 0,
     val symbolCount: Int = 45,
     val notifColor: Int = 0xFF1D3E8F.toInt(),
+    /** The top bar's colour and the colour of its clock (a Vita theme sets both). */
+    val barColor: Int = 0xFF000000.toInt(),
+    val indicatorColor: Int = 0xFFFFFFFF.toInt(),
     /** 0 landscape, 1 portrait, 2 follows how the device is held. */
     val orientation: Int = 0,
     /** The charge at which the battery icon turns amber (low) and red and blinking (nearly dead). */
@@ -205,6 +208,8 @@ class SettingsStore(private val context: Context) {
             if (prefs.getInt("theme", VITA_SILK) == VITA_SILK) prefs.edit().putInt("theme", VITA_NIGHT).apply()
             prefs.edit().putBoolean("nightSeeded", true).apply()
         }
+        // The icons of the theme in use are needed before the first bubble is drawn.
+        ThemePacks.loadActive(context)
     }
     /** The global wallpaper (page == null) or the photo chosen for one home page. */
     private fun wallpaperFile(page: Int? = null) =
@@ -257,6 +262,8 @@ class SettingsStore(private val context: Context) {
         lockClockPos = prefs.getInt("lockClockPos", 0),
         symbolCount = prefs.getInt("symbolCount", 45),
         notifColor = prefs.getInt("notifColor", 0xFF1D3E8F.toInt()),
+        barColor = prefs.getInt("barColor", 0xFF000000.toInt()),
+        indicatorColor = prefs.getInt("indicatorColor", 0xFFFFFFFF.toInt()),
         orientation = prefs.getInt("orientation", 0),
         lightMode = prefs.getBoolean("lightMode", false),
         batteryLow = prefs.getInt("batteryLow", 20),
@@ -340,6 +347,8 @@ class SettingsStore(private val context: Context) {
             .putInt("lockClockPos", s.lockClockPos)
             .putInt("symbolCount", s.symbolCount)
             .putInt("notifColor", s.notifColor)
+            .putInt("barColor", s.barColor)
+            .putInt("indicatorColor", s.indicatorColor)
             .putInt("orientation", s.orientation)
             .putBoolean("lightMode", s.lightMode)
             .putInt("batteryLow", s.batteryLow)

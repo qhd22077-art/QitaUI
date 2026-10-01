@@ -40,7 +40,17 @@ val SYSTEM_IDS: List<String> = SystemAction.values().map { it.id }
  * The three built-in bubbles. Like the Vita's own system icons they are glossy black spheres with a white
  * pictogram. The art is drawn in code; [tint] only colours the LiveArea page of each one.
  */
-val SYSTEM_APPS: List<LaunchableApp> by lazy {
+/** Pictures from the theme in use that replace the art of built-in bubbles (a Vita theme's settings, browser and content manager icons). */
+object SystemIcons {
+    @Volatile var overrides: Map<SystemAction, ImageBitmap> = emptyMap()
+        set(value) { field = value; cache = null }
+    @Volatile var cache: List<LaunchableApp>? = null
+}
+
+val SYSTEM_APPS: List<LaunchableApp>
+    get() = SystemIcons.cache ?: buildSystemApps().also { SystemIcons.cache = it }
+
+private fun buildSystemApps(): List<LaunchableApp> =
     listOf(
         // Every built-in bubble is black glass with a white pictogram.
         systemApp(SystemAction.SETTINGS, Color(0xFF3F9A5C)) { drawToolbox() },
@@ -51,7 +61,6 @@ val SYSTEM_APPS: List<LaunchableApp> by lazy {
         systemApp(SystemAction.FOLDERS, Color(0xFFD9A21E)) { drawFolder() },
         systemApp(SystemAction.ANDROID, Color(0xFF3DA35D)) { drawGear() },
     )
-}
 
 private val Ink = Color(0xFF14161A)
 
@@ -62,7 +71,9 @@ private fun systemApp(
     backBottom: Color = Color(0xFF07080A),
     art: DrawScope.() -> Unit,
 ): LaunchableApp {
-    val icon = drawIcon {
+    // A theme can replace the art with its own picture (scaled to the usual size).
+    val themed = SystemIcons.overrides[action]?.let { runCatching { android.graphics.Bitmap.createScaledBitmap(it.asAndroidBitmap(), ICON, ICON, true).asImageBitmap() }.getOrNull() }
+    val icon = themed ?: drawIcon {
         // A dark backdrop with a faint light in the upper left.
         drawRect(Brush.linearGradient(listOf(backTop, backBottom), Offset.Zero, Offset(ICON.toFloat(), ICON.toFloat())))
         drawCircle(
