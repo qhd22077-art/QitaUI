@@ -100,9 +100,9 @@ object PadNav {
 
     /** The item under the on-screen cursor (cursor mode). */
     var hover by mutableStateOf<Any?>(null)
+        private set
     /** The button a finger is on right now (or was a moment ago), so touching shows the same highlight as the gamepad or cursor. */
     var touched by mutableStateOf<Any?>(null)
-        private set
     var hoverBounds by mutableStateOf(Rect.Zero)
         private set
     var hoverCorner by mutableStateOf<Dp?>(10.dp)
