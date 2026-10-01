@@ -395,22 +395,8 @@ fun HomeScreen(homePresses: Int = 0) {
         if (plan != null && item.kind != DlKind.APK && ext != "apk") {
             val folder = gameFolders.firstOrNull { it.uri == plan.folderUri }
             if (folder != null) {
-                scope.launch {
-                    val system = if (folder.systemId != "auto") systemById(folder.systemId)
-                    else DownloadPlacer.candidatesFor(ext).singleOrNull() ?: GameScanner.systemFromName(item.name)
-                    val r = withContext(Dispatchers.IO) {
-                        if (plan.unzip && DownloadPlacer.isArchive(item.name)) DownloadPlacer.unzipAndPlace(context, File(path), system, folder, plan.deleteZip)
-                        else DownloadPlacer.place(context, File(path), item.name, system, folder)
-                    }
-                    toast = r.message
-                    if (r.ok) {
-                        DownloadEngine.remove(item)
-                        // A scan already running must not make this one be skipped.
-                        var waited = 0
-                        while (gamesBusy != null && waited++ < 40) delay(500)
-                        scanGames()
-                    }
-                }
+                // One set of rules (real file type from its bytes, progress, verification) for every path: the engine's.
+                DownloadEngine.refile(item)
                 return
             }
             if (ext != "vpk") { toast = "Saved in Downloads: ${item.name}"; return }

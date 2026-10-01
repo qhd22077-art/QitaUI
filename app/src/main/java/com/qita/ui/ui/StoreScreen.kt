@@ -1511,12 +1511,15 @@ private fun DownloadRowLarge(d: DownloadItem) {
         Column(Modifier.weight(1f)) {
             Text(d.name, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (d.state != DlState.DONE) DownloadBar(d, Modifier.padding(vertical = 4.dp))
-            Text(d.status(), color = SoftText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(d.status(), color = SoftText, fontSize = 13.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
         }
         when (d.state) {
             DlState.RUNNING -> SmallAction("store:dl:pause:${d.id}", "Pause") { DownloadEngine.pause(d) }
             DlState.PAUSED, DlState.FAILED -> SmallAction("store:dl:resume:${d.id}", "Resume") { DownloadEngine.resume(d) }
-            DlState.DONE -> SmallAction("store:dl:clear:${d.id}", "Clear") { DownloadEngine.remove(d) }
+            DlState.DONE -> {
+                if (d.plan?.folderUri != null && !d.finishing) SmallAction("store:dl:file:${d.id}", "File it") { DownloadEngine.refile(d) }
+                SmallAction("store:dl:clear:${d.id}", "Clear") { DownloadEngine.remove(d) }
+            }
         }
         if (d.state != DlState.DONE) SmallAction("store:dl:cancel:${d.id}", "Cancel") { DownloadEngine.cancel(d) }
     }

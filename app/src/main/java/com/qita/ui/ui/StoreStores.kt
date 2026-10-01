@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import com.qita.ui.BannerCfg
 import com.qita.ui.DownloadPlacer
 import com.qita.ui.DownloadPlan
+import com.qita.ui.DownloadLog
 import com.qita.ui.DownloadPrefs
 import com.qita.ui.DownloadRequest
 import com.qita.ui.GameFolder
@@ -321,6 +322,16 @@ fun StoreSettings(
             }
         }
         item {
+            var log by remember { mutableStateOf(DownloadLog.all(context)) }
+            Column {
+                SettingRow("Download log", "What happened to the latest downloads, step by step. If something does not arrive in a game folder, the reason is here.") {
+                    SmallAction("store:dl:log:clear", "Clear") { DownloadLog.clear(context); log = emptyList() }
+                }
+                if (log.isEmpty()) Text("Nothing yet.", color = DimText, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp))
+                log.take(14).forEach { Text(it, color = SoftText, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 2.dp)) }
+            }
+        }
+        item {
             SettingRow("Wi-Fi only", "On mobile data a download waits until Wi-Fi is back.") {
                 SmallAction("store:dl:wifi", if (wifiOnly) "On" else "Off") { wifiOnly = !wifiOnly; DownloadPrefs.setWifiOnly(context, wifiOnly) }
             }
@@ -525,7 +536,9 @@ private fun ChoiceChip(key: String, label: String, selected: Boolean, onClick: (
 @Composable
 fun DownloadAskDialog(req: DownloadRequest, folders: List<GameFolder>, onConfirm: (DownloadPlan) -> Unit, onCancel: () -> Unit) {
     val context = LocalContext.current
-    val isZip = DownloadPlacer.isArchive(req.name)
+    // A name like "downloadfile.bin" does not say what the file is, so the choice is offered then too; the real type is read from the file when it arrives.
+    val known = DownloadPlacer.typeKnown(req.name)
+    val isZip = DownloadPlacer.isArchive(req.name) || !known
     var unzip by remember(req) { mutableStateOf(DownloadPrefs.lastUnzip(context)) }
     var folder by remember(req) { mutableStateOf(DownloadPlacer.suggest(context, folders, req.name)) }
     var deleteZip by remember(req) { mutableStateOf(DownloadPrefs.lastDeleteZip(context)) }
@@ -548,7 +561,7 @@ fun DownloadAskDialog(req: DownloadRequest, folders: List<GameFolder>, onConfirm
                 Text("Download", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, style = TitleShadow)
                 Text(req.name, color = SoftText, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (isZip) {
-                    Text("Unpack it?", color = Color.White, fontSize = 16.sp)
+                    Text(if (known) "Unpack it?" else "Unpack it, if it is an archive?", color = Color.White, fontSize = 16.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         ChoiceChip("store:ask:unzip:yes", "Yes, unpack it", unzip) { unzip = true }
                         ChoiceChip("store:ask:unzip:no", "No, keep it packed", !unzip) { unzip = false }
@@ -570,7 +583,7 @@ fun DownloadAskDialog(req: DownloadRequest, folders: List<GameFolder>, onConfirm
                 Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     OrangeButton("store:ask:go", "Download") {
                         val f = folders.getOrNull(folder)
-                        val plan = DownloadPlan(unzip = isZip && unzip && f != null, folderUri = f?.uri, deleteZip = deleteZip)
+                        val plan = DownloadPlan(unzip = isZip && unzip && f != null, folderUri = f?.uri, deleteZip = deleteZip, typeKnown = known)
                         DownloadPrefs.remember(context, plan, isZip)
                         onConfirm(plan)
                     }

@@ -34,7 +34,7 @@ enum class DlState { RUNNING, PAUSED, DONE, FAILED }
 enum class DlKind { FILE, APK }
 
 /** What the user chose before the download began: unzip it, which game folder it goes to (null: leave it in Downloads), and what to do with the zip. */
-class DownloadPlan(val unzip: Boolean, val folderUri: String?, val deleteZip: Boolean)
+class DownloadPlan(val unzip: Boolean, val folderUri: String?, val deleteZip: Boolean, val typeKnown: Boolean = true)
 
 /** A download waiting for the user's answers; [onItem] gets the download once it has started. */
 /** A form a page submitted with POST: the body to send again and its content type. */
@@ -120,6 +120,8 @@ class DownloadItem(
     var waitNote by mutableStateOf("")
     /** True while the finished file is being unpacked and filed, so the service keeps the process alive for it. */
     var finishing by mutableStateOf(false)
+    /** What filing the finished file is doing, or how it ended ("Unpacking…", "Done: 1 file in PS2", "Could not file: ..."). */
+    var stage by mutableStateOf("")
     /** What the last request was and how the server answered, kept to explain a failure. */
     var diag = ""
     /** Set when the site starts the download with a form (POST): that request is sent again instead of a plain GET. */
@@ -133,7 +135,7 @@ class DownloadItem(
     fun status(): String = when (state) {
         DlState.PAUSED -> "Paused" + if (total > 0) "  (${mb(bytes)} / ${mb(total)})" else ""
         DlState.FAILED -> "Failed: ${error ?: "unknown error"}"
-        DlState.DONE -> "Done  (${mb(bytes)})"
+        DlState.DONE -> "Done  (${mb(bytes)})" + if (stage.isNotBlank()) "  ·  $stage" else ""
         DlState.RUNNING -> if (!active) (waitNote.ifEmpty { "Waiting for its turn" }) else {
             val left = if (speed > 1f && total > 0) ((total - bytes) / speed).toLong() else -1L
             val eta = when {
@@ -186,7 +188,8 @@ object DownloadEngine {
                 item.referer = o.optString("ref").ifEmpty { null }
                 item.handled = o.optBoolean("handled", true)
                 if (o.has("post_body")) item.post = FormPost(o.getString("post_body"), o.optString("post_type", "application/x-www-form-urlencoded"))
-                if (o.has("plan_folder") || o.has("plan_unzip")) item.plan = DownloadPlan(o.optBoolean("plan_unzip"), o.optString("plan_folder").ifEmpty { null }, o.optBoolean("plan_del", true))
+                if (o.has("plan_folder") || o.has("plan_unzip")) item.plan = DownloadPlan(o.optBoolean("plan_unzip"), o.optString("plan_folder").ifEmpty { null }, o.optBoolean("plan_del", true), o.optBoolean("plan_known", true))
+                item.stage = o.optString("stage")
                 item.total = o.optLong("total", -1)
                 item.finalPath = o.optString("final").ifEmpty { null }
                 val done = o.optString("state") == "DONE" && item.finalPath != null && File(item.finalPath!!).exists()
@@ -237,7 +240,8 @@ object DownloadEngine {
                     .put("cookie", it.cookie ?: "").put("ua", it.userAgent ?: "").put("started", it.startedAt)
                     .put("total", it.total).put("final", it.finalPath ?: "").put("state", it.state.name).put("error", it.error ?: "").put("ref", it.referer ?: "").put("handled", it.handled)
                     .also { o -> it.post?.let { p -> o.put("post_body", p.body).put("post_type", p.contentType) } }
-                    .also { o -> it.plan?.let { p -> o.put("plan_unzip", p.unzip).put("plan_folder", p.folderUri ?: "").put("plan_del", p.deleteZip) } },
+                    .also { o -> it.plan?.let { p -> o.put("plan_unzip", p.unzip).put("plan_folder", p.folderUri ?: "").put("plan_del", p.deleteZip).put("plan_known", p.typeKnown) } }
+                    .put("stage", it.stage),
             )
         }
         prefs().edit().putString("items", arr.toString()).apply()
@@ -477,29 +481,56 @@ object DownloadEngine {
     }
 
     /** Unpacks or copies a finished download into the game folder the user chose, with no screen needed, then asks for a rescan. */
-    private suspend fun finishHeadless(item: DownloadItem) {
+    suspend fun finishHeadless(item: DownloadItem) {
         val context = app ?: return
         item.finishing = true
         val plan = item.plan
         val path = item.finalPath
         val folder = GameLibrary.folders(context).firstOrNull { it.uri == plan?.folderUri }
         if (plan == null || path == null || folder == null) { item.finishing = false; return }
+        var ok = false
         val message = try {
             withContext(Dispatchers.IO) {
+                item.stage = "Checking the file…"
+                var file = File(path)
+                if (!file.exists()) return@withContext "The downloaded file is gone: $path"
+                // What the file is comes from its bytes, not from the name the page guessed.
+                val real = DownloadPlacer.sniffArchive(file)
+                val lname = item.name.lowercase()
+                val nameFits = real == null || lname.endsWith(".$real") || (real == "gz" && (lname.endsWith(".tgz") || lname.endsWith(".tar.gz"))) || (real == "tar" && lname.contains(".tar"))
+                if (real != null && !nameFits) {
+                    val base = item.name.substringBeforeLast('.', item.name)
+                    val renamed = unique(file.parentFile ?: dir(context), "$base.$real")
+                    if (file.renameTo(renamed)) { file = renamed; item.name = renamed.name; item.finalPath = renamed.path; persist() }
+                }
                 val ext = item.name.substringAfterLast('.', "").lowercase()
+                val archive = DownloadPlacer.isArchive(item.name)
                 val system = if (folder.systemId != "auto") systemById(folder.systemId)
                 else DownloadPlacer.candidatesFor(ext).singleOrNull() ?: GameScanner.systemFromName(item.name)
-                val r = if (plan.unzip && DownloadPlacer.isArchive(item.name)) DownloadPlacer.unzipAndPlace(context, File(path), system, folder, plan.deleteZip)
-                else DownloadPlacer.place(context, File(path), item.name, system, folder)
-                if (r.ok) { withContext(Dispatchers.Main) { items.remove(item) }; context.getSharedPreferences("qita_downloads", Context.MODE_PRIVATE).edit().putBoolean("pending_rescan", true).apply() }
+                DownloadLog.add(context, "${item.name}: ${if (archive) "archive" else "file"}, ${file.length() / 1024} KB, " + (if (plan.unzip && archive) "unpack" else "copy") + " into ${folder.label.ifBlank { folder.uri.takeLast(30) }} (${folder.systemId})")
+                val r = if (plan.unzip && archive) DownloadPlacer.unzipAndPlace(context, file, system, folder, plan.deleteZip) { item.stage = it }
+                else DownloadPlacer.place(context, file, item.name, system, folder) { item.stage = "Copying to ${folder.label.ifBlank { "the game folder" }} $it%" }
+                ok = r.ok
+                if (r.ok) context.getSharedPreferences("qita_downloads", Context.MODE_PRIVATE).edit().putBoolean("pending_rescan", true).apply()
                 r.message
             }
-        } catch (e: Exception) { "Could not file ${item.name}: ${e.message}" }
+        } catch (e: Exception) { "Could not file ${item.name}: ${e.message ?: e.javaClass.simpleName}" }
         item.handled = true
         item.finishing = false
+        // A file that could not be filed stays in the list, with the reason, so it can be tried again.
+        item.stage = if (ok) "" else "Could not file: $message"
+        if (ok) withContext(Dispatchers.Main) { items.remove(item) }
         persist()
-        DownloadService.notifyResult(context, item.name, message)
+        DownloadLog.add(context, "${item.name}: ${if (ok) "OK" else "FAILED"} - $message")
+        DownloadService.notifyResult(context, item.name, message, failed = !ok)
         withContext(Dispatchers.Main) { onMessage(message); onRescan() }
+    }
+
+    /** Tries to file a finished download again (after a failure, or after adding the right game folder). */
+    fun refile(item: DownloadItem) {
+        if (item.state != DlState.DONE || item.finishing) return
+        item.finishing = true
+        scope.launch { finishHeadless(item) }
     }
 
     /** True once if files were added to a game folder while the launcher was not there to rescan. */
@@ -537,6 +568,24 @@ object DownloadEngine {
         while (f.exists()) f = File(dir, "$base ($n)$ext").also { n++ }
         return f
     }
+}
+
+/** The last results of filing downloads, kept so a failure can be read afterwards (Store settings, Downloads). */
+object DownloadLog {
+    private fun prefs(c: Context) = c.getSharedPreferences("qita_downloads_log", Context.MODE_PRIVATE)
+
+    fun all(c: Context): List<String> = runCatching {
+        val arr = JSONArray(prefs(c).getString("lines", "[]"))
+        (0 until arr.length()).map { arr.getString(it) }
+    }.getOrDefault(emptyList())
+
+    @Synchronized fun add(c: Context, text: String) {
+        val stamp = java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+        val list = (listOf("$stamp  $text") + all(c)).take(40)
+        prefs(c).edit().putString("lines", JSONArray(list).toString()).apply()
+    }
+
+    fun clear(c: Context) { prefs(c).edit().remove("lines").apply() }
 }
 
 /** Finds the newest APK of a project on GitHub's release list, for the Store's Install buttons. */
@@ -654,7 +703,7 @@ object DownloadPlacer {
     }.getOrElse { Result(false, "Could not save the file: ${it.message}") }
 
     /** Copies [file] into the game folder for [system]. Blocks. */
-    fun place(context: Context, file: File, name: String, system: GameSystem?, chosen: GameFolder? = null, keepSource: Boolean = false): Result = runCatching {
+    fun place(context: Context, file: File, name: String, system: GameSystem?, chosen: GameFolder? = null, keepSource: Boolean = false, onProgress: (Int) -> Unit = {}): Result = runCatching {
         val folders = GameLibrary.folders(context)
         val folder = chosen ?: folders.firstOrNull { it.systemId == system?.id } ?: folders.firstOrNull { it.systemId == "auto" }
             ?: return Result(false, "Add a game folder in Settings → Games & Emulators first. The file is in Downloads.")
@@ -673,11 +722,57 @@ object DownloadPlacer {
                 runCatching { DocumentsContract.renameDocument(resolver, doc, actual.dropLast(4)) }.getOrNull()?.let { doc = it }
             }
         }
-        resolver.openOutputStream(doc)?.use { out -> file.inputStream().use { it.copyTo(out) } }
-            ?: return Result(false, "Could not write into the game folder")
+        val total = file.length().coerceAtLeast(1L)
+        var shown = -1
+        resolver.openOutputStream(doc, "w")?.use { out ->
+            file.inputStream().use { input -> copyWithProgress(input, out) { done -> val p = (done * 100 / total).toInt(); if (p != shown) { shown = p; onProgress(p) } } }
+            out.flush()
+        } ?: return Result(false, "Could not write into the game folder")
+        // The file must really be there, whole, before the original goes.
+        val written = sizeOf(resolver, doc)
+        if (written in 0 until file.length()) return Result(false, "The copy in the game folder is incomplete ($written of ${file.length()} bytes). The game folder may be out of space.")
         if (!keepSource) file.delete()
         Result(true, "Added $name to ${folder.label.ifBlank { system?.name ?: "your game folder" }}")
     }.getOrElse { Result(false, "Could not save the file: ${it.message}") }
+
+    /** Whether the name says what the file is: an archive, or a game file of some console. Names like "downloadfile.bin" do not. */
+    fun typeKnown(name: String): Boolean {
+        if (isArchive(name)) return true
+        val ext = name.substringAfterLast('.', "").lowercase()
+        if (ext.isEmpty() || ext == "bin" || name.startsWith("downloadfile", true)) return false
+        return SYSTEMS.any { ext in it.exts } || ext == "vpk" || ext == "apk"
+    }
+
+    /** What the first bytes of [file] say it is: "zip", "7z", "rar", "gz", "tar", or null if it is not an archive this app opens. */
+    fun sniffArchive(file: File): String? = runCatching {
+        val head = ByteArray(300)
+        val n = file.inputStream().use { it.read(head) }
+        fun starts(vararg b: Int) = n >= b.size && b.indices.all { head[it] == b[it].toByte() }
+        when {
+            starts(0x50, 0x4B, 0x03, 0x04) || starts(0x50, 0x4B, 0x05, 0x06) -> "zip"
+            starts(0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C) -> "7z"
+            starts(0x52, 0x61, 0x72, 0x21) -> "rar"
+            starts(0x1F, 0x8B) -> "gz"
+            n >= 262 && String(head, 257, 5, Charsets.ISO_8859_1) == "ustar" -> "tar"
+            else -> null
+        }
+    }.getOrNull()
+
+    private fun copyWithProgress(input: java.io.InputStream, out: java.io.OutputStream, onBytes: (Long) -> Unit) {
+        val buf = ByteArray(1 shl 20)
+        var done = 0L
+        while (true) {
+            val r = input.read(buf)
+            if (r < 0) break
+            out.write(buf, 0, r)
+            done += r
+            onBytes(done)
+        }
+    }
+
+    private fun sizeOf(resolver: android.content.ContentResolver, doc: Uri): Long = runCatching {
+        resolver.query(doc, arrayOf(DocumentsContract.Document.COLUMN_SIZE), null, null, null)?.use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else -1L } ?: -1L
+    }.getOrDefault(-1L)
 
     private fun displayNameOf(resolver: android.content.ContentResolver, doc: Uri): String? = runCatching {
         resolver.query(doc, arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
@@ -787,13 +882,20 @@ object DownloadPlacer {
     }.getOrDefault(emptyList())
 
     /** Unpacks [zip] (any archive this app opens; only the files, no paths) and places each one. Blocks. */
-    fun unzipAndPlace(context: Context, zip: File, system: GameSystem?, chosen: GameFolder? = null, deleteZip: Boolean = true): Result = runCatching {
+    fun unzipAndPlace(context: Context, zip: File, system: GameSystem?, chosen: GameFolder? = null, deleteZip: Boolean = true, onStage: (String) -> Unit = {}): Result = runCatching {
+        val where = chosen?.label?.ifBlank { null } ?: system?.name ?: "the game folder"
+        val free = zip.parentFile?.usableSpace ?: Long.MAX_VALUE
+        if (free < zip.length() * 2) return Result(false, "Not enough free space to unpack (${free / 1048576} MB free, about ${zip.length() * 2 / 1048576} MB needed)")
+        onStage("Unpacking…")
         val temp = File(zip.parentFile, "unzip_${System.nanoTime()}").apply { mkdirs() }
         val files = try { extractAll(zip, temp) } catch (e: Exception) { temp.deleteRecursively(); throw e }
+        if (files.isEmpty()) { temp.deleteRecursively(); return Result(false, "The archive had no files in it") }
         var placed = 0
         var last: Result? = null
-        for (f in files) {
-            val r = place(context, f, f.name, system ?: candidatesFor(f.extension).singleOrNull() ?: GameScanner.systemFromName(f.name), chosen)
+        for ((i, f) in files.withIndex()) {
+            val r = place(context, f, f.name, system ?: candidatesFor(f.extension).singleOrNull() ?: GameScanner.systemFromName(f.name), chosen) { p ->
+                onStage("Copying to $where (${i + 1}/${files.size}) $p%")
+            }
             last = r
             if (r.ok) placed++ else break
         }

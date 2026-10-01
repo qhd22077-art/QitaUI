@@ -77,15 +77,16 @@ class DownloadService : Service() {
 
     companion object {
         private const val CHANNEL = "downloads"
+        private const val RESULT_CHANNEL = "download_results"
         private const val ID = 4107
 
         /** A one-off notification saying how filing a finished download went. */
-        fun notifyResult(context: Context, title: String, text: String) {
+        fun notifyResult(context: Context, title: String, text: String, failed: Boolean = false) {
             runCatching {
                 val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel(CHANNEL, "Downloads", NotificationManager.IMPORTANCE_LOW))
-                val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(context, CHANNEL) else @Suppress("DEPRECATION") Notification.Builder(context)
-                nm.notify(title.hashCode(), b.setSmallIcon(android.R.drawable.stat_sys_download_done).setContentTitle(title).setContentText(text).setAutoCancel(true).setContentIntent(PendingIntentFor.launcher(context)).build())
+                if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel(RESULT_CHANNEL, "Download results", NotificationManager.IMPORTANCE_DEFAULT))
+                val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(context, RESULT_CHANNEL) else @Suppress("DEPRECATION") Notification.Builder(context)
+                nm.notify(title.hashCode(), b.setSmallIcon(if (failed) android.R.drawable.stat_notify_error else android.R.drawable.stat_sys_download_done).setContentTitle(title).setContentText(text).setAutoCancel(true).setContentIntent(PendingIntentFor.launcher(context)).build())
             }
         }
 
