@@ -103,6 +103,9 @@ import com.qita.ui.DownloadPlacer
 import com.qita.ui.DownloadItem
 import com.qita.ui.DlState
 import com.qita.ui.DownloadEngine
+import com.qita.ui.FolderArt
+import com.qita.ui.HomeFolder
+import com.qita.ui.HomeFolders
 import com.qita.ui.DownloadPrefs
 import com.qita.ui.DownloadRequest
 import com.qita.ui.DlKind
@@ -154,6 +157,11 @@ fun HomeScreen(homePresses: Int = 0) {
     var settings by remember { mutableStateOf(store.load()) }
     var wallpaper by remember { mutableStateOf(store.loadWallpaper()) }
     var home by remember { mutableStateOf(store.loadHome()) }
+    // Folder bubbles: each folder's id sits in the home list, and the bubbles inside it are kept here (not in the list).
+    var homeFolders by remember { mutableStateOf(HomeFolders.load(context)) }
+    var openFolderId by remember { mutableStateOf<String?>(null) }
+    var renameFolderId by remember { mutableStateOf<String?>(null) }
+    var renameText by remember { mutableStateOf("") }
     var counts by remember { mutableStateOf(store.loadLaunchCounts()) }
     var showDesktop by remember { mutableStateOf(false) }
     var showGames by remember { mutableStateOf(false) }
@@ -275,13 +283,25 @@ fun HomeScreen(homePresses: Int = 0) {
     val layout = if (upright) com.qita.ui.PORTRAIT_LAYOUT else LAYOUTS[settings.layoutIndex.coerceIn(LAYOUTS.indices)]
     val pageSize = layout.size
     // Only apps the user has added appear on the home screen; the desktop lists everything.
-    val shown = remember(apps, home, settings.sortNewest) {
+    val shown = remember(apps, home, settings.sortNewest, homeFolders) {
         val byPackage = (apps + SYSTEM_APPS).associateBy { it.packageName }
-        val list = home.mapNotNull { byPackage[it] }
+        // A folder is shown as a bubble of its own, made from the bubbles inside it (and hidden while none of them exist any more).
+        val folderApps = homeFolders.associate { f ->
+            val members = f.members.mapNotNull { byPackage[it] }
+            f.id to LaunchableApp(
+                label = f.name, packageName = f.id, icon = FolderArt.icon(f.id, members),
+                installTime = members.maxOfOrNull { it.installTime } ?: 0L,
+                tint = Color(0xFF9CC4FF), folderMembers = members,
+            )
+        }
+        val list = home.mapNotNull { id -> byPackage[id] ?: folderApps[id]?.takeIf { it.folderMembers.orEmpty().isNotEmpty() } }
         // Newest first, with the built-in bubbles staying in front.
         if (settings.sortNewest) list.sortedWith(compareByDescending<LaunchableApp> { it.action != null }.thenByDescending { it.installTime }) else list
     }
     val homeSet = remember(home) { home.toSet() }
+    val folderMemberSet = remember(homeFolders) { homeFolders.flatMap { it.members }.toSet() }
+    // Everything that is on the home screen, including what sits inside folders.
+    val onHomeSet = remember(homeSet, folderMemberSet) { homeSet + folderMemberSet }
     val pageCount = maxOf(1, (shown.size + pageSize - 1) / pageSize)
     val pagerState = rememberPagerState { pageCount }
     // 0 -> 1 as the page edit view (zoomed out, framed, information bar gone) opens.
@@ -296,13 +316,97 @@ fun HomeScreen(homePresses: Int = 0) {
     val menuOpen = menuFor != null || showQuickMenu || showNotifs
     val anyOverlay = showLock || showDesktop || showGames || showStore || showBrowser || showFolders || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null
 
+    fun saveFolders(list: List<HomeFolder>) { homeFolders = list; HomeFolders.save(context, list) }
+    /** Takes folders with nothing left in them off the home screen. */
+    fun pruneFolders() {
+        val empty = homeFolders.filter { it.members.isEmpty() }.map { it.id }
+        if (empty.isEmpty()) return
+        saveFolders(homeFolders.filter { it.members.isNotEmpty() })
+        home = home.filter { it !in empty }
+        store.saveHome(home)
+        if (openFolderId in empty) openFolderId = null
+    }
+    /** Takes a bubble off the home screen wherever it is, loose or inside a folder. */
+    fun forgetFromHome(pkg: String) {
+        home = home - pkg
+        store.saveHome(home)
+        if (homeFolders.any { pkg in it.members }) saveFolders(homeFolders.map { f -> if (pkg in f.members) f.copy(members = f.members - pkg) else f })
+        pruneFolders()
+    }
+    /** Undoes a folder: its bubbles go back on the home screen where the folder was. */
+    fun dissolveFolder(id: String) {
+        val f = homeFolders.firstOrNull { it.id == id } ?: return
+        val at = home.indexOf(id)
+        val back = f.members.filter { it !in home }
+        home = if (at >= 0) home.take(at) + back + home.drop(at + 1) else home + back
+        store.saveHome(home)
+        saveFolders(homeFolders.filter { it.id != id })
+        if (openFolderId == id) openFolderId = null
+    }
+    /** Puts a bubble from a folder back on the home screen, right after the folder. */
+    fun takeOutOfFolder(pkg: String) {
+        val f = homeFolders.firstOrNull { pkg in it.members } ?: return
+        val at = home.indexOf(f.id)
+        home = if (at >= 0) home.take(at + 1) + pkg + home.drop(at + 1) else home + pkg
+        store.saveHome(home)
+        saveFolders(homeFolders.map { if (it.id == f.id) it.copy(members = it.members - pkg) else it })
+        pruneFolders()
+    }
+    /** Dropping [dragged] on [target]: into that folder, or a new folder of the two. */
+    fun makeFolderOf(target: LaunchableApp, dragged: LaunchableApp) {
+        if (target.folderMembers != null) {
+            val f = homeFolders.firstOrNull { it.id == target.packageName } ?: return
+            saveFolders(homeFolders.map { if (it.id == f.id) it.copy(members = (it.members + dragged.packageName).distinct()) else it })
+            home = home - dragged.packageName
+            store.saveHome(home)
+            toast = "Added ${dragged.label} to ${f.name}"
+        } else {
+            val sameConsole = target.game != null && target.game?.systemId == dragged.game?.systemId
+            val name = if (sameConsole) systemById(target.game!!.systemId)?.short ?: "Folder" else "Folder"
+            val id = HomeFolders.newId()
+            saveFolders(homeFolders + HomeFolder(id, name, listOf(target.packageName, dragged.packageName)))
+            home = home.map { if (it == target.packageName) id else it }.filter { it != dragged.packageName }
+            store.saveHome(home)
+            toast = "Folder made. Tap it to open it; edit the home screen to rename or undo it"
+        }
+    }
+    /** Games go into a folder for their console (made when the first one arrives), instead of one bubble each. */
+    fun addGamesToConsoleFolders(games: List<com.qita.ui.Game>) {
+        var folders = homeFolders
+        var list = home
+        for ((systemId, group) in games.groupBy { it.systemId }) {
+            val id = HomeFolders.consoleId(systemId)
+            val pkgs = group.map { "qita.game.${it.id}" }.distinct()
+            val existing = folders.firstOrNull { it.id == id }
+            if (existing != null) {
+                folders = folders.map { if (it.id == id) it.copy(members = (it.members + pkgs).distinct()) else it }
+                if (id !in list) list = list + id
+            } else {
+                folders = folders + HomeFolder(id, systemById(systemId)?.short ?: systemId, pkgs)
+                list = list + id
+            }
+            list = list.filter { it !in pkgs }
+        }
+        saveFolders(folders)
+        home = list
+        store.saveHome(list)
+    }
+    /** Moves the game bubbles that are loose on the home screen into their console folders. */
+    fun tidyGamesIntoFolders() {
+        val loose = shown.mapNotNull { it.game }.filter { "qita.game.${it.id}" in home }
+        if (loose.isEmpty()) { toast = "No loose games on the home screen"; return }
+        addGamesToConsoleFolders(loose)
+        toast = "Grouped ${loose.size} games into console folders"
+    }
     fun addToHome(app: LaunchableApp) {
+        if (app.packageName in folderMemberSet) { toast = "${app.label} is already on the home screen, in a folder"; return }
         if (app.packageName !in home) { home = home + app.packageName; store.saveHome(home) }
         toast = "Added ${app.label} to home"
     }
     fun removeFromHome(app: LaunchableApp) {
         if (app.action != null) return
-        home = home - app.packageName; store.saveHome(home)
+        if (app.folderMembers != null) { dissolveFolder(app.packageName); toast = "Folder undone: its bubbles are back on the home screen"; return }
+        forgetFromHome(app.packageName)
         toast = "Removed ${app.label} from home"
     }
     fun launchApp(app: LaunchableApp) {
@@ -365,8 +469,11 @@ fun HomeScreen(homePresses: Int = 0) {
             val fresh = found.filter { it.id !in known }
             GameLibrary.addKnown(context, fresh.map { it.id })
             if (settings.gamesOnHome && fresh.isNotEmpty()) {
-                home = home + fresh.map { "qita.game.${it.id}" }.filter { it !in home }
-                store.saveHome(home)
+                if (settings.gameFoldersAuto) addGamesToConsoleFolders(fresh)
+                else {
+                    home = home + fresh.map { "qita.game.${it.id}" }.filter { it !in home }
+                    store.saveHome(home)
+                }
             }
             reload++
             gamesBusy = null
@@ -611,7 +718,7 @@ fun HomeScreen(homePresses: Int = 0) {
                 if (!showSettings && !showSearch && !menuOpen && !showTutorial) (selected ?: PadNav.currentApp())?.let { menuFor = it }
             Command.Toggle -> when {
                 showSettings || showSearch || menuOpen || showTutorial || selected != null -> {}
-                showDesktop || showGames -> PadNav.currentApp()?.let { if (it.packageName in homeSet) removeFromHome(it) else addToHome(it) }
+                showDesktop || showGames -> PadNav.currentApp()?.let { if (it.packageName in onHomeSet) removeFromHome(it) else addToHome(it) }
                 else -> PadNav.currentApp()?.let { startMove(it) }
             }
             is Command.MoveStep -> moveStep(cmd.dx, cmd.dy)
@@ -659,6 +766,14 @@ fun HomeScreen(homePresses: Int = 0) {
         if (from < 0) return
         // Dropped on a bubble: take its place. Dropped on empty space: go to the end of the visible page.
         val target = list.firstOrNull { it.packageName != app.packageName && rects[it.packageName]?.contains(dragPos) == true }
+        // Dropped on the middle of another bubble: they become a folder (or go into that folder). Dropped on its edge: a plain move.
+        if (target != null && settings.dragMakesFolder && app.action == null && app.folderMembers == null && target.action == null) {
+            val r = rects[target.packageName]
+            if (r != null && Rect(r.left + r.width * 0.2f, r.top, r.right - r.width * 0.2f, r.top + r.height * 0.65f).contains(dragPos)) {
+                makeFolderOf(target, app)
+                return
+            }
+        }
         val to = if (target != null) list.indexOf(target)
         else minOf(pagerState.currentPage * pageSize + pageSize, list.size) - 1
         if (to == from) return
@@ -764,7 +879,10 @@ fun HomeScreen(homePresses: Int = 0) {
                         if (settings.haptics) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     }
                 },
-                onSelect = { app -> if (editMode) menuFor = app else openLiveArea(app, rects[app.packageName]?.center) },
+                onSelect = { app ->
+                    if (app.folderMembers != null) { if (editMode) menuFor = app else openFolderId = app.packageName }
+                    else if (editMode) menuFor = app else openLiveArea(app, rects[app.packageName]?.center)
+                },
                 onOpenDesktop = { showDesktop = true },
                 onOpenRecent = { openPages.firstOrNull()?.let { selected = it } },
                 editing = editMode,
@@ -902,12 +1020,12 @@ fun HomeScreen(homePresses: Int = 0) {
                 DesktopScreen(
                     apps = apps.filter { it.game == null },
                     homeApps = shown.filter { it.action == null },
-                    onHome = homeSet,
+                    onHome = onHomeSet,
                     counts = counts,
                     settings = settings,
                     wallpaper = wallpaper,
                     onLaunch = { launchApp(it) },
-                    onToggleHome = { if (it.packageName in homeSet) removeFromHome(it) else addToHome(it) },
+                    onToggleHome = { if (it.packageName in onHomeSet) removeFromHome(it) else addToHome(it) },
                     onLongPress = { menuFor = it },
                     onLauncherSettings = { showSettings = true },
                     onClose = { showDesktop = false },
@@ -1134,6 +1252,7 @@ fun HomeScreen(homePresses: Int = 0) {
                     MenuItem("Search") { showQuickMenu = false; showSearch = true },
                     MenuItem("Settings") { showQuickMenu = false; showSettings = true },
                     MenuItem(if (upright) "Rotate to landscape" else "Rotate to portrait") { showQuickMenu = false; rotate() },
+                    MenuItem("Group games into console folders") { showQuickMenu = false; tidyGamesIntoFolders() },
                     MenuItem("Cancel") { showQuickMenu = false },
                 ),
                 onDismiss = { showQuickMenu = false },
@@ -1187,11 +1306,17 @@ fun HomeScreen(homePresses: Int = 0) {
         }
 
         menuFor?.let { app ->
-            val onHome = app.packageName in homeSet
+            val inFolder = homeFolders.firstOrNull { app.packageName in it.members }
+            val onHome = app.packageName in onHomeSet
             ContextMenu(
                 title = app.label,
                 subtitle = if (app.game != null) (systemById(app.game!!.systemId)?.name ?: "Game") else if (app.action != null) "Built in" else app.packageName,
-                items = if (app.game != null) listOf(
+                items = (if (inFolder != null) listOf(MenuItem("Take out of ${inFolder.name}") { menuFor = null; takeOutOfFolder(app.packageName) }) else emptyList()) + (if (app.folderMembers != null) listOf(
+                    MenuItem("Open") { menuFor = null; openFolderId = app.packageName },
+                    MenuItem("Rename") { menuFor = null; renameText = app.label; renameFolderId = app.packageName },
+                    MenuItem("Undo folder (bubbles back on home)") { menuFor = null; dissolveFolder(app.packageName) },
+                    MenuItem("Cancel") { menuFor = null },
+                ) else if (app.game != null) listOf(
                     MenuItem("Play") { menuFor = null; launchApp(app) },
                     MenuItem(if (onHome) "Remove from home" else "Add to home") {
                         menuFor = null
@@ -1202,7 +1327,7 @@ fun HomeScreen(homePresses: Int = 0) {
                     MenuItem("Get cover art online") { menuFor = null; fetchCovers(app.game) },
                     MenuItem("Remove from library") {
                         menuFor = null
-                        home = home - app.packageName; store.saveHome(home)
+                        forgetFromHome(app.packageName)
                         GameLibrary.remove(context, app.game!!.id)
                         reload++
                     },
@@ -1220,8 +1345,45 @@ fun HomeScreen(homePresses: Int = 0) {
                     MenuItem("App info") { menuFor = null; AppRepository.showInfo(context, app) },
                     MenuItem("Uninstall") { menuFor = null; AppRepository.uninstall(context, app) },
                     MenuItem("Cancel") { menuFor = null },
-                ),
+                )),
                 onDismiss = { menuFor = null },
+            )
+        }
+
+        // An open folder: a big glass bubble over the home screen with its bubbles inside.
+        val folderHolder = remember { arrayOf<LaunchableApp?>(null) }
+        val openFolder = shown.firstOrNull { it.packageName == openFolderId }
+        if (openFolder != null) folderHolder[0] = openFolder
+        AnimatedVisibility(
+            visible = openFolder != null,
+            enter = fadeIn(tween(160)) + scaleIn(initialScale = 0.4f, transformOrigin = TransformOrigin.Center, animationSpec = spring(dampingRatio = 0.8f, stiffness = 380f)),
+            exit = fadeOut(tween(140)) + scaleOut(targetScale = 0.5f, animationSpec = tween(160)),
+        ) {
+            folderHolder[0]?.let { f ->
+                CompositionLocalProvider(LocalPadLayer provides 2) {
+                    FolderView(
+                        folder = f,
+                        backEnabled = !menuOpen && renameFolderId == null,
+                        onClose = { openFolderId = null },
+                        onOpen = { a -> openFolderId = null; openLiveArea(a, null) },
+                        onMenu = { a -> menuFor = a },
+                        onRename = { renameText = f.label; renameFolderId = f.packageName },
+                    )
+                }
+            }
+        }
+        renameFolderId?.let { id ->
+            BackHandler(enabled = true) { renameFolderId = null }
+            NamePrompt(
+                title = "Name this folder",
+                value = renameText,
+                onValue = { renameText = it },
+                onOk = {
+                    val n = renameText.trim().ifEmpty { "Folder" }
+                    saveFolders(homeFolders.map { if (it.id == id) it.copy(name = n) else it })
+                    renameFolderId = null
+                },
+                onCancel = { renameFolderId = null },
             )
         }
 

@@ -169,6 +169,10 @@ data class Settings(
     val namePill: Boolean = false,
     /** Long names slide across: 0 never, 1 only the selected or touched one, 2 always. */
     val scrollNames: Int = 2,
+    /** Dropping one bubble on the middle of another makes a folder of them. */
+    val dragMakesFolder: Boolean = true,
+    /** New games from a scan go into a folder for their console instead of onto the home screen one by one. */
+    val gameFoldersAuto: Boolean = true,
     val nameFont: Int = 0,
     val uiFontChoice: Int = 0,
     val sceneSpeed: Float = 1f,
@@ -261,6 +265,8 @@ class SettingsStore(private val context: Context) {
         nameColor = prefs.getInt("nameColor", 0xFFFFFFFF.toInt()),
         namePill = prefs.getBoolean("namePill", false),
         scrollNames = prefs.getInt("scrollNames", 2).coerceIn(0, 2),
+        dragMakesFolder = prefs.getBoolean("dragMakesFolder", true),
+        gameFoldersAuto = prefs.getBoolean("gameFoldersAuto", true),
         nameFont = prefs.getInt("nameFont", 0),
         uiFontChoice = prefs.getInt("uiFontChoice", 0),
         sceneSpeed = prefs.getFloat("sceneSpeed", 1f),
@@ -341,6 +347,8 @@ class SettingsStore(private val context: Context) {
             .putInt("nameColor", s.nameColor)
             .putBoolean("namePill", s.namePill)
             .putInt("scrollNames", s.scrollNames)
+            .putBoolean("dragMakesFolder", s.dragMakesFolder)
+            .putBoolean("gameFoldersAuto", s.gameFoldersAuto)
             .putInt("nameFont", s.nameFont)
             .putInt("uiFontChoice", s.uiFontChoice)
             .putFloat("sceneSpeed", s.sceneSpeed)

@@ -32,6 +32,8 @@ data class LaunchableApp(
     val ball: ImageBitmap? = null,
     /** Set for a game found in one of the user's game folders; such a bubble starts the game in an emulator. */
     val game: Game? = null,
+    /** Set for a folder bubble on the home screen: the bubbles inside it. */
+    val folderMembers: List<LaunchableApp>? = null,
 )
 
 object AppRepository {
