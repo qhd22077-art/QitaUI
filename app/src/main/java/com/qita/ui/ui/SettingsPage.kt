@@ -521,6 +521,8 @@ fun SettingsPage(
                         "motion" -> {
                             CheckRow("set:light", "◌", "Light mode (30 fps, fewer symbols, no blur, less memory and battery)", settings.lightMode) { onChange(settings.copy(lightMode = it)) }
                             CheckRow("set:reduce", "■", "Reduce motion (still background, no sway or flip)", settings.reduceMotion) { onChange(settings.copy(reduceMotion = it)) }
+                            CheckRow("set:parallax", "◫", "Parallax (tilt the device to shift the background and bubbles)", settings.parallax) { onChange(settings.copy(parallax = it)) }
+                            if (settings.parallax) SliderRow("set:parallaxStr", "◫", "Parallax strength", settings.parallaxStrength, 0.2f..2f, 0.1f) { onChange(settings.copy(parallaxStrength = it)) }
                             SliderRow("set:sceneSpeed2", "≋", "Background animation speed", settings.sceneSpeed, 0.3f..2.5f, 0.1f) { onChange(settings.copy(sceneSpeed = it)) }
                             SliderRow("set:sway2", "≈", "Bubble idle sway", settings.sway, 0f..3f, 0.25f) { onChange(settings.copy(sway = it)) }
                             ChoiceRow("set:tapAnim2", "↻", "Bubble tap animation", listOf("Flip", "Pulse", "Nothing"), settings.tapAnim) { onChange(settings.copy(tapAnim = it)) }
@@ -790,7 +792,7 @@ private fun resetPage(page: String, s: Settings): Settings {
         )
         "status" -> s.copy(use24h = d.use24h, showBattery = d.showBattery)
         "sounds" -> s.copy(soundOn = d.soundOn, soundVolume = d.soundVolume, soundMedia = d.soundMedia)
-        "motion" -> s.copy(lightMode = d.lightMode, reduceMotion = d.reduceMotion, sceneSpeed = d.sceneSpeed, sway = d.sway, tapAnim = d.tapAnim)
+        "motion" -> s.copy(lightMode = d.lightMode, reduceMotion = d.reduceMotion, parallax = d.parallax, parallaxStrength = d.parallaxStrength, sceneSpeed = d.sceneSpeed, sway = d.sway, tapAnim = d.tapAnim)
         "lock" -> s.copy(
             lockScreen = d.lockScreen, lockTapPeel = d.lockTapPeel, lockClockSize = d.lockClockSize, lockClockColor = d.lockClockColor, lockFont = d.lockFont,
             lockShowDate = d.lockShowDate, lockPanelTint = d.lockPanelTint, lockBorder = d.lockBorder, lockBevel = d.lockBevel, lockFrame = d.lockFrame,

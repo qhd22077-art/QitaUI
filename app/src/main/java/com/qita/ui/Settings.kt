@@ -193,6 +193,9 @@ data class Settings(
     val uiFontChoice: Int = 0,
     val sceneSpeed: Float = 1f,
     val reduceMotion: Boolean = false,
+    /** Tilting the device shifts the wallpaper, bubbles and lock screen against each other; [parallaxStrength] scales it. */
+    val parallax: Boolean = true,
+    val parallaxStrength: Float = 1f,
     val showClock: Boolean = true,
     val barOpacity: Float = 1f,
     val clockSize: Float = 1f,
@@ -305,6 +308,8 @@ class SettingsStore(private val context: Context) {
         uiFontChoice = prefs.getInt("uiFontChoice", 0),
         sceneSpeed = prefs.getFloat("sceneSpeed", 1f),
         reduceMotion = prefs.getBoolean("reduceMotion", false),
+        parallax = prefs.getBoolean("parallax", true),
+        parallaxStrength = prefs.getFloat("parallaxStrength", 1f),
         showClock = prefs.getBoolean("showClock", true),
         barOpacity = prefs.getFloat("barOpacity", 1f),
         clockSize = prefs.getFloat("clockSize", 1f),
@@ -394,6 +399,8 @@ class SettingsStore(private val context: Context) {
             .putInt("uiFontChoice", s.uiFontChoice)
             .putFloat("sceneSpeed", s.sceneSpeed)
             .putBoolean("reduceMotion", s.reduceMotion)
+            .putBoolean("parallax", s.parallax)
+            .putFloat("parallaxStrength", s.parallaxStrength)
             .putBoolean("showClock", s.showClock)
             .putFloat("barOpacity", s.barOpacity)
             .putFloat("clockSize", s.clockSize)

@@ -128,6 +128,7 @@ fun LockScreen(
                             shape = PeelShape(baseFold + peel.value, radius)
                             clip = true
                         }
+                        .tiltNear(com.qita.ui.ui.LocalLook.current.tilt, -5f)
                         .drawBehind { drawLockPanel(settings.lockPanelTint, settings.lockFrame, settings.lockBorder, settings.lockBevel, radius) },
                 ) {
                     val clockSize = (maxHeight.value * 0.27f * settings.lockClockSize).sp

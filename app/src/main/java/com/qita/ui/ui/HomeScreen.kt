@@ -380,6 +380,30 @@ fun HomeScreen(homePresses: Int = 0) {
 
     val menuOpen = menuFor != null || showQuickMenu || showNotifs
     val anyOverlay = showLock || showDesktop || showGames || showStore || showBrowser || showFolders || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null || flashGame != null
+    // Tilt (parallax): the sensor is only listened to while the launcher is on screen and it is wanted (not in Light mode, with
+    // Reduce motion, below the low-battery level, or under another screen; the lock screen shifts too).
+    val tiltWanted = settings.parallax && !settings.lightMode && !settings.reduceMotion && (showLock || !anyOverlay)
+    var tiltResumed by remember { mutableStateOf(true) }
+    DisposableEffect(lifecycleOwner) {
+        val o = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) tiltResumed = true
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) tiltResumed = false
+        }
+        lifecycleOwner.lifecycle.addObserver(o)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(o) }
+    }
+    var tiltBatteryOk by remember { mutableStateOf(true) }
+    LaunchedEffect(tiltWanted, tiltResumed, settings.batteryLow) {
+        while (tiltWanted && tiltResumed) {
+            val st = readStatus(context)
+            tiltBatteryOk = st.charging || st.battery > settings.batteryLow
+            kotlinx.coroutines.delay(60_000)
+        }
+    }
+    DisposableEffect(tiltWanted && tiltResumed && tiltBatteryOk) {
+        if (tiltWanted && tiltResumed && tiltBatteryOk) com.qita.ui.Parallax.start(context)
+        onDispose { com.qita.ui.Parallax.stop() }
+    }
     // Opening something (a page, a menu, a screen) and going back, and unlocking.
     var soundOverlayPrev by remember { mutableStateOf(anyOverlay) }
     var soundLockPrev by remember { mutableStateOf(showLock) }
@@ -1819,6 +1843,7 @@ private fun BubblePager(
     onDisposed: (String) -> Unit,
 ) {
     val pages = apps.chunked(layout.size)
+    val tilt = if (settings.parallax && !settings.lightMode && !settings.reduceMotion) settings.parallaxStrength else 0f
     if (pages.isEmpty()) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1925,6 +1950,12 @@ private fun BubblePager(
                                 .graphicsLayer {
                                     val away = (pagerState.currentPage - index) + pagerState.currentPageOffsetFraction
                                     translationY = away * (fy - 0.5f) * pageHeightPx * 0.25f
+                                    // Tilting the device shifts the bubbles; the lower (nearer) rows a little more.
+                                    if (tilt > 0f) {
+                                        val d = 14f * density * tilt * (0.6f + 0.8f * fy)
+                                        translationX += com.qita.ui.Parallax.x * d
+                                        translationY += com.qita.ui.Parallax.y * d
+                                    }
                                 },
                             padKey = "home:${app.packageName}",
                             hidden = app.packageName == hiddenPackage,

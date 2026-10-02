@@ -55,15 +55,19 @@ fun BubbleBackground(
     val topColor by animateColorAsState(top, tween(600), label = "top")
     val midColor by animateColorAsState(mid, tween(600), label = "mid")
     val bottomColor by animateColorAsState(bottom, tween(600), label = "bottom")
+    val tilt = LocalLook.current.tilt
     Box(modifier.fillMaxSize()) {
-        if (wallpaper != null) {
-            Image(wallpaper, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        } else {
-            SceneCanvas(
-                scene ?: { Triple(topColor, midColor, bottomColor).let { SceneMix(Scene.WAVES, Scene.WAVES, 0f, it, it) } },
-                scroll,
-                paused,
-            )
+        // The picture or scene sits a little enlarged and moves against the tilt (parallax).
+        Box(Modifier.fillMaxSize().tiltBackdrop(tilt)) {
+            if (wallpaper != null) {
+                Image(wallpaper, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            } else {
+                SceneCanvas(
+                    scene ?: { Triple(topColor, midColor, bottomColor).let { SceneMix(Scene.WAVES, Scene.WAVES, 0f, it, it) } },
+                    scroll,
+                    paused,
+                )
+            }
         }
         if (dim > 0f) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dim)))
         if (particles && !LocalLook.current.light) Particles(particleCount)

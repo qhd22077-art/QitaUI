@@ -42,6 +42,8 @@ data class Look(
     val light: Boolean = false,
     val batteryLow: Int = 20,
     val batteryCritical: Int = 8,
+    /** How far a tilt shifts things: 0 is off (setting off, Light mode or Reduce motion). */
+    val tilt: Float = 0f,
 )
 
 val LocalLook = compositionLocalOf { Look() }
@@ -80,6 +82,7 @@ fun Settings.look() = Look(
     light = lightMode,
     batteryLow = batteryLow,
     batteryCritical = batteryCritical,
+    tilt = if (parallax && !lightMode && !reduceMotion) parallaxStrength else 0f,
 )
 
 /** The swatches offered wherever a colour is picked. */
