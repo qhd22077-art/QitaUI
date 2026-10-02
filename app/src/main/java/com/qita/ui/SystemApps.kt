@@ -32,6 +32,8 @@ enum class SystemAction(val id: String, val label: String, val blurb: String) {
     FOLDERS("qita.sys.folders", "Folders", "Look through the files on this device, and copy, move, unpack or send them to a game folder."),
     ANDROID("qita.sys.android", "System Settings", "Open Android's own settings: Wi-Fi, Bluetooth, sound, display, apps and storage."),
     TROPHIES("qita.sys.trophies", "Trophies", "Trophies earned by using the launcher, and your RetroAchievements progress."),
+    PHOTOS("qita.sys.photos", "Photos", "The pictures on this device by album, with a viewer. Any picture can become your wallpaper."),
+    MUSIC("qita.sys.music", "Music", "The music on this device, with search, shuffle and repeat. It keeps playing while you use the launcher."),
 }
 
 /** Ids of the built-in bubbles, in the order they start on the home screen. */
@@ -62,6 +64,8 @@ private fun buildSystemApps(): List<LaunchableApp> =
         systemApp(SystemAction.FOLDERS, Color(0xFFD9A21E)) { drawFolder() },
         systemApp(SystemAction.ANDROID, Color(0xFF3DA35D)) { drawGear() },
         systemApp(SystemAction.TROPHIES, Color(0xFFE0A81E)) { drawCup() },
+        systemApp(SystemAction.PHOTOS, Color(0xFF2FA89A)) { drawPhotos() },
+        systemApp(SystemAction.MUSIC, Color(0xFFD0457A)) { drawNote() },
     )
 
 private val Ink = Color(0xFF14161A)
@@ -131,6 +135,25 @@ private fun DrawScope.drawCup() {
     drawRect(white(156f, 200f), Offset(116f, 156f), Size(24f, 40f))
     drawRoundRect(white(192f, 214f), Offset(84f, 192f), Size(88f, 22f), CornerRadius(7f))
     drawRect(Ink.copy(alpha = 0.35f), Offset(96f, 62f), Size(12f, 56f))
+}
+
+private fun DrawScope.drawPhotos() {
+    // A picture frame with a sun and two hills.
+    drawRoundRect(Color.White, Offset(40f, 56f), Size(176f, 144f), CornerRadius(16f), style = Stroke(width = 13f))
+    drawCircle(Color.White, 15f, Offset(166f, 98f))
+    val hills = Path().apply {
+        moveTo(58f, 184f); lineTo(104f, 112f); lineTo(134f, 154f); lineTo(152f, 132f); lineTo(198f, 184f); close()
+    }
+    drawPath(hills, white(112f, 184f))
+}
+
+private fun DrawScope.drawNote() {
+    // Two joined eighth notes.
+    drawRect(Color.White, Offset(92f, 58f), Size(14f, 110f))
+    drawRect(Color.White, Offset(166f, 46f), Size(14f, 110f))
+    drawPath(Path().apply { moveTo(92f, 58f); lineTo(180f, 46f); lineTo(180f, 80f); lineTo(92f, 92f); close() }, white(46f, 92f))
+    drawOval(white(150f, 190f), Offset(58f, 150f), Size(48f, 38f))
+    drawOval(white(138f, 178f), Offset(132f, 138f), Size(48f, 38f))
 }
 
 private fun DrawScope.drawToolbox(ink: Color = Ink) {

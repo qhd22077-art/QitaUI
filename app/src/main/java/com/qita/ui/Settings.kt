@@ -420,7 +420,7 @@ class SettingsStore(private val context: Context) {
         if (!prefs.getBoolean("systemSeeded", false)) {
             val seeded = SYSTEM_IDS.filter { it !in saved } + saved
             saveHome(seeded)
-            prefs.edit().putBoolean("systemSeeded", true).putBoolean("gamesSeeded", true).putBoolean("browserFoldersSeeded", true).putBoolean("androidSettingsSeeded", true).putBoolean("trophiesSeeded", true).apply()
+            prefs.edit().putBoolean("systemSeeded", true).putBoolean("gamesSeeded", true).putBoolean("browserFoldersSeeded", true).putBoolean("androidSettingsSeeded", true).putBoolean("trophiesSeeded", true).putBoolean("mediaSeeded", true).apply()
             return seeded
         }
         // The Games bubble arrived later: put it on the home screen once for installs that already had the others.
@@ -446,6 +446,12 @@ class SettingsStore(private val context: Context) {
             saved = if (SystemAction.TROPHIES.id in saved) saved else saved + SystemAction.TROPHIES.id
             saveHome(saved)
             prefs.edit().putBoolean("trophiesSeeded", true).apply()
+        }
+        // And the Photos and Music bubbles.
+        if (!prefs.getBoolean("mediaSeeded", false)) {
+            saved = saved + listOf(SystemAction.PHOTOS.id, SystemAction.MUSIC.id).filter { it !in saved }
+            saveHome(saved)
+            prefs.edit().putBoolean("mediaSeeded", true).apply()
         }
         return saved
     }

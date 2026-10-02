@@ -174,6 +174,8 @@ fun HomeScreen(homePresses: Int = 0) {
     var showBrowser by remember { mutableStateOf(false) }
     var showFolders by remember { mutableStateOf(false) }
     var showTrophies by remember { mutableStateOf(false) }
+    var showPhotos by remember { mutableStateOf(false) }
+    var showMusic by remember { mutableStateOf(false) }
     // The games library: folders, which emulator plays what, and a status line while scanning or fetching cover art.
     var gameFolders by remember { mutableStateOf(GameLibrary.folders(context)) }
     var gameFavs by remember { mutableStateOf(GameLibrary.favourites(context)) }
@@ -384,7 +386,7 @@ fun HomeScreen(homePresses: Int = 0) {
     }
 
     val menuOpen = menuFor != null || showQuickMenu || showNotifs
-    val anyOverlay = showLock || showDesktop || showGames || showStore || showBrowser || showFolders || showTrophies || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null || flashGame != null
+    val anyOverlay = showLock || showDesktop || showGames || showStore || showBrowser || showFolders || showTrophies || showPhotos || showMusic || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null || flashGame != null
     LaunchedEffect(Controller.padActive) { if (Controller.padActive) com.qita.ui.Trophies.award("pad") }
     // Tilt (parallax): the sensor is only listened to while the launcher is on screen and it is wanted (not in Light mode, with
     // Reduce motion, below the low-battery level, or under another screen; the lock screen shifts too).
@@ -623,6 +625,8 @@ fun HomeScreen(homePresses: Int = 0) {
             SystemAction.STORE -> { selected = null; showStore = true; com.qita.ui.Trophies.award("store") }
             SystemAction.BROWSER -> { selected = null; showBrowser = true; com.qita.ui.Trophies.award("browser") }
             SystemAction.TROPHIES -> { selected = null; showTrophies = true }
+            SystemAction.PHOTOS -> { selected = null; showPhotos = true }
+            SystemAction.MUSIC -> { selected = null; showMusic = true }
             SystemAction.FOLDERS -> { selected = null; showFolders = true }
             SystemAction.ANDROID -> {
                 selected = null
@@ -1000,7 +1004,7 @@ fun HomeScreen(homePresses: Int = 0) {
             showIndex = true
         } else if (homePresses > 0) {
             showIndex = false
-            selected = null; showSettings = false; showSearch = false; showDesktop = false; showGames = false; showStore = false; showBrowser = false; showFolders = false; showTrophies = false; menuFor = null; showQuickMenu = false; showNotifs = false; editMode = false; showBackgrounds = false; dragApp = null
+            selected = null; showSettings = false; showSearch = false; showDesktop = false; showGames = false; showStore = false; showBrowser = false; showFolders = false; showTrophies = false; showPhotos = false; showMusic = false; menuFor = null; showQuickMenu = false; showNotifs = false; editMode = false; showBackgrounds = false; dragApp = null
             endMove(true)
             pagerState.animateScrollToPage(0)
         }
@@ -1113,7 +1117,7 @@ fun HomeScreen(homePresses: Int = 0) {
     ) {
     Box(Modifier.fillMaxSize().onSizeChanged { rootWidth = it.width; rootHeight = it.height; PadNav.viewport = Rect(0f, 0f, it.width.toFloat(), it.height.toFloat()) }) {
         BubbleBackground(
-            paused = { showDesktop || showGames || showStore || showBrowser || showFolders || showTrophies || showSettings || flashGame != null },
+            paused = { showDesktop || showGames || showStore || showBrowser || showFolders || showTrophies || showPhotos || showMusic || showSettings || flashGame != null },
             top = settings.theme.top, mid = settings.theme.mid, bottom = settings.theme.bottom, particles = settings.particles,
             wallpaper = when (pageBg[bgPage]) {
                 null -> wallpaper
@@ -1375,6 +1379,32 @@ fun HomeScreen(homePresses: Int = 0) {
                     onOpenSettings = { showTrophies = false; settingsStart = "games"; showSettings = true },
                     onClose = { showTrophies = false },
                 )
+            }
+        }
+        AnimatedVisibility(
+            visible = showPhotos,
+            enter = fadeIn(tween(260)) + scaleIn(initialScale = 0.94f, animationSpec = spring(dampingRatio = 0.85f, stiffness = 400f)),
+            exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.96f, animationSpec = tween(200)),
+        ) {
+            CompositionLocalProvider(LocalPadLayer provides 1) {
+                PhotosScreen(
+                    settings = settings,
+                    wallpaper = wallpaper,
+                    onWallpaper = { uri ->
+                        val bmp = store.saveWallpaper(uri)
+                        if (bmp != null) { wallpaper = bmp; com.qita.ui.Trophies.award("wallpaper") } else toast = "That picture could not be used"
+                    },
+                    onClose = { showPhotos = false },
+                )
+            }
+        }
+        AnimatedVisibility(
+            visible = showMusic,
+            enter = fadeIn(tween(260)) + scaleIn(initialScale = 0.94f, animationSpec = spring(dampingRatio = 0.85f, stiffness = 400f)),
+            exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.96f, animationSpec = tween(200)),
+        ) {
+            CompositionLocalProvider(LocalPadLayer provides 1) {
+                MusicScreen(settings = settings, wallpaper = wallpaper, onClose = { showMusic = false })
             }
         }
         AnimatedVisibility(
@@ -1834,7 +1864,7 @@ fun HomeScreen(homePresses: Int = 0) {
             showSearch -> listOf("D-pad" to "Move", "A" to "Open", "B" to "Close")
             showDesktop -> listOf("A" to "Launch", "X" to "Options", "Y" to "Add / remove", "L1" to "Folder", "L2" to "Close", "B" to "Back")
             showGames -> listOf("D-pad" to "Move", "A" to "Play", "X" to "Options", "Y" to "Add / remove", "B" to "Back")
-            showStore || showBrowser || showFolders || showTrophies -> listOf("D-pad" to "Move", "A" to "Select", "B" to "Back")
+            showStore || showBrowser || showFolders || showTrophies || showPhotos || showMusic -> listOf("D-pad" to "Move", "A" to "Select", "B" to "Back")
             editMode && selected == null -> listOf("A" to "Options", "Y" to "Move", "START" to "Background", "B" to "Done")
             selected != null -> listOf("A" to "Start", "X" to "Options", "L1" to "Prev", "R1" to "Next", "B" to "Home")
             else -> listOf("A" to "Open", "X" to "Options", "Y" to "Move", "L1" to "Prev", "R1" to "Next", "L2" to "Desktop", "R2" to "Search", "START" to "Settings")

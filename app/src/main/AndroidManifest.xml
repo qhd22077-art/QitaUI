@@ -17,6 +17,10 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- The Folders app browses every file once the user switches "All files access" on. -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <!-- The Photos and Music bubbles read the device's pictures and music from Android's media database. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <!-- The Store installs emulator APKs it downloads; Android asks the user to allow this once. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
