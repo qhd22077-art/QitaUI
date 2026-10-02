@@ -128,12 +128,15 @@ fun LockScreen(
                     .pointerInput(settings.lockPeelAnywhere) {
                         if (!settings.lockPeelAnywhere) return@pointerInput
                         var velocity = 0f
+                        var lastT = 0L
                         androidx.compose.foundation.gestures.detectDragGestures(
-                            onDragStart = { velocity = 0f; peelScope.launch { peel.stop() } },
+                            onDragStart = { velocity = 0f; lastT = android.os.SystemClock.uptimeMillis(); peelScope.launch { peel.stop() } },
                             onDrag = { change, drag ->
                                 change.consume()
                                 val along = (-drag.x + drag.y) / 1.4142f
-                                val dt = (change.uptimeMillis - change.previousUptimeMillis).coerceAtLeast(1L)
+                                val nowT = android.os.SystemClock.uptimeMillis()
+                                val dt = (nowT - lastT).coerceAtLeast(1L)
+                                lastT = nowT
                                 velocity = 0.6f * velocity + 0.4f * (along / dt * 1000f)
                                 peelScope.launch { peel.snapTo((peel.value + along).coerceAtLeast(0f)) }
                             },
