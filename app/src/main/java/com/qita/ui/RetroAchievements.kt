@@ -117,7 +117,11 @@ object RetroAchievements {
     private fun siteId(c: Context, game: Game): Long? {
         val console = CONSOLES[game.systemId] ?: return null
         val p = prefs(c)
-        if (p.contains("map_${game.id}")) return p.getLong("map_${game.id}", 0L).takeIf { it > 0 }
+        // A game with no match is looked for again after a week (the list and the matching may have improved).
+        if (p.contains("map_${game.id}")) {
+            val known = p.getLong("map_${game.id}", 0L)
+            if (known > 0 || System.currentTimeMillis() - p.getLong("mapt_${game.id}", 0L) < WEEK) return known.takeIf { it > 0 }
+        }
         val list = File(dir(c), "games_$console.json")
         if (!list.exists() || System.currentTimeMillis() - list.lastModified() > WEEK) {
             // f=1: only the games that have achievements.
@@ -136,7 +140,7 @@ object RetroAchievements {
         val match = CoverMatch.best(game.raw, titles.keys.toList())
         val id = match?.let { titles[it] }
         // Remembered either way, so a game with no match is not looked up again every time its page opens.
-        p.edit().putLong("map_${game.id}", id ?: 0L).apply()
+        p.edit().putLong("map_${game.id}", id ?: 0L).putLong("mapt_${game.id}", System.currentTimeMillis()).apply()
         return id
     }
 

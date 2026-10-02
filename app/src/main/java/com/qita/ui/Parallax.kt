@@ -47,15 +47,28 @@ object Parallax {
         restRoll = Float.NaN
         restPitch = Float.NaN
         val l = object : SensorEventListener {
+            private var rotation = Surface.ROTATION_0
+            private var turnedAt = 0L
+
             override fun onSensorChanged(e: SensorEvent) {
                 SensorManager.getRotationMatrixFromVector(matrix, e.values)
-                // The axes depend on how the screen is turned (a handheld is held sideways).
-                val rotation = runCatching { wm?.defaultDisplay?.rotation }.getOrNull() ?: Surface.ROTATION_0
-                val (ax, ay) = when (rotation) {
-                    Surface.ROTATION_90 -> SensorManager.AXIS_Y to SensorManager.AXIS_MINUS_X
-                    Surface.ROTATION_180 -> SensorManager.AXIS_MINUS_X to SensorManager.AXIS_MINUS_Y
-                    Surface.ROTATION_270 -> SensorManager.AXIS_MINUS_Y to SensorManager.AXIS_X
-                    else -> SensorManager.AXIS_X to SensorManager.AXIS_Y
+                // The axes depend on how the screen is turned (a handheld is held sideways); asked twice a second, not for every reading.
+                val now = android.os.SystemClock.uptimeMillis()
+                if (now - turnedAt > 500) {
+                    turnedAt = now
+                    rotation = runCatching { wm?.defaultDisplay?.rotation }.getOrNull() ?: Surface.ROTATION_0
+                }
+                val ax = when (rotation) {
+                    Surface.ROTATION_90 -> SensorManager.AXIS_Y
+                    Surface.ROTATION_180 -> SensorManager.AXIS_MINUS_X
+                    Surface.ROTATION_270 -> SensorManager.AXIS_MINUS_Y
+                    else -> SensorManager.AXIS_X
+                }
+                val ay = when (rotation) {
+                    Surface.ROTATION_90 -> SensorManager.AXIS_MINUS_X
+                    Surface.ROTATION_180 -> SensorManager.AXIS_MINUS_Y
+                    Surface.ROTATION_270 -> SensorManager.AXIS_X
+                    else -> SensorManager.AXIS_Y
                 }
                 SensorManager.remapCoordinateSystem(matrix, ax, ay, remapped)
                 SensorManager.getOrientation(remapped, angles)

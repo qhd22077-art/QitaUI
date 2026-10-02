@@ -111,6 +111,11 @@ object GameStats {
         }
     }
 
+    /** Forgets the game noted by [begin] (it did not start), so the time until the launcher is next on screen is not counted as play. */
+    fun cancelPending(c: Context) {
+        prefs(c).edit().remove("pending_id").remove("pending_at").apply()
+    }
+
     fun hasPending(c: Context): Boolean = prefs(c).getString("pending_id", null) != null
 
     /** "2 h 5 min", "12 min" or "under a minute". */

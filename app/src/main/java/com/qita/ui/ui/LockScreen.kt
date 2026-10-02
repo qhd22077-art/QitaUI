@@ -83,6 +83,8 @@ fun LockScreen(
     onUnlock: () -> Unit,
 ) {
     val density = LocalDensity.current
+    // The clock drifts a little against the wallpaper when the device is tilted.
+    val tilt = LocalLook.current.tilt
     val peel = remember { Animatable(0f) }
     var pageWidth by remember { mutableStateOf(1) }
     // The curl is a small corner, about a tenth of the panel's width.
@@ -163,7 +165,6 @@ fun LockScreen(
                             shape = PeelShape(baseFold + peel.value, radius)
                             clip = true
                         }
-                        .tiltNear(com.qita.ui.ui.LocalLook.current.tilt, -5f)
                         .drawBehind { drawLockPanel(settings.lockPanelTint, settings.lockFrame, settings.lockBorder, settings.lockBevel, radius) },
                 ) {
                     // Bigger clocks are held to the width of the sheet, so a giant one never runs off the side.
@@ -182,6 +183,7 @@ fun LockScreen(
                         Modifier
                             .align(when (pos) { 0 -> Alignment.BottomEnd; 1 -> Alignment.BottomStart; 3 -> Alignment.Center; else -> Alignment.TopStart })
                             .padding(horizontal = 22.dp, vertical = 10.dp)
+                            .tiltNear(tilt, -5f)
                             .graphicsLayer {
                                 alpha = enter.value * fade()
                                 translationY = (1f - enter.value) * 12.dp.toPx()

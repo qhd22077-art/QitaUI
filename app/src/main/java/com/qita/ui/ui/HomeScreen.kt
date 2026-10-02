@@ -639,7 +639,7 @@ fun HomeScreen(homePresses: Int = 0) {
                     gamePlayed = GameLibrary.markPlayed(context, game.id)
                     com.qita.ui.GameStats.begin(context, game.id)
                     // Flash games are played inside the launcher; everything else goes to its emulator.
-                    if (game.systemId == "flash") flashGame = game else GameLauncher.launch(context, game)?.let { toast = it }
+                    if (game.systemId == "flash") flashGame = game else GameLauncher.launch(context, game)?.let { toast = it; com.qita.ui.GameStats.cancelPending(context) }
                 } else {
                     AppRepository.launch(context, app)
                 }
