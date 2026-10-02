@@ -29,6 +29,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -129,7 +130,7 @@ fun LockScreen(
                         if (!settings.lockPeelAnywhere) return@pointerInput
                         var velocity = 0f
                         var lastT = 0L
-                        androidx.compose.foundation.gestures.detectDragGestures(
+                        detectDragGestures(
                             onDragStart = { velocity = 0f; lastT = android.os.SystemClock.uptimeMillis(); peelScope.launch { peel.stop() } },
                             onDrag = { change, drag ->
                                 change.consume()
