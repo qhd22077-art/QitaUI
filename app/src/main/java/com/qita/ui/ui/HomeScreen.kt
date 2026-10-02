@@ -153,6 +153,8 @@ import kotlin.math.roundToInt
 @Composable
 fun HomeScreen(homePresses: Int = 0) {
     val context = LocalContext.current
+    // The launcher's trophies need the app's context once, before anything can earn one.
+    remember { com.qita.ui.Trophies.init(context) }
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
@@ -171,6 +173,7 @@ fun HomeScreen(homePresses: Int = 0) {
     var showStore by remember { mutableStateOf(false) }
     var showBrowser by remember { mutableStateOf(false) }
     var showFolders by remember { mutableStateOf(false) }
+    var showTrophies by remember { mutableStateOf(false) }
     // The games library: folders, which emulator plays what, and a status line while scanning or fetching cover art.
     var gameFolders by remember { mutableStateOf(GameLibrary.folders(context)) }
     var gameFavs by remember { mutableStateOf(GameLibrary.favourites(context)) }
@@ -379,7 +382,8 @@ fun HomeScreen(homePresses: Int = 0) {
     }
 
     val menuOpen = menuFor != null || showQuickMenu || showNotifs
-    val anyOverlay = showLock || showDesktop || showGames || showStore || showBrowser || showFolders || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null || flashGame != null
+    val anyOverlay = showLock || showDesktop || showGames || showStore || showBrowser || showFolders || showTrophies || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null || flashGame != null
+    LaunchedEffect(Controller.padActive) { if (Controller.padActive) com.qita.ui.Trophies.award("pad") }
     // Tilt (parallax): the sensor is only listened to while the launcher is on screen and it is wanted (not in Light mode, with
     // Reduce motion, below the low-battery level, or under another screen; the lock screen shifts too).
     val tiltWanted = settings.parallax && !settings.lightMode && !settings.reduceMotion && (showLock || !anyOverlay)
@@ -391,6 +395,7 @@ fun HomeScreen(homePresses: Int = 0) {
         val o = androidx.lifecycle.LifecycleEventObserver { _, e ->
             if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 tiltResumed = true
+                com.qita.ui.Trophies.opened()
                 if (!flashOpenNow) com.qita.ui.GameStats.settle(context)
             }
             if (e == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) tiltResumed = false
@@ -497,6 +502,7 @@ fun HomeScreen(homePresses: Int = 0) {
             refreshThemes()
             themeUndo = store.hasLookBackup()
             toast = "Applied \u201c${pack.name}\u201d"
+            com.qita.ui.Trophies.award("theme")
         }
     }
     fun saveFolders(list: List<HomeFolder>) { homeFolders = list; HomeFolders.save(context, list) }
@@ -562,6 +568,7 @@ fun HomeScreen(homePresses: Int = 0) {
             home = settle(vacate(home.map { if (it == target.packageName) id else it }, dragged.packageName))
             store.saveHome(home)
             toast = "Folder made. Tap it to open it; edit the home screen to rename or undo it"
+            com.qita.ui.Trophies.award("folder")
         }
     }
     /** Games go into a folder for their console (made when the first one arrives), instead of one bubble each. */
@@ -608,8 +615,9 @@ fun HomeScreen(homePresses: Int = 0) {
             SystemAction.SETTINGS -> { selected = null; showSettings = true }
             SystemAction.DESKTOP -> { selected = null; showDesktop = true }
             SystemAction.GAMES -> { selected = null; showGames = true }
-            SystemAction.STORE -> { selected = null; showStore = true }
-            SystemAction.BROWSER -> { selected = null; showBrowser = true }
+            SystemAction.STORE -> { selected = null; showStore = true; com.qita.ui.Trophies.award("store") }
+            SystemAction.BROWSER -> { selected = null; showBrowser = true; com.qita.ui.Trophies.award("browser") }
+            SystemAction.TROPHIES -> { selected = null; showTrophies = true }
             SystemAction.FOLDERS -> { selected = null; showFolders = true }
             SystemAction.ANDROID -> {
                 selected = null
@@ -628,6 +636,7 @@ fun HomeScreen(homePresses: Int = 0) {
                 }
                 store.recordLaunch(app.packageName)
                 counts = store.loadLaunchCounts()
+                com.qita.ui.Trophies.launched(app.game != null, app.game?.systemId == "flash")
             }
         }
     }
@@ -680,6 +689,7 @@ fun HomeScreen(homePresses: Int = 0) {
             reload++
             gamesBusy = null
             toast = "Found ${found.size} game${if (found.size == 1) "" else "s"}"
+            com.qita.ui.Trophies.library(found.size)
             if (found.isNotEmpty() && settings.gameCovers) fetchCovers()
         }
     }
@@ -698,6 +708,7 @@ fun HomeScreen(homePresses: Int = 0) {
     /** What to do when a download has finished: install an APK, offer to unzip a zip, or put a game file in its console's folder. */
     fun handleFinished(item: DownloadItem) {
         val path = item.finalPath ?: return
+        com.qita.ui.Trophies.award("download")
         val ext = item.name.substringAfterLast('.', "").lowercase()
         // The user answered before it began: file it as they said, then always rescan so it shows up in Games (and on the home screen).
         val plan = item.plan
@@ -982,7 +993,7 @@ fun HomeScreen(homePresses: Int = 0) {
             showIndex = true
         } else if (homePresses > 0) {
             showIndex = false
-            selected = null; showSettings = false; showSearch = false; showDesktop = false; showGames = false; showStore = false; showBrowser = false; showFolders = false; menuFor = null; showQuickMenu = false; showNotifs = false; editMode = false; showBackgrounds = false; dragApp = null
+            selected = null; showSettings = false; showSearch = false; showDesktop = false; showGames = false; showStore = false; showBrowser = false; showFolders = false; showTrophies = false; menuFor = null; showQuickMenu = false; showNotifs = false; editMode = false; showBackgrounds = false; dragApp = null
             endMove(true)
             pagerState.animateScrollToPage(0)
         }
@@ -1095,7 +1106,7 @@ fun HomeScreen(homePresses: Int = 0) {
     ) {
     Box(Modifier.fillMaxSize().onSizeChanged { rootWidth = it.width; rootHeight = it.height; PadNav.viewport = Rect(0f, 0f, it.width.toFloat(), it.height.toFloat()) }) {
         BubbleBackground(
-            paused = { showDesktop || showGames || showStore || showBrowser || showFolders || showSettings || flashGame != null },
+            paused = { showDesktop || showGames || showStore || showBrowser || showFolders || showTrophies || showSettings || flashGame != null },
             top = settings.theme.top, mid = settings.theme.mid, bottom = settings.theme.bottom, particles = settings.particles,
             wallpaper = when (pageBg[bgPage]) {
                 null -> wallpaper
@@ -1346,6 +1357,20 @@ fun HomeScreen(homePresses: Int = 0) {
             }
         }
         AnimatedVisibility(
+            visible = showTrophies,
+            enter = fadeIn(tween(260)) + scaleIn(initialScale = 0.94f, animationSpec = spring(dampingRatio = 0.85f, stiffness = 400f)),
+            exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.96f, animationSpec = tween(200)),
+        ) {
+            CompositionLocalProvider(LocalPadLayer provides 1) {
+                TrophiesScreen(
+                    settings = settings,
+                    wallpaper = wallpaper,
+                    onOpenSettings = { showTrophies = false; settingsStart = "games"; showSettings = true },
+                    onClose = { showTrophies = false },
+                )
+            }
+        }
+        AnimatedVisibility(
             visible = showGames,
             enter = fadeIn(tween(260)) + scaleIn(initialScale = 0.94f, animationSpec = spring(dampingRatio = 0.85f, stiffness = 400f)),
             exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.96f, animationSpec = tween(200)),
@@ -1397,7 +1422,7 @@ fun HomeScreen(homePresses: Int = 0) {
                         Controller.speed = it.cursorSpeed
                         Controller.swapAB = it.swapAB
                     },
-                    onWallpaper = { uri -> store.saveWallpaper(uri)?.let { wallpaper = it } },
+                    onWallpaper = { uri -> store.saveWallpaper(uri)?.let { wallpaper = it; com.qita.ui.Trophies.award("wallpaper") } },
                     onClearWallpaper = { store.clearWallpaper(); wallpaper = null },
                     // Folders go too, so the built-in bubbles inside them are back on the home screen with the others.
                     onClearHome = { saveFolders(emptyList()); home = SYSTEM_IDS; store.saveHome(home) },
@@ -1543,6 +1568,7 @@ fun HomeScreen(homePresses: Int = 0) {
                         store.saveWallpaper(uri, page)?.let {
                             pageWallpapers = pageWallpapers + (page to it)
                             pageBg = pageBg + (page to PAGE_PHOTO); store.savePageBg(pageBg)
+                            com.qita.ui.Trophies.award("wallpaper")
                         }
                     },
                     onDone = { showBackgrounds = false },
@@ -1765,6 +1791,8 @@ fun HomeScreen(homePresses: Int = 0) {
 
         // The gamepad highlight (or the cursor's hover ring) glides between items above everything.
         PadRing()
+        // A trophy banner slides down from the top over everything.
+        TrophyToast(Modifier.align(Alignment.TopCenter))
 
         AnimatedVisibility(
             visible = toast != null,
@@ -1790,7 +1818,7 @@ fun HomeScreen(homePresses: Int = 0) {
             showSearch -> listOf("D-pad" to "Move", "A" to "Open", "B" to "Close")
             showDesktop -> listOf("A" to "Launch", "X" to "Options", "Y" to "Add / remove", "L1" to "Folder", "L2" to "Close", "B" to "Back")
             showGames -> listOf("D-pad" to "Move", "A" to "Play", "X" to "Options", "Y" to "Add / remove", "B" to "Back")
-            showStore || showBrowser || showFolders -> listOf("D-pad" to "Move", "A" to "Select", "B" to "Back")
+            showStore || showBrowser || showFolders || showTrophies -> listOf("D-pad" to "Move", "A" to "Select", "B" to "Back")
             editMode && selected == null -> listOf("A" to "Options", "Y" to "Move", "START" to "Background", "B" to "Done")
             selected != null -> listOf("A" to "Start", "X" to "Options", "L1" to "Prev", "R1" to "Next", "B" to "Home")
             else -> listOf("A" to "Open", "X" to "Options", "Y" to "Move", "L1" to "Prev", "R1" to "Next", "L2" to "Desktop", "R2" to "Search", "START" to "Settings")

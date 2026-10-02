@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -25,7 +26,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import com.qita.ui.Game
 import com.qita.ui.GameLibrary
 import com.qita.ui.GameStats
+import com.qita.ui.RetroAchievements
 import com.qita.ui.systemById
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -86,6 +92,8 @@ internal fun GameBanners(game: Game, onView: (Int) -> Unit, onEdit: (String) -> 
         if (game.systemId != "flash") Line("The time is counted from starting the game until you come back to the launcher, so it is an estimate.", dim = true)
     }
 
+    AchievementsBanner(game)
+
     Banner("Pictures") {
         if (pics.isEmpty()) Line("None yet. Pictures are looked for online when this page opens; you can add your own.", dim = true)
         else Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -126,6 +134,45 @@ internal fun GameBanners(game: Game, onView: (Int) -> Unit, onEdit: (String) -> 
             }
         }
         MiniButton("game:tags", "Edit tags") { onEdit("tags") }
+    }
+}
+
+/** The game's RetroAchievements: how many are earned and the first few, if the account is set up and the console is supported. */
+@Composable
+private fun AchievementsBanner(game: Game) {
+    val c = LocalContext.current
+    val rev = RetroAchievements.rev
+    val configured = remember(rev) { RetroAchievements.configured(c) }
+    if (!configured || !RetroAchievements.supported(game.systemId)) return
+    var data by remember(game.id) { mutableStateOf(RetroAchievements.cached(c, game)) }
+    var note by remember(game.id) { mutableStateOf(if (data != null) "" else "Looking for this game on RetroAchievements…") }
+    LaunchedEffect(game.id) {
+        val r = withContext(Dispatchers.IO) { RetroAchievements.load(c, game) }
+        if (r != null) { data = r; note = "" } else if (data == null) note = "No achievements found for this game, or the site could not be reached."
+    }
+    Banner("Achievements") {
+        val d = data
+        if (d == null) Line(note, dim = true)
+        else {
+            Line("${d.earnedCount} of ${d.achievements.size} earned · ${d.earnedPoints} of ${d.totalPoints} points")
+            d.achievements.take(6).forEach { a ->
+                val badge by produceState<ImageBitmap?>(null, a.badge, a.earned) {
+                    value = withContext(Dispatchers.IO) { RetroAchievements.badge(c, a.badge, a.earned)?.asImageBitmap() }
+                }
+                Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(Modifier.size(34.dp).clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.35f))) {
+                        badge?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, alpha = if (a.earned) 1f else 0.55f) }
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text(a.title, color = Color.White.copy(alpha = if (a.earned) 1f else 0.7f), fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text(a.description, color = Color.White.copy(alpha = if (a.earned) 0.8f else 0.55f), fontSize = 11.sp, maxLines = 2)
+                    }
+                    Text("${a.points}", color = Color.White.copy(alpha = if (a.earned) 1f else 0.55f), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            if (d.achievements.size > 6) Line("…and ${d.achievements.size - 6} more", dim = true)
+            if (note.isNotEmpty()) Line(note, dim = true)
+        }
     }
 }
 

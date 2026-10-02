@@ -198,6 +198,12 @@ fun SettingsPage(
     var lockTab by remember { mutableStateOf(0) }
     // A destructive row asks first; this holds the question while it is on screen.
     var ask by remember { mutableStateOf<ConfirmAsk?>(null) }
+    // RetroAchievements account: which field is being typed ("user" or "key"), its text, and what the last test said.
+    var raEdit by remember { mutableStateOf<String?>(null) }
+    var raDraft by remember { mutableStateOf("") }
+    var raStatus by remember { mutableStateOf<String?>(null) }
+    val raScope = rememberCoroutineScope()
+    val raRev = com.qita.ui.RetroAchievements.rev
     // Back closes an open choice list first.
     BackHandler(enabled = optionPicker.value != null) { optionPicker.value = null }
     androidx.compose.runtime.DisposableEffect(Unit) { onDispose { optionPicker.value = null } }
@@ -462,6 +468,26 @@ fun SettingsPage(
                             CheckRow("set:gcoverauto", "▦", "Get cover art automatically after a scan", settings.gameCovers) { onChange(settings.copy(gameCovers = it)) }
                             MenuRow("set:gscan", "↻", if (games.busy != null) games.busy else "Scan for games (${games.gameCount} found)") { if (games.busy == null) games.onScan() }
                             MenuRow("set:gcovers", "▦", "Get cover art online for games without one") { if (games.busy == null) games.onCovers() }
+                            // RetroAchievements: shows each game's achievements on its page (unlocking happens in the emulator).
+                            InfoBox(
+                                "RetroAchievements (retroachievements.org): enter your user name and the Web API key from your profile page on the site. " +
+                                    "Games of supported consoles then show their achievements and what you earned.",
+                            )
+                            val raUser = remember(raRev) { com.qita.ui.RetroAchievements.user(batteryContext) }
+                            val raKey = remember(raRev) { com.qita.ui.RetroAchievements.key(batteryContext) }
+                            MenuRow("set:ra:user", "◈", "RetroAchievements user: " + raUser.ifBlank { "not set" }) { raDraft = raUser; raEdit = "user" }
+                            MenuRow("set:ra:key", "◈", "Web API key: " + if (raKey.isBlank()) "not set" else "••••" + raKey.takeLast(3)) { raDraft = ""; raEdit = "key" }
+                            MenuRow("set:ra:test", "✓", "Test the login") {
+                                raStatus = "Checking…"
+                                raScope.launch {
+                                    val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.qita.ui.RetroAchievements.check(batteryContext) }
+                                    raStatus = r.profile?.let { "Logged in as ${it.user}: ${it.points} points" + if (it.rank > 0) ", rank ${it.rank}" else "" } ?: r.error
+                                }
+                            }
+                            if (raUser.isNotBlank() || raKey.isNotBlank()) MenuRow("set:ra:out", "✕", "Forget the RetroAchievements account") {
+                                ask = ConfirmAsk("Forget the account?", "The name, key and everything kept from the site are removed from this device.", "Forget") { com.qita.ui.RetroAchievements.signOut(batteryContext); raStatus = null }
+                            }
+                            raStatus?.let { InfoBox(it) }
                         }
                         "fonts" -> {
                             InfoBox("The quick brown fox jumps over the lazy dog 0123456789")
@@ -565,6 +591,7 @@ fun SettingsPage(
                             "Reset $pageName?", "Every setting on this page goes back to its original value. Your apps, folders, games and pictures are not touched.", "Reset",
                         ) {
                             onChange(resetPage(current, settings))
+                            com.qita.ui.Trophies.award("reset")
                             if (current == "sounds") { com.qita.ui.Sounds.resetEvents(batteryContext); soundRev++ }
                         }
                     }
@@ -579,6 +606,19 @@ fun SettingsPage(
             }
         }
         optionPicker.value?.let { p -> OptionPicker(p) { optionPicker.value = null } }
+        raEdit?.let { which ->
+            BackHandler(enabled = true) { raEdit = null }
+            NamePrompt(
+                if (which == "user") "RetroAchievements user name" else "Web API key",
+                raDraft, { raDraft = it.take(80) },
+                onOk = {
+                    if (which == "user") com.qita.ui.RetroAchievements.setUser(batteryContext, raDraft) else if (raDraft.isNotBlank()) com.qita.ui.RetroAchievements.setKey(batteryContext, raDraft)
+                    raEdit = null
+                },
+                onCancel = { raEdit = null },
+                secret = which == "key",
+            )
+        }
         ask?.let { a ->
             BackHandler(enabled = true) { ask = null }
             ConfirmPrompt(a.title, a.text, a.ok, onOk = { ask = null; a.action() }, onCancel = { ask = null })

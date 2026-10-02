@@ -184,7 +184,7 @@ fun FolderView(
 
 /** A small box asking for a name, drawn in the screen (not a dialog) so the gamepad keeps working. */
 @Composable
-fun NamePrompt(title: String, value: String, onValue: (String) -> Unit, onOk: () -> Unit, onCancel: () -> Unit) {
+fun NamePrompt(title: String, value: String, onValue: (String) -> Unit, onOk: () -> Unit, onCancel: () -> Unit, secret: Boolean = false) {
     CompositionLocalProvider(LocalPadLayer provides 4) {
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).pointerInput(Unit) { detectTapGestures { onCancel() } }, contentAlignment = Alignment.Center) {
             Column(
@@ -194,6 +194,7 @@ fun NamePrompt(title: String, value: String, onValue: (String) -> Unit, onOk: ()
                 Text(title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 BasicTextField(
                     value = value, onValueChange = onValue, singleLine = true,
+                    visualTransformation = if (secret) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
                     textStyle = TextStyle(color = Color.White, fontSize = 16.sp), cursorBrush = SolidColor(Color.White),
                     keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { onOk() }),
                     modifier = Modifier.fillMaxWidth().padClickable("name:input", corner = 10.dp, pad = 2.dp) { },

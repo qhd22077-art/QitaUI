@@ -24,6 +24,7 @@ enum class Sound(val id: String, val label: String, val gapMs: Long, val gain: F
     PICK("pick", "Picking a bubble up", 100, 1f),
     DROP("drop", "Putting a bubble down", 100, 1f),
     UNLOCK("unlock", "Unlocking", 300, 1f),
+    TROPHY("trophy", "Trophy earned", 500, 1f),
 }
 
 /**
@@ -148,7 +149,7 @@ object Sounds {
             userFile(c, s).writeBytes(out.toByteArray())
             true
         }.getOrDefault(false)
-        if (ok) setMode(c, s, 1)
+        if (ok) { setMode(c, s, 1); Trophies.award("sound") }
         return ok
     }
 
@@ -233,6 +234,7 @@ object Sounds {
         Sound.PAGE -> swish(170, 0.30f)
         Sound.PICK -> sweep(110, 320f, 640f, 0.5f)
         Sound.DROP -> sweep(130, 620f, 260f, 0.5f)
+        Sound.TROPHY -> chime(900, 0.42f, Triple(0, 784f, 320), Triple(130, 988f, 340), Triple(260, 1319f, 560))
         Sound.UNLOCK -> chime(520, 0.40f, Triple(0, 523f, 260), Triple(110, 659f, 260), Triple(220, 784f, 300))
     }
 }

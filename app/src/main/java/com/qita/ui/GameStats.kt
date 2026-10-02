@@ -78,12 +78,16 @@ object GameStats {
         return s.notes.contains(query, true) || s.tags.any { it.contains(query, true) }
     }
 
-    fun setNotes(c: Context, id: String, notes: String) = put(c, id, get(c, id).copy(notes = notes.trim()))
+    fun setNotes(c: Context, id: String, notes: String) {
+        put(c, id, get(c, id).copy(notes = notes.trim()))
+        if (notes.isNotBlank()) Trophies.award("notes")
+    }
 
     /** Sets the tags from a comma separated text: tidy, no repeats, at most 12. */
     fun setTags(c: Context, id: String, text: String) {
         val tags = text.split(',', ';').map { it.trim().take(24) }.filter { it.isNotEmpty() }.distinctBy { it.lowercase() }.take(12)
         put(c, id, get(c, id).copy(tags = tags))
+        Trophies.tagged(all(c).values.count { it.tags.isNotEmpty() })
     }
 
     // --- Play time ---
@@ -101,7 +105,10 @@ object GameStats {
         val id = p.getString("pending_id", null) ?: return
         val elapsed = System.currentTimeMillis() - p.getLong("pending_at", 0L)
         p.edit().remove("pending_id").remove("pending_at").apply()
-        if (elapsed in minMs..(12L * 3600_000L)) put(c, id, get(c, id).copy(playMs = get(c, id).playMs + elapsed))
+        if (elapsed in minMs..(12L * 3600_000L)) {
+            put(c, id, get(c, id).copy(playMs = get(c, id).playMs + elapsed))
+            Trophies.played(all(c).values.sumOf { it.playMs })
+        }
     }
 
     fun hasPending(c: Context): Boolean = prefs(c).getString("pending_id", null) != null
@@ -188,6 +195,7 @@ object GameStats {
         val name = "u${System.currentTimeMillis()}.jpg"
         File(d, name).outputStream().use { upright.compress(Bitmap.CompressFormat.JPEG, 90, it) }
         put(c, id, get(c, id).copy(shots = get(c, id).shots + name))
+        Trophies.award("shots")
         true
     }.getOrDefault(false)
 

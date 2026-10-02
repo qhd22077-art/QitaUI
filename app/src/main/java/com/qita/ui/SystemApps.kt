@@ -31,6 +31,7 @@ enum class SystemAction(val id: String, val label: String, val blurb: String) {
     BROWSER("qita.sys.browser", "Browser", "Browse the web with tabs, bookmarks and history. Downloads go through the launcher."),
     FOLDERS("qita.sys.folders", "Folders", "Look through the files on this device, and copy, move, unpack or send them to a game folder."),
     ANDROID("qita.sys.android", "System Settings", "Open Android's own settings: Wi-Fi, Bluetooth, sound, display, apps and storage."),
+    TROPHIES("qita.sys.trophies", "Trophies", "Trophies earned by using the launcher, and your RetroAchievements progress."),
 }
 
 /** Ids of the built-in bubbles, in the order they start on the home screen. */
@@ -60,6 +61,7 @@ private fun buildSystemApps(): List<LaunchableApp> =
         systemApp(SystemAction.BROWSER, Color(0xFF1FA3C9)) { drawGlobe() },
         systemApp(SystemAction.FOLDERS, Color(0xFFD9A21E)) { drawFolder() },
         systemApp(SystemAction.ANDROID, Color(0xFF3DA35D)) { drawGear() },
+        systemApp(SystemAction.TROPHIES, Color(0xFFE0A81E)) { drawCup() },
     )
 
 private val Ink = Color(0xFF14161A)
@@ -115,6 +117,22 @@ private fun drawIcon(block: DrawScope.() -> Unit): ImageBitmap {
 private fun white(y0: Float, y1: Float) = Brush.verticalGradient(listOf(Color.White, Color(0xFFC4CAD2)), startY = y0, endY = y1)
 
 /** A toolbox pictogram: handle, lid, body, a dark seam and latch. */
+private fun DrawScope.drawCup() {
+    // Handles, bowl, stem and base: a trophy cup in white.
+    drawArc(Color.White, 90f, 180f, false, Offset(40f, 62f), Size(60f, 70f), style = Stroke(width = 13f))
+    drawArc(Color.White, -90f, 180f, false, Offset(156f, 62f), Size(60f, 70f), style = Stroke(width = 13f))
+    val bowl = Path().apply {
+        moveTo(76f, 46f); lineTo(180f, 46f)
+        quadraticBezierTo(184f, 150f, 128f, 160f)
+        quadraticBezierTo(72f, 150f, 76f, 46f)
+        close()
+    }
+    drawPath(bowl, white(46f, 160f))
+    drawRect(white(156f, 200f), Offset(116f, 156f), Size(24f, 40f))
+    drawRoundRect(white(192f, 214f), Offset(84f, 192f), Size(88f, 22f), CornerRadius(7f))
+    drawRect(Ink.copy(alpha = 0.35f), Offset(96f, 62f), Size(12f, 56f))
+}
+
 private fun DrawScope.drawToolbox(ink: Color = Ink) {
     drawRoundRect(white(48f, 120f), Offset(90f, 48f), Size(76f, 70f), CornerRadius(20f), style = Stroke(width = 13f))
     drawRoundRect(white(92f, 208f), Offset(40f, 92f), Size(176f, 116f), CornerRadius(16f))

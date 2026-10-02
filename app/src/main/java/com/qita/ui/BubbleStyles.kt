@@ -74,6 +74,7 @@ object BubbleStyles {
             o.put(k, j)
         }
         prefs?.edit()?.putString("styles", o.toString())?.apply()
+        if (!style.isDefault) Trophies.award("customise")
         // Translucency is applied while drawing; anything else is baked into the bubble's art.
         if (old.copy(alpha = style.alpha) != style) {
             SystemIcons.cache = null
