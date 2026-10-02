@@ -177,6 +177,10 @@ fun SettingsPage(
         val id = themeExportId
         if (uri != null && id != null) themes.onExport(id, uri)
     }
+    // The interface sounds: which one a clip is being chosen for, and a counter that redraws the rows when a choice changes.
+    var soundTarget by remember { mutableStateOf<com.qita.ui.Sound?>(null) }
+    var soundRev by remember { mutableStateOf(0) }
+    val soundScope = rememberCoroutineScope()
     val soundPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         val t = soundTarget
         if (uri != null && t != null) {
@@ -192,10 +196,6 @@ fun SettingsPage(
     // The settings are tabs; the selected one is [page].
     var page by remember { mutableStateOf(startPage ?: "theme") }
     var lockTab by remember { mutableStateOf(0) }
-    // The interface sounds: which one a clip is being chosen for, and a counter that redraws the rows when a choice changes.
-    var soundTarget by remember { mutableStateOf<com.qita.ui.Sound?>(null) }
-    var soundRev by remember { mutableStateOf(0) }
-    val soundScope = rememberCoroutineScope()
     // A destructive row asks first; this holds the question while it is on screen.
     var ask by remember { mutableStateOf<ConfirmAsk?>(null) }
     // Back closes an open choice list first.
