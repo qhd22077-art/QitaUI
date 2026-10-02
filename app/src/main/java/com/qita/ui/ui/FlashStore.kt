@@ -1,6 +1,7 @@
 package com.qita.ui.ui
 
 import android.content.Context
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
@@ -23,11 +25,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -41,7 +47,10 @@ import com.qita.ui.DownloadEngine
 import com.qita.ui.FlashEntry
 import com.qita.ui.FlashLibrary
 import com.qita.ui.FlashSources
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -61,7 +70,11 @@ class FlashStoreState(private val context: Context, private val scope: Coroutine
     var busy by mutableStateOf(false)
     var fetching by mutableStateOf<Set<String>>(emptySet())
     var started by mutableStateOf<Set<String>>(emptySet())
+    /** What happened to each game's Get, shown on its own row (a note at the top of the list would be out of sight). */
+    var notes by mutableStateOf<Map<String, String>>(emptyMap())
     private var job: Job? = null
+
+    private fun note(id: String, text: String) { notes = notes + (id to text) }
 
     fun search() {
         job?.cancel()
@@ -78,10 +91,11 @@ class FlashStoreState(private val context: Context, private val scope: Coroutine
                     else -> null
                 }
             } else {
-                val found = withContext(Dispatchers.IO) { FlashSources.searchArchive(q) }
+                val result = withContext(Dispatchers.IO) { FlashSources.searchArchive(q) }
+                val found = result.entries
                 if (found == null) {
                     entries = emptyList()
-                    status = "The Internet Archive could not be reached. Check the connection (games you already added play offline)."
+                    status = "The Internet Archive could not be searched: ${result.error ?: "no answer"}. Check the connection (games you already added play offline)."
                 } else {
                     entries = found
                     status = if (found.isEmpty()) "Nothing found for “$q”." else null
@@ -91,30 +105,68 @@ class FlashStoreState(private val context: Context, private val scope: Coroutine
         }
     }
 
-    /** Downloads [e]: looks up its .swf file if it is an Internet Archive item, saves its picture as the cover, starts the download. */
+    /**
+     * Downloads [e]. An Archive item is looked up first: loose .swf files are fetched one by one, or, if it only has small zips, those
+     * are fetched and the .swf files in them are added when they finish. Whatever happens is said on the game's own row, and the
+     * button always comes back (it cannot stay at "…").
+     */
     fun get(e: FlashEntry) {
         if (e.id in fetching || e.id in started) return
         fetching = fetching + e.id
+        notes = notes - e.id
         scope.launch {
-            val url = if (e.url.isNotEmpty()) e.url else withContext(Dispatchers.IO) { FlashSources.resolveArchive(e.id) }
-            if (url == null) {
-                status = "“${e.title}” has no .swf file to download (it may be packed in a zip, or the Archive could not be reached)."
+            try {
+                withTimeout(60_000) { fetch(e) }
+            } catch (ex: TimeoutCancellationException) {
+                note(e.id, "The Archive did not answer in time. Try again.")
+            } catch (ex: CancellationException) {
+                throw ex
+            } catch (ex: Exception) {
+                note(e.id, "Something went wrong: ${ex.message ?: ex.javaClass.simpleName}")
+            } finally {
                 fetching = fetching - e.id
-                return@launch
             }
-            val fileName = FlashLibrary.fileNameFor(e.title)
-            // Its picture becomes the game's cover (best effort).
-            e.thumb?.let { t ->
-                withContext(Dispatchers.IO) {
-                    FlashSources.picture(t)?.let { Covers.save(context, FlashLibrary.idFor(fileName), it) }
-                }
-            }
-            val running = DownloadEngine.items.firstOrNull { it.url == url && (it.state == DlState.RUNNING || it.state == DlState.PAUSED) }
-            if (running == null) DownloadEngine.enqueue(url, fileName)
-            fetching = fetching - e.id
-            started = started + e.id
-            status = "Downloading “${e.title}”. Watch it in the Downloads tab; it appears in Games, under Flash, when it is done."
         }
+    }
+
+    private suspend fun fetch(e: FlashEntry) {
+        // What to download: (link, file name). Zips carry a mark in their name so the launcher knows to unpack them.
+        val todo = ArrayList<Pair<String, String>>()
+        var zips = false
+        if (e.url.isNotEmpty()) {
+            todo.add(e.url to FlashLibrary.fileNameFor(e.title))
+        } else {
+            val r = withContext(Dispatchers.IO) { FlashSources.resolveArchive(e.id) }
+            val base = FlashLibrary.safeBase(e.title)
+            when {
+                r.swf.size == 1 -> todo.add(r.swf[0].url to "$base.swf")
+                r.swf.size > 1 -> r.swf.forEach { f -> todo.add(f.url to FlashLibrary.fileNameFor(f.name.substringAfterLast('/').removeSuffix(".swf").removeSuffix(".SWF"))) }
+                r.zips.isNotEmpty() -> {
+                    zips = true
+                    r.zips.forEachIndexed { i, f -> todo.add(f.url to "$base${if (r.zips.size > 1) " ${i + 1}" else ""} [flashzip].zip") }
+                }
+                else -> { note(e.id, r.note ?: "Nothing to download in this item."); return }
+            }
+        }
+        // A single game's picture becomes its cover (best effort).
+        if (todo.size == 1 && !zips) {
+            e.thumb?.let { t ->
+                withContext(Dispatchers.IO) { FlashSources.picture(t)?.let { Covers.save(context, FlashLibrary.idFor(todo[0].second), it) } }
+            }
+        }
+        var begun = 0
+        for ((url, name) in todo) {
+            val running = DownloadEngine.items.firstOrNull { it.url == url && (it.state == DlState.RUNNING || it.state == DlState.PAUSED) }
+            if (running == null) DownloadEngine.enqueue(url, name)
+            begun++
+        }
+        started = started + e.id
+        note(
+            e.id,
+            if (zips) "Downloading a zip; the Flash games in it are added when it is done (see the Downloads tab)."
+            else if (begun > 1) "Downloading $begun games. Watch the Downloads tab; they appear in Games, under Flash."
+            else "Downloading. Watch the Downloads tab; it appears in Games, under Flash, when it is done.",
+        )
     }
 }
 
@@ -124,7 +176,7 @@ fun LazyListScope.flashItems(st: FlashStoreState) {
     if (st.busy) item(key = "flash-busy") { Text("Loading…", Modifier.padding(16.dp), color = SoftText, fontSize = 15.sp) }
     st.status?.let { s -> item(key = "flash-status") { Text(s, Modifier.padding(horizontal = 16.dp, vertical = 10.dp), color = SoftText, fontSize = 14.sp) } }
     items(st.entries, key = { it.id }) { e ->
-        FlashRow(e, e.id in st.fetching, e.id in st.started) { st.get(e) }
+        FlashRow(e, e.id in st.fetching, e.id in st.started, st.notes[e.id]) { st.get(e) }
     }
 }
 
@@ -173,19 +225,27 @@ private fun FlashHead(st: FlashStoreState) {
 }
 
 @Composable
-private fun FlashRow(e: FlashEntry, fetching: Boolean, started: Boolean, onGet: () -> Unit) {
+private fun FlashRow(e: FlashEntry, fetching: Boolean, started: Boolean, note: String?, onGet: () -> Unit) {
     Column {
         Row(
-            Modifier.fillMaxWidth().height(74.dp).background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.14f), Color.White.copy(alpha = 0.04f)))),
+            Modifier.fillMaxWidth().heightIn(min = 74.dp).background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.14f), Color.White.copy(alpha = 0.04f)))),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.size(74.dp).background(Brush.verticalGradient(listOf(Color(0xFFD0501E), Color.Black.copy(alpha = 0.8f)))), contentAlignment = Alignment.Center) {
-                Text(e.title.take(1).uppercase(), color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Black)
+            // The item's own picture when it has one (loaded as the row appears); else the first letter.
+            val picture by produceState<ImageBitmap?>(null, e.thumb) {
+                value = e.thumb?.let { t -> withContext(Dispatchers.IO) { FlashSources.picture(t)?.asImageBitmap() } }
             }
-            Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+            Box(Modifier.size(74.dp).background(Brush.verticalGradient(listOf(Color(0xFFD0501E), Color.Black.copy(alpha = 0.8f)))), contentAlignment = Alignment.Center) {
+                val p = picture
+                if (p != null) Image(p, null, Modifier.size(74.dp), contentScale = ContentScale.Crop)
+                else Text(e.title.take(1).uppercase(), color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Black)
+            }
+            Column(Modifier.weight(1f).padding(horizontal = 14.dp, vertical = 6.dp)) {
                 Text(e.source, color = SoftText, fontSize = 12.sp, maxLines = 1)
                 Text(e.title, color = Color.White, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (e.blurb.isNotBlank()) Text(e.blurb, color = DimText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // What happened when Get was tapped, right where it was tapped.
+                if (note != null) Text(note, color = Color(0xFFFFB070), fontSize = 13.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
             }
             GetButton("flash:get:${e.id}", if (started) "Added" else if (fetching) "…" else "Get") { onGet() }
         }

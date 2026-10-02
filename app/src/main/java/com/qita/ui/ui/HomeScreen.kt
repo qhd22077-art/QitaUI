@@ -720,6 +720,19 @@ fun HomeScreen(homePresses: Int = 0) {
     fun handleFinished(item: DownloadItem) {
         val path = item.finalPath ?: return
         com.qita.ui.Trophies.award("download")
+        // A zip fetched for its Flash games (from the Store's Archive tab): every .swf in it goes into the Flash library.
+        if (item.name.endsWith("[flashzip].zip", true)) {
+            scope.launch {
+                val n = withContext(Dispatchers.IO) { FlashLibrary.addFromZip(context, File(path)) }
+                if (n > 0) {
+                    runCatching { File(path).delete() }
+                    DownloadEngine.remove(item)
+                    toast = "Added $n Flash game${if (n == 1) "" else "s"}"
+                    scanGames()
+                } else toast = "No .swf files were found in ${item.name.removeSuffix(" [flashzip].zip")}"
+            }
+            return
+        }
         val ext = item.name.substringAfterLast('.', "").lowercase()
         // The user answered before it began: file it as they said, then always rescan so it shows up in Games (and on the home screen).
         val plan = item.plan
@@ -746,6 +759,7 @@ fun HomeScreen(homePresses: Int = 0) {
             ext == "swf" -> scope.launch {
                 val g = withContext(Dispatchers.IO) { FlashLibrary.add(context, File(path), item.name) }
                 if (g != null) {
+                    runCatching { File(path).delete() }
                     DownloadEngine.remove(item)
                     toast = "Added ${g.title} to Flash games"
                     scanGames()
