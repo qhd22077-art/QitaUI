@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -209,6 +211,11 @@ fun LiveAreaPage(
     val density = LocalDensity.current
     val baseFold = with(density) { 56.dp.toPx() }
     val tint = app.tint
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // A game's page: the picture viewer, and the box for its notes or tags.
+    var viewShot by remember { mutableStateOf<Int?>(null) }
+    var editing by remember { mutableStateOf<String?>(null) }
+    var draft by remember { mutableStateOf("") }
 
     Column(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }.statusBarsPadding()) {
         // The information bar is drawn once by the home screen, so it stays put while pages are swiped.
@@ -246,9 +253,28 @@ fun LiveAreaPage(
                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                 ) {
                     Gate(app, onLaunch, Modifier.weight(0.95f).fillMaxHeight().staggerIn(0, scaleFrom = 0.88f))
-                    Column(Modifier.weight(1.05f).fillMaxHeight().staggerIn(1, fromX = 70f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    val bannerScroll = androidx.compose.foundation.rememberScrollState()
+                    Column(
+                        Modifier
+                            .weight(1.05f).fillMaxHeight().staggerIn(1, fromX = 70f)
+                            .padScroller { bannerScroll.animateScrollBy(it) }
+                            .verticalScroll(bannerScroll),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
                         val action = app.action
-                        if (action != null) {
+                        val game = app.game
+                        if (game != null) {
+                            GameBanners(
+                                game,
+                                onView = { viewShot = it },
+                                onEdit = {
+                                    val s = com.qita.ui.GameStats.get(context, game.id)
+                                    draft = if (it == "notes") s.notes else s.tags.joinToString(", ")
+                                    editing = it
+                                },
+                            )
+                            Line("Drag the curled corner to close this page.", dim = true)
+                        } else if (action != null) {
                             Banner("About") { Line(action.blurb) }
                             Line("Drag the curled corner to close this page.", dim = true)
                         } else {
@@ -289,6 +315,21 @@ fun LiveAreaPage(
                 }
             }
             PeelBack(baseFold + peel.value, tint)
+            val g = app.game
+            if (g != null) {
+                viewShot?.let { ShotViewer(g, it) { viewShot = null } }
+                editing?.let { which ->
+                    NamePrompt(
+                        if (which == "notes") "Notes on ${app.label}" else "Tags (separated by commas)",
+                        draft, { draft = it.take(if (which == "notes") 400 else 120) },
+                        onOk = {
+                            if (which == "notes") com.qita.ui.GameStats.setNotes(context, g.id, draft) else com.qita.ui.GameStats.setTags(context, g.id, draft)
+                            editing = null
+                        },
+                        onCancel = { editing = null },
+                    )
+                }
+            }
         }
     }
 }
@@ -340,7 +381,7 @@ private fun Gate(app: LaunchableApp, onLaunch: () -> Unit, modifier: Modifier = 
 }
 
 @Composable
-private fun Banner(title: String, content: @Composable () -> Unit) {
+internal fun Banner(title: String, content: @Composable () -> Unit) {
     val shape = RoundedCornerShape(14.dp)
     Column(
         Modifier
@@ -355,7 +396,7 @@ private fun Banner(title: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun Line(text: String, mono: Boolean = false, dim: Boolean = false) {
+internal fun Line(text: String, mono: Boolean = false, dim: Boolean = false) {
     Text(
         text,
         color = Color.White.copy(alpha = if (dim) 0.65f else 0.92f),

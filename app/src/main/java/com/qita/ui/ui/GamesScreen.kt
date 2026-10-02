@@ -91,14 +91,23 @@ fun GamesScreen(
     val bubble = listOf(66.dp, 84.dp, 108.dp)[sizeStep]
     // The consoles that have games, in the order of the system list.
     val present = remember(games) { SYSTEMS.filter { s -> games.any { it.game?.systemId == s.id } } }
-    val shown = remember(games, emulators, tab, query, sort, favourites, played) {
+    // Tags the user gave their games; the Tag chip cycles through them to filter the list.
+    val statRev = com.qita.ui.GameStats.rev
+    val allTags = remember(statRev) { com.qita.ui.GameStats.tagsInUse(context) }
+    var tag by remember { mutableStateOf<String?>(null) }
+    val activeTag = tag?.takeIf { it in allTags }
+    val shown = remember(games, emulators, tab, query, sort, favourites, played, activeTag, statRev) {
         val base = when (tab) {
             "all" -> games
             "emu" -> emulators
             "fav" -> games.filter { it.game?.id in favourites }
             else -> games.filter { it.game?.systemId == tab }
         }
-        val found = if (query.isBlank()) base else base.filter { it.label.contains(query.trim(), true) }
+        val tagged = if (activeTag == null || tab == "emu") base else base.filter { a -> a.game?.let { g -> activeTag in com.qita.ui.GameStats.get(context, g.id).tags } == true }
+        // The search also looks in the user's notes and tags.
+        val found = if (query.isBlank()) tagged else tagged.filter { a ->
+            a.label.contains(query.trim(), true) || (a.game?.let { com.qita.ui.GameStats.matches(context, it.id, query.trim()) } == true)
+        }
         if (tab == "emu") found else found.sortedWith(
             compareByDescending<LaunchableApp> { it.game?.id in favourites }
                 .thenComparator { a, b ->
@@ -146,6 +155,10 @@ fun GamesScreen(
                 Chip("games:search", if (searching) "Search ✕" else "Search", searching) { searching = !searching; if (!searching) query = "" }
                 Chip("games:sort", "Sort: " + listOf("A-Z", "Recent", "Console")[sort], false) { sort = (sort + 1) % 3 }
                 Chip("games:view", if (listView) "List" else "Grid", false) { listView = !listView; uiPrefs.edit().putBoolean("list", listView).apply() }
+                if (allTags.isNotEmpty()) Chip("games:tag", "Tag: ${activeTag ?: "all"}", activeTag != null) {
+                    val next = if (activeTag == null) 0 else allTags.indexOf(activeTag) + 1
+                    tag = allTags.getOrNull(next)
+                }
                 if (!listView) Chip("games:size", "Size: " + listOf("S", "M", "L")[sizeStep], false) { sizeStep = (sizeStep + 1) % 3; uiPrefs.edit().putInt("size", sizeStep).apply() }
                 if (searching) {
                     androidx.compose.foundation.text.BasicTextField(

@@ -70,9 +70,10 @@ fun FolderView(
     val hasGames = members.any { it.game != null }
     val hasApps = members.any { it.game == null }
     val hasFav = members.any { it.game?.id in favourites }
+    val folderContext = androidx.compose.ui.platform.LocalContext.current
     val shownMembers = remember(members, query, filter, sort, favourites, played) {
         val matching = members.filter { a ->
-            (query.isBlank() || a.label.contains(query.trim(), true)) && when (filter) {
+            (query.isBlank() || a.label.contains(query.trim(), true) || (a.game?.let { com.qita.ui.GameStats.matches(folderContext, it.id, query.trim()) } == true)) && when (filter) {
                 "all" -> true
                 "fav" -> a.game?.id in favourites
                 "game" -> a.game != null

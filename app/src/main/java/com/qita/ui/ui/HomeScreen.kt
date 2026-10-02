@@ -384,9 +384,15 @@ fun HomeScreen(homePresses: Int = 0) {
     // Reduce motion, below the low-battery level, or under another screen; the lock screen shifts too).
     val tiltWanted = settings.parallax && !settings.lightMode && !settings.reduceMotion && (showLock || !anyOverlay)
     var tiltResumed by remember { mutableStateOf(true) }
+    // Back from a game: the time away is its play time (a Flash game open in the launcher is settled when it closes instead).
+    val flashOpenNow by rememberUpdatedState(flashGame != null)
+    LaunchedEffect(flashGame) { if (flashGame == null) com.qita.ui.GameStats.settle(context, 0L) }
     DisposableEffect(lifecycleOwner) {
         val o = androidx.lifecycle.LifecycleEventObserver { _, e ->
-            if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) tiltResumed = true
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                tiltResumed = true
+                if (!flashOpenNow) com.qita.ui.GameStats.settle(context)
+            }
             if (e == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) tiltResumed = false
         }
         lifecycleOwner.lifecycle.addObserver(o)
@@ -614,6 +620,7 @@ fun HomeScreen(homePresses: Int = 0) {
                 val game = app.game
                 if (game != null) {
                     gamePlayed = GameLibrary.markPlayed(context, game.id)
+                    com.qita.ui.GameStats.begin(context, game.id)
                     // Flash games are played inside the launcher; everything else goes to its emulator.
                     if (game.systemId == "flash") flashGame = game else GameLauncher.launch(context, game)?.let { toast = it }
                 } else {
@@ -1639,6 +1646,7 @@ fun HomeScreen(homePresses: Int = 0) {
                         forgetFromHome(app.packageName)
                         FlashLibrary.deleteFile(context, app.game!!)
                         GameLibrary.remove(context, app.game!!.id)
+                        com.qita.ui.GameStats.forget(context, app.game!!.id)
                         reload++
                     },
                     MenuItem("Cancel") { menuFor = null },
