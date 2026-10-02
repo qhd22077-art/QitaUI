@@ -329,7 +329,7 @@ object FlashSources {
             }
             val link = absolute(base, url) ?: return@mapNotNull null
             FlashEntry("site:" + link.hashCode().toUInt().toString(16), title.trim().ifEmpty { titleFromUrl(link) }, desc, link, thumb.takeIf { it.isNotBlank() }?.let { absolute(base, it) }, source)
-        }
+        }.distinctBy { it.id }
     }.getOrDefault(emptyList())
 
     /**

@@ -149,7 +149,8 @@ class FlashStoreState(private val context: Context, private val scope: Coroutine
      * button always comes back (it cannot stay at "…").
      */
     fun get(e: FlashEntry) {
-        if (e.id in fetching || e.id in started) return
+        // Only a Get still looking things up blocks another; after "Added" it can be tapped again (a download that failed can be retried).
+        if (e.id in fetching) return
         fetching = fetching + e.id
         notes = notes - e.id
         scope.launch {
