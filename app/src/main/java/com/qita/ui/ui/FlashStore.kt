@@ -9,11 +9,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -63,8 +65,12 @@ import kotlinx.coroutines.withContext
  */
 class FlashStoreState(private val context: Context, private val scope: CoroutineScope) {
     var query by mutableStateOf("")
-    /** 0 the game list, 1 the Internet Archive. */
+    /** 0 the game list, 1 the Internet Archive, 2 the user's own sites. */
     var source by mutableIntStateOf(0)
+    /** The sites the user added; the one chosen (its address); and the address last looked at, which can be saved as a site. */
+    var sites by mutableStateOf(FlashSiteStore.list(context))
+    var site by mutableStateOf<String?>(null)
+    var scanned by mutableStateOf<String?>(null)
     var entries by mutableStateOf<List<FlashEntry>>(emptyList())
     var status by mutableStateOf<String?>(null)
     var busy by mutableStateOf(false)
@@ -76,13 +82,43 @@ class FlashStoreState(private val context: Context, private val scope: Coroutine
 
     private fun note(id: String, text: String) { notes = notes + (id to text) }
 
+    /** Keeps the address last looked at as a site (named after its host) and chooses it. */
+    fun saveSite() {
+        val a = scanned ?: return
+        val full = if (a.contains("://")) a else "https://$a"
+        val name = runCatching { java.net.URL(full).host.removePrefix("www.") }.getOrDefault(a)
+        sites = FlashSiteStore.add(context, name, a)
+        site = a
+    }
+
+    /** Forgets the chosen site. */
+    fun removeSite() {
+        site?.let { sites = FlashSiteStore.remove(context, it) }
+        site = null
+        entries = emptyList()
+        status = null
+    }
+
     fun search() {
         job?.cancel()
         job = scope.launch {
             busy = true
             status = null
             val q = query.trim()
-            if (source == 0) {
+            if (source == 2) {
+                // A link typed in the box is looked at once; otherwise the chosen site is, and the text filters what it has.
+                val isLink = q.contains("://") || (q.contains('.') && !q.contains(' '))
+                val address = if (isLink) q else site
+                if (address == null) {
+                    entries = emptyList()
+                    status = "Choose one of your sites above, or paste a link here: a web page, a game-list file, an Internet Archive page or a game (.swf or .zip)."
+                } else {
+                    val r = withContext(Dispatchers.IO) { FlashSources.scanAddress(address) }
+                    scanned = address
+                    entries = if (isLink || q.isEmpty()) r.entries else r.entries.filter { it.title.contains(q, true) }
+                    status = if (r.entries.isNotEmpty() && entries.isEmpty()) "Nothing there matches “$q”." else r.note
+                }
+            } else if (source == 0) {
                 val all = withContext(Dispatchers.IO) { FlashSources.catalogue(context) }
                 entries = if (q.isEmpty()) all else all.filter { it.title.contains(q, true) || it.blurb.contains(q, true) }
                 status = when {
@@ -98,7 +134,7 @@ class FlashStoreState(private val context: Context, private val scope: Coroutine
                     status = "The Internet Archive could not be searched: ${result.error ?: "no answer"}. Check the connection (games you already added play offline)."
                 } else {
                     entries = found
-                    status = if (found.isEmpty()) "Nothing found for “$q”." else null
+                    status = if (found.isEmpty()) (result.note ?: "Nothing found for “$q”.") + " Try other words, or add a site under My sites." else result.note
                 }
             }
             busy = false
@@ -134,9 +170,13 @@ class FlashStoreState(private val context: Context, private val scope: Coroutine
         val todo = ArrayList<Pair<String, String>>()
         var zips = false
         if (e.url.isNotEmpty()) {
-            todo.add(e.url to FlashLibrary.fileNameFor(e.title))
+            // A link to a zip is unpacked when it arrives; anything else is taken to be the .swf itself.
+            if (e.url.substringBefore('?').endsWith(".zip", true)) {
+                zips = true
+                todo.add(e.url to "${FlashLibrary.safeBase(e.title)} [flashzip].zip")
+            } else todo.add(e.url to FlashLibrary.fileNameFor(e.title))
         } else {
-            val r = withContext(Dispatchers.IO) { FlashSources.resolveArchive(e.id) }
+            val r = withContext(Dispatchers.IO) { FlashSources.resolveArchive(e.id.removePrefix("ia:")) }
             val base = FlashLibrary.safeBase(e.title)
             when {
                 r.swf.size == 1 -> todo.add(r.swf[0].url to "$base.swf")
@@ -185,7 +225,7 @@ private fun FlashHead(st: FlashStoreState) {
     LaunchedEffect(Unit) { if (st.entries.isEmpty() && !st.busy) st.search() }
     Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Game list", "Internet Archive").forEachIndexed { i, label ->
+            listOf("Game list", "Internet Archive", "My sites").forEachIndexed { i, label ->
                 val key = "flash:src:$i"
                 val lit = padHighlighted(key) || padHovered(key)
                 val on = st.source == i
@@ -210,15 +250,29 @@ private fun FlashHead(st: FlashStoreState) {
                 modifier = Modifier.weight(1f),
                 decorationBox = { inner ->
                     Box(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.25f), RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 9.dp)) {
-                        if (st.query.isEmpty()) Text(if (st.source == 0) "Search the game list" else "Search the Internet Archive", color = SoftText, fontSize = 16.sp)
+                        if (st.query.isEmpty()) Text(
+                            when (st.source) { 0 -> "Search the game list"; 1 -> "Search the Internet Archive"; else -> "Paste a link to a page, a list or a game" },
+                            color = SoftText, fontSize = 16.sp,
+                        )
                         inner()
                     }
                 },
             )
             BarButton("flash:search", "Search") { st.search() }
         }
+        if (st.source == 2) {
+            // The user's own sites: tap one to see its games; a link looked at once can be kept as a site.
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                st.sites.forEachIndexed { i, s ->
+                    SmallAction("flash:site:$i", (if (st.site == s.address) "✓ " else "") + s.name) { st.site = s.address; st.query = ""; st.search() }
+                }
+                if (st.scanned != null && st.sites.none { it.address == st.scanned }) SmallAction("flash:site:save", "Keep this as a site") { st.saveSite() }
+                if (st.site != null) SmallAction("flash:site:remove", "Forget this site") { st.removeSite() }
+            }
+        }
         Text(
-            "Games you get here are kept inside the launcher, play offline, and show up in Games under Flash. A .swf file you download in the Browser is added too.",
+            "Games you get here are kept inside the launcher, play offline, and show up in Games under Flash. A .swf file you download in the Browser is added too. " +
+                "Only take games that are free to share or that you have the right to keep.",
             color = DimText, fontSize = 12.sp,
         )
     }
