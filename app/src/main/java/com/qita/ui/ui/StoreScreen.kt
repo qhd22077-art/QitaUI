@@ -956,6 +956,24 @@ private fun Catalogue(
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             if (searching) {
+                // Recent searches: kept once a query has stood for a moment, shown while the box is empty.
+                val historyContext = LocalContext.current
+                var history by remember { mutableStateOf(com.qita.ui.SearchHistory.get(historyContext)) }
+                LaunchedEffect(query) {
+                    if (query.trim().length >= 3) {
+                        kotlinx.coroutines.delay(1200)
+                        history = com.qita.ui.SearchHistory.add(historyContext, query.trim())
+                    }
+                }
+                if (query.isEmpty() && history.isNotEmpty()) {
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        history.forEachIndexed { i, h -> SmallAction("store:hist:$i", h) { onQuery(h) } }
+                        SmallAction("store:hist:clear", "Clear") { com.qita.ui.SearchHistory.clear(historyContext); history = emptyList() }
+                    }
+                }
                 BasicTextField(
                     value = query, onValueChange = onQuery, singleLine = true,
                     textStyle = TextStyle(color = Color.White, fontSize = 17.sp),
@@ -1624,7 +1642,16 @@ private fun DownloadRowLarge(d: DownloadItem) {
         }
         when (d.state) {
             DlState.RUNNING -> SmallAction("store:dl:pause:${d.id}", "Pause") { DownloadEngine.pause(d) }
-            DlState.PAUSED, DlState.FAILED -> SmallAction("store:dl:resume:${d.id}", "Resume") { DownloadEngine.resume(d) }
+            DlState.PAUSED, DlState.FAILED -> {
+                SmallAction("store:dl:resume:${d.id}", "Resume") { DownloadEngine.resume(d) }
+                // The details of a failure, ready to paste into a message.
+                if (d.state == DlState.FAILED) SmallAction("store:dl:copy:${d.id}", "Copy details") {
+                    val text = "Download failed\nName: ${d.name}\nAddress: ${d.url}\n${d.status()}\nDownloaded: ${d.bytes} of ${d.total} bytes"
+                    val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("Download details", text))
+                    android.widget.Toast.makeText(context, "Details copied", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
             DlState.DONE -> {
                 val path = d.finalPath
                 val isApk = d.kind == DlKind.APK || d.name.endsWith(".apk", true)

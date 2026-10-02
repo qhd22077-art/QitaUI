@@ -212,6 +212,8 @@ fun HomeScreen(homePresses: Int = 0) {
     var editMode by remember { mutableStateOf(false) }
     var liveOrigin by remember { mutableStateOf(TransformOrigin.Center) }
     var toast by remember { mutableStateOf<String?>(null) }
+    // What was just filed from a download, said together with the library's size once the rescan has finished.
+    var filedNote by remember { mutableStateOf<String?>(null) }
     var lastToast by remember { mutableStateOf("") }
     // A one-time nudge if notifications are not switched on yet.
     LaunchedEffect(Unit) {
@@ -465,6 +467,7 @@ fun HomeScreen(homePresses: Int = 0) {
             toast = if (r?.id != null) "Theme imported. Tap it in the list to use it." else "Nothing could be imported"
         }
     }
+    var themeExtras by remember { mutableStateOf(com.qita.ui.ThemePacks.extrasOn(context)) }
     fun applyThemePack(id: String) {
         scope.launch {
             val pack = com.qita.ui.ThemePacks.load(context, id)
@@ -480,6 +483,8 @@ fun HomeScreen(homePresses: Int = 0) {
                 val lockOk = pack.lock?.let { store.useWallpaperFile(File(dir, it), -5) } == true
                 pages to (if (lockOk) store.loadWallpaper(-5) else null)
             }
+            // A theme that brings its own sounds and system bubble looks puts them on too (if that is switched on).
+            val extrasNote = if (themeExtras) withContext(Dispatchers.IO) { com.qita.ui.ThemePacks.applyExtras(context, id) } else null
             var bg = pageBg
             done.first.forEach { bg = bg + (it to PAGE_PHOTO) }
             store.savePageBg(bg)
@@ -501,7 +506,7 @@ fun HomeScreen(homePresses: Int = 0) {
             reload++
             refreshThemes()
             themeUndo = store.hasLookBackup()
-            toast = "Applied \u201c${pack.name}\u201d"
+            toast = "Applied \u201c${pack.name}\u201d" + (extrasNote?.let { " with $it" } ?: "")
             com.qita.ui.Trophies.award("theme")
         }
     }
@@ -688,7 +693,9 @@ fun HomeScreen(homePresses: Int = 0) {
             }
             reload++
             gamesBusy = null
-            toast = "Found ${found.size} game${if (found.size == 1) "" else "s"}"
+            toast = filedNote?.let { "$it  ·  ${found.size} game${if (found.size == 1) "" else "s"} in your library" }
+                ?: "Found ${found.size} game${if (found.size == 1) "" else "s"}"
+            filedNote = null
             com.qita.ui.Trophies.library(found.size)
             if (found.isNotEmpty() && settings.gameCovers) fetchCovers()
         }
@@ -702,7 +709,7 @@ fun HomeScreen(homePresses: Int = 0) {
                 else DownloadPlacer.place(context, File(path), item.name, system)
             }
             toast = result.message
-            if (result.ok) { DownloadEngine.remove(item); scanGames() }
+            if (result.ok) { filedNote = result.message; DownloadEngine.remove(item); scanGames() }
         }
     }
     /** What to do when a download has finished: install an APK, offer to unzip a zip, or put a game file in its console's folder. */
@@ -1469,6 +1476,15 @@ fun HomeScreen(homePresses: Int = 0) {
                         onImportVita = { importTheme(it, true) },
                         onImportPack = { importTheme(it, false) },
                         onApply = { applyThemePack(it) },
+                        extras = themeExtras,
+                        onExtras = { themeExtras = it; com.qita.ui.ThemePacks.setExtrasOn(context, it) },
+                        onMakeStyle = {
+                            scope.launch {
+                                val id = withContext(Dispatchers.IO) { com.qita.ui.ThemePacks.makeStylePack(context, "My style") }
+                                toast = if (id != null) "Made the theme “My style”. Save it as a file from the list to share it." else "Nothing to put in a theme yet: change a sound or a system bubble first"
+                                refreshThemes()
+                            }
+                        },
                         onExport = { id, uri ->
                             scope.launch {
                                 val ok = withContext(Dispatchers.IO) {

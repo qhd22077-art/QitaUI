@@ -88,7 +88,7 @@ object BubbleStyles {
         set(id, BubbleStyle())
     }
 
-    private fun pictureFile(id: String): File? = dir?.let { File(it, id.filter { ch -> ch.isLetterOrDigit() } + ".jpg") }
+    fun pictureFile(id: String): File? = dir?.let { File(it, id.filter { ch -> ch.isLetterOrDigit() } + ".jpg") }
 
     fun picture(id: String): ImageBitmap? = runCatching {
         pictureFile(id)?.takeIf { it.exists() }?.let { BitmapFactory.decodeFile(it.path)?.asImageBitmap() }

@@ -93,6 +93,10 @@ class ThemesSetup(
     val iconKeys: Set<String> = emptySet(),
     val iconsOn: Set<String> = emptySet(),
     val onIcon: (String, Boolean) -> Unit = { _, _ -> },
+    /** Whether themes carry and apply sounds and system bubble looks, the switch, and making a theme from the current ones. */
+    val extras: Boolean = true,
+    val onExtras: (Boolean) -> Unit = {},
+    val onMakeStyle: () -> Unit = {},
 )
 
 class GamesSetup(
@@ -276,6 +280,8 @@ fun SettingsPage(
                             MenuRow("set:themeimport:vita", "⇩", "Import a Vita theme (.zip)") { vitaThemePicker.launch("*/*") }
                             MenuRow("set:themeimport:pack", "⇩", "Import a QitaUI theme (.qtheme)") { packPicker.launch("*/*") }
                             themes.report?.let { InfoBox(it) }
+                            CheckRow("set:themeextras", "♪", "Themes carry my sounds and system bubble looks (saved with them, put on when applied)", themes.extras) { themes.onExtras(it) }
+                            MenuRow("set:themestyle", "+", "Make a theme from my sounds and system bubble looks") { themes.onMakeStyle() }
                             themes.list.forEach { t ->
                                 MenuRow("set:themepack:${t.id}", "◐", t.name + if (t.author.isNotBlank()) "  ·  ${t.author}" else "", trailing = {
                                     if (t.id == themes.activeId) Text("✓", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
@@ -579,6 +585,12 @@ fun SettingsPage(
                             CheckRow("set:lock", "▭", "Lock screen when the launcher starts or the screen wakes", settings.lockScreen) { onChange(settings.copy(lockScreen = it)) }
                             MenuRow("set:export", "↥", "Save my settings to a file") { exporter.launch("qitaui-settings.json") }
                             MenuRow("set:import", "↧", "Load settings from a file") { importer.launch("*/*") }
+                            // Things kept only to save a download next time.
+                            var cacheRev by remember { mutableStateOf(0) }
+                            val cacheSize = remember(cacheRev) { com.qita.ui.Caches.format(com.qita.ui.Caches.bytes(batteryContext)) }
+                            MenuRow("set:caches", "▦", "Clear saved lists and temporary files ($cacheSize)") {
+                                com.qita.ui.Caches.clear(batteryContext); cacheRev++
+                            }
                             MenuRow("set:tutorial", "i", "Show tutorial") { onShowTutorial() }
                             MenuRow("set:reset", "↺", "Reset all settings") { onChange(Settings()); com.qita.ui.Sounds.resetEvents(batteryContext); soundRev++ }
                         }

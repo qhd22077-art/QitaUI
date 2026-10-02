@@ -139,13 +139,109 @@ object ThemePacks {
         applyIcons(c, load(c, id))
     }
 
-    /** One `.qtheme` file: a zip of the theme's folder. */
+    /** Whether themes carry the user's sounds and system bubble looks (when saved) and put a theme's own on (when applied). On by default. */
+    fun extrasOn(c: Context): Boolean = prefs(c).getBoolean("extras", true)
+
+    fun setExtrasOn(c: Context, on: Boolean) { prefs(c).edit().putBoolean("extras", on).apply() }
+
+    fun hasExtras(c: Context, id: String): Boolean = File(folder(c, id), "extras.json").exists()
+
+    /**
+     * The user's own sounds and system bubble looks as a description (extras.json) and the files it names: the clips of sounds they
+     * chose, the pictures of bubbles they gave one. Null if nothing is changed from the defaults.
+     */
+    private fun buildExtras(c: Context): Pair<String, Map<String, File>>? {
+        val files = LinkedHashMap<String, File>()
+        val bubbles = JSONObject()
+        for ((bid, s) in BubbleStyles.all) {
+            val j = JSONObject().put("a", s.alpha.toDouble()).put("gm", when (s.glass) { true -> 1; false -> 2; null -> 0 })
+            if (s.tint != null) j.put("t", s.tint)
+            if (s.picture) BubbleStyles.pictureFile(bid)?.takeIf { it.exists() }?.let { f ->
+                val n = "bubble_${bid.filter { ch -> ch.isLetterOrDigit() }}.jpg"
+                files[n] = f
+                j.put("p", n)
+            }
+            bubbles.put(bid, j)
+        }
+        val sounds = JSONObject()
+        for (s in Sound.values()) {
+            val mode = Sounds.mode(c, s)
+            if (mode == 0) continue
+            val j = JSONObject().put("mode", mode)
+            if (mode == 1) {
+                val f = Sounds.userFile(c, s)
+                if (!f.exists() || f.length() == 0L) continue
+                val n = "sound_${s.id}.snd"
+                files[n] = f
+                j.put("file", n)
+            }
+            sounds.put(s.id, j)
+        }
+        if (bubbles.length() == 0 && sounds.length() == 0) return null
+        return JSONObject().put("bubbles", bubbles).put("sounds", sounds).toString() to files
+    }
+
+    /** Makes a theme of its own that holds only the user's sounds and system bubble looks (no pictures). Returns its id, or null if there is nothing to hold. */
+    fun makeStylePack(c: Context, name: String): String? {
+        val (json, files) = buildExtras(c) ?: return null
+        val id = newId()
+        val dir = folder(c, id).apply { mkdirs() }
+        File(dir, "extras.json").writeText(json)
+        for ((n, f) in files) runCatching { f.copyTo(File(dir, n), overwrite = true) }
+        save(c, ThemePack(id, name, "", emptyList(), null, null, null, null, null, null, emptyMap()))
+        return id
+    }
+
+    /** Puts the theme's sounds and system bubble looks on, if it carries any. Returns what was set ("2 bubble looks, 3 sounds"), or null. */
+    fun applyExtras(c: Context, id: String): String? = runCatching {
+        val dir = folder(c, id)
+        val o = JSONObject(File(dir, "extras.json").takeIf { it.exists() }?.readText() ?: return null)
+        var nb = 0
+        var ns = 0
+        o.optJSONObject("bubbles")?.let { b ->
+            for (bid in b.keys()) {
+                if (bid !in SYSTEM_IDS) continue
+                val j = b.getJSONObject(bid)
+                val pic = j.optString("p").takeIf { it.isNotEmpty() }?.let { File(dir, File(it).name) }?.takeIf { it.exists() }
+                if (pic != null) BubbleStyles.pictureFile(bid)?.let { target -> runCatching { pic.copyTo(target, overwrite = true) } }
+                val glass: Boolean? = when (j.optInt("gm")) { 1 -> true; 2 -> false; else -> null }
+                BubbleStyles.set(bid, BubbleStyle(j.optDouble("a", 1.0).toFloat(), glass, if (j.has("t")) j.getInt("t") else null, pic != null))
+                nb++
+            }
+        }
+        o.optJSONObject("sounds")?.let { sj ->
+            for (s in Sound.values()) {
+                val j = sj.optJSONObject(s.id) ?: continue
+                when (j.optInt("mode")) {
+                    2 -> { Sounds.setMode(c, s, 2); ns++ }
+                    1 -> {
+                        val f = j.optString("file").takeIf { it.isNotEmpty() }?.let { File(dir, File(it).name) }?.takeIf { it.exists() } ?: continue
+                        f.copyTo(Sounds.userFile(c, s), overwrite = true)
+                        Sounds.setMode(c, s, 1)
+                        ns++
+                    }
+                }
+            }
+        }
+        if (nb == 0 && ns == 0) null
+        else listOfNotNull(if (nb > 0) "$nb bubble look${if (nb == 1) "" else "s"}" else null, if (ns > 0) "$ns sound${if (ns == 1) "" else "s"}" else null).joinToString(", ")
+    }.getOrNull()
+
+    /** One `.qtheme` file: a zip of the theme's folder, plus the user's sounds and bubble looks if that is switched on (and the theme has none of its own). */
     fun export(c: Context, id: String, out: OutputStream) {
         ZipOutputStream(out.buffered()).use { z ->
             (folder(c, id).listFiles() ?: emptyArray()).filter { it.isFile }.forEach { f ->
                 z.putNextEntry(ZipEntry(f.name))
                 f.inputStream().use { it.copyTo(z) }
                 z.closeEntry()
+            }
+            if (extrasOn(c) && !hasExtras(c, id)) buildExtras(c)?.let { (json, files) ->
+                z.putNextEntry(ZipEntry("extras.json")); z.write(json.toByteArray()); z.closeEntry()
+                for ((n, f) in files) {
+                    z.putNextEntry(ZipEntry(n))
+                    f.inputStream().use { it.copyTo(z) }
+                    z.closeEntry()
+                }
             }
         }
     }
@@ -163,7 +259,7 @@ object ThemePacks {
                     // Only plain files in the theme's own folder: no paths, and only the kinds a theme holds.
                     val name = File(e.name).name
                     val ext = name.substringAfterLast('.', "").lowercase()
-                    if (ext !in setOf("json", "jpg", "jpeg", "png")) continue
+                    if (ext !in setOf("json", "jpg", "jpeg", "png", "snd")) continue
                     File(dir, name).outputStream().use { o -> z.copyTo(o) }
                     count++
                 }
@@ -172,7 +268,7 @@ object ThemePacks {
             if (!json.exists()) { dir.deleteRecursively(); return ThemeImportResult(null, "That file is not a QitaUI theme (no theme.json inside).") }
             val pack = ThemePack.fromJson(id, JSONObject(json.readText()))
             save(c, pack)
-            return ThemeImportResult(id, "Imported “${pack.name}”: ${pack.pages.size} page backgrounds" + (if (pack.lock != null) ", a lock screen picture" else "") + ", ${pack.icons.size} icons.")
+            return ThemeImportResult(id, "Imported “${pack.name}”: ${pack.pages.size} page backgrounds" + (if (pack.lock != null) ", a lock screen picture" else "") + ", ${pack.icons.size} icons" + (if (hasExtras(c, id)) ", and its own sounds and bubble looks" else "") + ".")
         } catch (e: Exception) {
             dir.deleteRecursively()
             return ThemeImportResult(null, "That file could not be read as a theme: ${e.message}")

@@ -172,6 +172,9 @@ class FlashInputHandler(
         if (id != null && id != FLASH_NONE) { sources[source] = id; press(id) }
     }
 
+    /** An on-screen button: while a finger is on it ([down]) the pad button [code] counts as held, so its binding goes down and up. */
+    fun touch(code: Int, down: Boolean) = hold("touch:$code", if (down) bindings.action(code) else null)
+
     /** Lets go of everything held (the menu opens, or the game closes), so no key stays down. */
     fun releaseAll() {
         sources.keys.toList().forEach { hold(it, null) }

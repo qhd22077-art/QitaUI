@@ -14,6 +14,7 @@ import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -76,6 +77,14 @@ fun FlashScreen(game: Game, onClose: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     var controls by remember { mutableStateOf(false) }
     var hint by remember { mutableStateOf(true) }
+    // On-screen buttons for a phone: on by default only when no gamepad is connected; the choice is kept for each game.
+    val uiPrefs = remember { context.getSharedPreferences("qita_flash_ui", android.content.Context.MODE_PRIVATE) }
+    var touchOn by remember {
+        val padConnected = android.view.InputDevice.getDeviceIds().any { id ->
+            android.view.InputDevice.getDevice(id)?.let { it.sources and android.view.InputDevice.SOURCE_GAMEPAD == android.view.InputDevice.SOURCE_GAMEPAD } == true
+        }
+        mutableStateOf(uiPrefs.getBoolean("touch_${game.id}", !padConnected))
+    }
     val webHolder = remember { arrayOfNulls<WebView>(1) }
 
     val handler = remember {
@@ -159,6 +168,7 @@ fun FlashScreen(game: Game, onClose: () -> Unit) {
                     .clickable(interactionSource = NoRipple, indication = null) { menu = true },
                 contentAlignment = Alignment.Center,
             ) { Text("☰", color = Color.White.copy(alpha = 0.8f), fontSize = 16.sp) }
+            if (touchOn) TouchControls(bindings, handler)
             if (hint) {
                 Text(
                     "Select + Start: menu",
@@ -194,6 +204,10 @@ fun FlashScreen(game: Game, onClose: () -> Unit) {
                                 BarButton("flash:resume", "Resume") { menu = false }
                                 BarButton("flash:controls", "Controls") { controls = true }
                                 BarButton("flash:exit", "Exit game") { onClose() }
+                            }
+                            BarButton("flash:touch", if (touchOn) "On-screen buttons: on" else "On-screen buttons: off") {
+                                touchOn = !touchOn
+                                uiPrefs.edit().putBoolean("touch_${game.id}", touchOn).apply()
                             }
                             Text(
                                 "Select + Start together opens this menu while you play. Games that need the mouse can use a stick as the pointer (see Controls).",
@@ -289,4 +303,64 @@ private fun ControlChip(key: String, label: String, onClick: () -> Unit) {
             .padding(horizontal = 12.dp, vertical = 8.dp),
         color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1,
     )
+}
+
+
+/**
+ * On-screen buttons for playing without a gamepad: a D-pad on the left, A B X Y on the right and the shoulder buttons above them.
+ * Each one holds the pad button it is named after, so it does what the game's controls say (change them in the menu, Controls).
+ * Several can be held at once. Touches elsewhere go to the game as a mouse, as usual.
+ */
+@Composable
+private fun BoxScope.TouchControls(bindings: FlashBindings, handler: FlashInputHandler) {
+    @Composable
+    fun Pad(code: Int, label: String, modifier: Modifier, size: androidx.compose.ui.unit.Dp = 54.dp, round: Boolean = true) {
+        var held by remember { mutableStateOf(false) }
+        val bound = bindings.action(code)
+        val shape = if (round) CircleShape else RoundedCornerShape(12.dp)
+        Box(
+            modifier
+                .size(size)
+                .clip(shape)
+                .background(Color.White.copy(alpha = if (held) 0.50f else 0.20f))
+                .border(1.5.dp, Color.White.copy(alpha = if (held) 0.9f else 0.5f), shape)
+                .pointerInput(code) {
+                    detectTapGestures(onPress = {
+                        held = true
+                        handler.touch(code, true)
+                        try { tryAwaitRelease() } finally { held = false; handler.touch(code, false) }
+                    })
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(label, color = Color.White.copy(alpha = if (bound == com.qita.ui.FLASH_NONE) 0.4f else 0.95f), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+    // The D-pad: a cross of four buttons.
+    Box(Modifier.align(Alignment.BottomStart).padding(start = 18.dp, bottom = 18.dp).size(168.dp)) {
+        Pad(android.view.KeyEvent.KEYCODE_DPAD_UP, "▲", Modifier.align(Alignment.TopCenter))
+        Pad(android.view.KeyEvent.KEYCODE_DPAD_DOWN, "▼", Modifier.align(Alignment.BottomCenter))
+        Pad(android.view.KeyEvent.KEYCODE_DPAD_LEFT, "◀", Modifier.align(Alignment.CenterStart))
+        Pad(android.view.KeyEvent.KEYCODE_DPAD_RIGHT, "▶", Modifier.align(Alignment.CenterEnd))
+    }
+    // The face buttons in a diamond: Y on top, X left, B right, A below.
+    Box(Modifier.align(Alignment.BottomEnd).padding(end = 18.dp, bottom = 18.dp).size(168.dp)) {
+        Pad(android.view.KeyEvent.KEYCODE_BUTTON_Y, "Y", Modifier.align(Alignment.TopCenter))
+        Pad(android.view.KeyEvent.KEYCODE_BUTTON_A, "A", Modifier.align(Alignment.BottomCenter))
+        Pad(android.view.KeyEvent.KEYCODE_BUTTON_X, "X", Modifier.align(Alignment.CenterStart))
+        Pad(android.view.KeyEvent.KEYCODE_BUTTON_B, "B", Modifier.align(Alignment.CenterEnd))
+    }
+    // Shoulders and Start / Select.
+    Row(Modifier.align(Alignment.BottomStart).padding(start = 18.dp, bottom = 196.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Pad(android.view.KeyEvent.KEYCODE_BUTTON_L1, "L1", Modifier, 44.dp, round = false)
+        Pad(android.view.KeyEvent.KEYCODE_BUTTON_L2, "L2", Modifier, 44.dp, round = false)
+    }
+    Row(Modifier.align(Alignment.BottomEnd).padding(end = 18.dp, bottom = 196.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Pad(android.view.KeyEvent.KEYCODE_BUTTON_R2, "R2", Modifier, 44.dp, round = false)
+        Pad(android.view.KeyEvent.KEYCODE_BUTTON_R1, "R1", Modifier, 44.dp, round = false)
+    }
+    Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Pad(android.view.KeyEvent.KEYCODE_BUTTON_SELECT, "Sel", Modifier, 40.dp, round = false)
+        Pad(android.view.KeyEvent.KEYCODE_BUTTON_START, "Start", Modifier, 40.dp, round = false)
+    }
 }
