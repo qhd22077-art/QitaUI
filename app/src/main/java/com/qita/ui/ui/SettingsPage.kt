@@ -42,7 +42,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -175,12 +177,25 @@ fun SettingsPage(
         val id = themeExportId
         if (uri != null && id != null) themes.onExport(id, uri)
     }
+    val soundPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        val t = soundTarget
+        if (uri != null && t != null) {
+            val ok = com.qita.ui.Sounds.setUserFile(batteryContext, t, uri)
+            soundRev++
+            // The clip loads in the background; play it once it has had a moment.
+            if (ok) soundScope.launch { kotlinx.coroutines.delay(250); com.qita.ui.Sounds.play(t) }
+        }
+    }
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) games.onAddFolder(uri)
     }
     // The settings are tabs; the selected one is [page].
     var page by remember { mutableStateOf(startPage ?: "theme") }
     var lockTab by remember { mutableStateOf(0) }
+    // The interface sounds: which one a clip is being chosen for, and a counter that redraws the rows when a choice changes.
+    var soundTarget by remember { mutableStateOf<com.qita.ui.Sound?>(null) }
+    var soundRev by remember { mutableStateOf(0) }
+    val soundScope = rememberCoroutineScope()
     // A destructive row asks first; this holds the question while it is on screen.
     var ask by remember { mutableStateOf<ConfirmAsk?>(null) }
     // Back closes an open choice list first.
@@ -190,7 +205,7 @@ fun SettingsPage(
     LaunchedEffect(page) { scroll.scrollTo(0) }
     val tabs = listOf(
         "theme" to "Theme", "background" to "Background", "home" to "Home", "bubbles" to "Bubbles", "fonts" to "Text",
-        "topbar" to "Top Bar", "status" to "Date & Time", "motion" to "Motion", "lock" to "Lock Screen", "games" to "Games",
+        "topbar" to "Top Bar", "status" to "Date & Time", "motion" to "Motion", "sounds" to "Sounds", "lock" to "Lock Screen", "games" to "Games",
         "controller" to "Controller", "system" to "System",
     )
     val title = when (page) {
@@ -203,6 +218,7 @@ fun SettingsPage(
         "fonts" -> "Fonts & Text"
         "topbar" -> "Top Bar"
         "motion" -> "Motion"
+        "sounds" -> "Sounds"
         "status" -> "Date & Time"
         "controller" -> "Controller"
         "system" -> "System"
@@ -476,6 +492,32 @@ fun SettingsPage(
                                 if (mine) MenuRow("set:bat:rm:$state", "✕", "Use the drawn battery for $name") { BatteryArt.clear(batteryContext, state) }
                             }
                         }
+                        "sounds" -> {
+                            // Reading the counter here redraws the rows when a choice changes.
+                            @Suppress("UNUSED_VARIABLE") val rev = soundRev
+                            CheckRow("set:soundOn", "♪", "Interface sounds", settings.soundOn) { onChange(settings.copy(soundOn = it)) }
+                            if (settings.lightMode) InfoBox("Light mode keeps the sounds off to save battery.")
+                            SliderRow("set:soundVol", "♪", "Volume", settings.soundVolume, 0f..1f, 0.1f) { onChange(settings.copy(soundVolume = it)) }
+                            CheckRow("set:soundMedia", "♪", "Follow the media volume (otherwise the system sounds volume, which silent mode mutes)", settings.soundMedia) { onChange(settings.copy(soundMedia = it)) }
+                            InfoBox("Each sound can be the built-in one, a short clip of your own (a few seconds; .wav, .ogg or .mp3), or off. Tap a choice to hear it.")
+                            com.qita.ui.Sound.values().forEach { snd ->
+                                val mode = com.qita.ui.Sounds.mode(batteryContext, snd)
+                                ChoiceRow("set:snd:${snd.id}", "♪", snd.label, listOf("Built-in", "My clip", "Off"), mode) { m ->
+                                    if (m == 1 && !com.qita.ui.Sounds.userFile(batteryContext, snd).exists()) {
+                                        soundTarget = snd
+                                        soundPicker.launch("audio/*")
+                                    } else {
+                                        com.qita.ui.Sounds.setMode(batteryContext, snd, m)
+                                        soundRev++
+                                        if (m != 2) soundScope.launch { kotlinx.coroutines.delay(250); com.qita.ui.Sounds.play(snd) }
+                                    }
+                                }
+                                if (mode == 1) MenuRow("set:snd:pick:${snd.id}", "↥", "Choose another clip for “${snd.label}”") {
+                                    soundTarget = snd
+                                    soundPicker.launch("audio/*")
+                                }
+                            }
+                        }
                         "motion" -> {
                             CheckRow("set:light", "◌", "Light mode (30 fps, fewer symbols, no blur, less memory and battery)", settings.lightMode) { onChange(settings.copy(lightMode = it)) }
                             CheckRow("set:reduce", "■", "Reduce motion (still background, no sway or flip)", settings.reduceMotion) { onChange(settings.copy(reduceMotion = it)) }
@@ -510,7 +552,7 @@ fun SettingsPage(
                             MenuRow("set:export", "↥", "Save my settings to a file") { exporter.launch("qitaui-settings.json") }
                             MenuRow("set:import", "↧", "Load settings from a file") { importer.launch("*/*") }
                             MenuRow("set:tutorial", "i", "Show tutorial") { onShowTutorial() }
-                            MenuRow("set:reset", "↺", "Reset all settings") { onChange(Settings()) }
+                            MenuRow("set:reset", "↺", "Reset all settings") { onChange(Settings()); com.qita.ui.Sounds.resetEvents(batteryContext); soundRev++ }
                         }
                         else -> {}
                     }
@@ -519,7 +561,10 @@ fun SettingsPage(
                     MenuRow("set:reset:$current", "↺", "Reset $pageName settings to defaults") {
                         ask = ConfirmAsk(
                             "Reset $pageName?", "Every setting on this page goes back to its original value. Your apps, folders, games and pictures are not touched.", "Reset",
-                        ) { onChange(resetPage(current, settings)) }
+                        ) {
+                            onChange(resetPage(current, settings))
+                            if (current == "sounds") { com.qita.ui.Sounds.resetEvents(batteryContext); soundRev++ }
+                        }
                     }
                     if (current == "system") {
                         MenuRow("set:resetall", "↺", "Reset all settings to defaults") {
@@ -611,7 +656,7 @@ private fun MenuRow(
         Modifier
             .fillMaxWidth()
             .heightIn(min = 54.dp)
-            .padClickable(key, corner = 0.dp, ring = false, onAdjust = onAdjust, onClick = onClick)
+            .padClickable(key, corner = 0.dp, ring = false, onAdjust = onAdjust, onClick = { com.qita.ui.Sounds.play(com.qita.ui.Sound.TAP); onClick() })
             .rowBand(lit)
             .padding(horizontal = 6.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -744,6 +789,7 @@ private fun resetPage(page: String, s: Settings): Settings {
             showBattery = d.showBattery, batteryLow = d.batteryLow, batteryCritical = d.batteryCritical, barColor = d.barColor, indicatorColor = d.indicatorColor,
         )
         "status" -> s.copy(use24h = d.use24h, showBattery = d.showBattery)
+        "sounds" -> s.copy(soundOn = d.soundOn, soundVolume = d.soundVolume, soundMedia = d.soundMedia)
         "motion" -> s.copy(lightMode = d.lightMode, reduceMotion = d.reduceMotion, sceneSpeed = d.sceneSpeed, sway = d.sway, tapAnim = d.tapAnim)
         "lock" -> s.copy(
             lockScreen = d.lockScreen, lockTapPeel = d.lockTapPeel, lockClockSize = d.lockClockSize, lockClockColor = d.lockClockColor, lockFont = d.lockFont,

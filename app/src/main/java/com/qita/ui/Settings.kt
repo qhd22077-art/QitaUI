@@ -183,6 +183,10 @@ data class Settings(
     val dragMakesFolder: Boolean = true,
     /** A bubble can be put in any free slot of a page, leaving empty slots; off packs the bubbles in order. */
     val freePlacement: Boolean = true,
+    /** Short interface sounds (see Sounds): on or off, how loud, and whether they follow the media volume (else the system sounds volume). */
+    val soundOn: Boolean = true,
+    val soundVolume: Float = 0.6f,
+    val soundMedia: Boolean = true,
     /** New games from a scan go into a folder for their console instead of onto the home screen one by one. */
     val gameFoldersAuto: Boolean = true,
     val nameFont: Int = 0,
@@ -294,6 +298,9 @@ class SettingsStore(private val context: Context) {
         scrollNames = prefs.getInt("scrollNames", 2).coerceIn(0, 2),
         dragMakesFolder = prefs.getBoolean("dragMakesFolder", true),
         freePlacement = prefs.getBoolean("freePlacement", true),
+        soundOn = prefs.getBoolean("soundOn", true),
+        soundVolume = prefs.getFloat("soundVolume", 0.6f),
+        soundMedia = prefs.getBoolean("soundMedia", true),
         gameFoldersAuto = prefs.getBoolean("gameFoldersAuto", true),
         nameFont = prefs.getInt("nameFont", 0),
         uiFontChoice = prefs.getInt("uiFontChoice", 0),
@@ -380,6 +387,9 @@ class SettingsStore(private val context: Context) {
             .putInt("scrollNames", s.scrollNames)
             .putBoolean("dragMakesFolder", s.dragMakesFolder)
             .putBoolean("freePlacement", s.freePlacement)
+            .putBoolean("soundOn", s.soundOn)
+            .putFloat("soundVolume", s.soundVolume)
+            .putBoolean("soundMedia", s.soundMedia)
             .putBoolean("gameFoldersAuto", s.gameFoldersAuto)
             .putInt("nameFont", s.nameFont)
             .putInt("uiFontChoice", s.uiFontChoice)

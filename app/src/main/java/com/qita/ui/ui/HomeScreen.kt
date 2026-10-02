@@ -69,6 +69,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -345,6 +346,17 @@ fun HomeScreen(homePresses: Int = 0) {
     val pagerState = rememberPagerState { pageCount }
     // Where the pages are on screen (root pixels), so a dropped bubble can be put in the nearest free slot.
     var pageArea by remember { mutableStateOf(Rect.Zero) }
+    // The interface sounds follow the settings (and are off in Light mode, which saves battery).
+    LaunchedEffect(settings.soundOn, settings.soundVolume, settings.soundMedia, settings.lightMode) {
+        com.qita.ui.Sounds.configure(context, settings.soundOn && !settings.lightMode, settings.soundVolume, settings.soundMedia)
+    }
+    // Turning a home page.
+    LaunchedEffect(pagerState) {
+        var firstPage = true
+        snapshotFlow { pagerState.currentPage }.collect {
+            if (firstPage) firstPage = false else com.qita.ui.Sounds.play(com.qita.ui.Sound.PAGE)
+        }
+    }
     // PS Vita mode makes the system bubbles clear glass (unless a bubble was given its own choice in Customise).
     LaunchedEffect(settings.vitaMode) { com.qita.ui.BubbleStyles.setAuto(settings.vitaMode) }
     // Switching free placement off closes the empty slots up again.
@@ -370,6 +382,19 @@ fun HomeScreen(homePresses: Int = 0) {
 
     val menuOpen = menuFor != null || showQuickMenu || showNotifs
     val anyOverlay = showLock || showDesktop || showGames || showStore || showBrowser || showFolders || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null || flashGame != null
+    // Opening something (a page, a menu, a screen) and going back, and unlocking.
+    var soundOverlayPrev by remember { mutableStateOf(anyOverlay) }
+    var soundLockPrev by remember { mutableStateOf(showLock) }
+    LaunchedEffect(anyOverlay, showLock) {
+        when {
+            soundLockPrev && !showLock -> com.qita.ui.Sounds.play(com.qita.ui.Sound.UNLOCK)
+            soundLockPrev != showLock -> {}
+            anyOverlay && !soundOverlayPrev -> com.qita.ui.Sounds.play(com.qita.ui.Sound.OPEN)
+            !anyOverlay && soundOverlayPrev -> com.qita.ui.Sounds.play(com.qita.ui.Sound.BACK)
+        }
+        soundOverlayPrev = anyOverlay
+        soundLockPrev = showLock
+    }
 
     // Saved themes: imported Vita themes and .qtheme files.
     var themeList by remember { mutableStateOf(com.qita.ui.ThemePacks.list(context)) }
@@ -795,6 +820,7 @@ fun HomeScreen(homePresses: Int = 0) {
         PadNav.scope = scope
         PadNav.onMoved = {
             if (settings.haptics && Controller.padActive) haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            if (Controller.padActive) com.qita.ui.Sounds.play(com.qita.ui.Sound.MOVE)
         }
     }
     LaunchedEffect(Unit) {
@@ -1091,7 +1117,8 @@ fun HomeScreen(homePresses: Int = 0) {
                     }
                 },
                 onSelect = { app ->
-                    if (app.folderMembers != null) { if (editMode) menuFor = app else openFolderId = app.packageName }
+                    if (editMode) com.qita.ui.Sounds.play(com.qita.ui.Sound.TAP)
+                    if (app.folderMembers != null) { if (editMode) menuFor = app else { com.qita.ui.Sounds.play(com.qita.ui.Sound.OPEN); openFolderId = app.packageName } }
                     else if (editMode) menuFor = app else openLiveArea(app, rects[app.packageName]?.center)
                 },
                 onOpenDesktop = { showDesktop = true },
@@ -1099,6 +1126,7 @@ fun HomeScreen(homePresses: Int = 0) {
                 editing = editMode,
                 onRemove = { removeFromHome(it) },
                 onDragStart = { app, local ->
+                    com.qita.ui.Sounds.play(com.qita.ui.Sound.PICK)
                     dragApp = app
                     dragTravel = 0f
                     dragPos = (rects[app.packageName]?.topLeft ?: Offset.Zero) + local
@@ -1108,7 +1136,7 @@ fun HomeScreen(homePresses: Int = 0) {
                 onDragEnd = {
                     dragApp?.let { app ->
                         // No real movement means a plain long-press: enter edit mode (wiggling bubbles).
-                        if (dragTravel < 24f) { if (!editMode) editMode = true } else drop(app)
+                        if (dragTravel < 24f) { if (!editMode) editMode = true } else { drop(app); com.qita.ui.Sounds.play(com.qita.ui.Sound.DROP) }
                     }
                     dragApp = null
                 },
