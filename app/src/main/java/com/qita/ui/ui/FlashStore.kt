@@ -48,6 +48,8 @@ import com.qita.ui.DlState
 import com.qita.ui.DownloadEngine
 import com.qita.ui.FlashEntry
 import com.qita.ui.FlashLibrary
+import com.qita.ui.FlashSite
+import com.qita.ui.FlashSiteStore
 import com.qita.ui.FlashSources
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
