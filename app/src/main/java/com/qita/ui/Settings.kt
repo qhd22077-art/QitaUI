@@ -216,7 +216,6 @@ class SettingsStore(private val context: Context) {
         }
         // The icons of the theme in use are needed before the first bubble is drawn.
         BubbleStyles.load(context)
-        BubbleStyles.initAuto(prefs.getBoolean("vitaMode", true))
         ThemePacks.loadActive(context)
     }
     /** The global wallpaper (page == null) or the photo chosen for one home page. */

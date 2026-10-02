@@ -16,15 +16,15 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.qita.ui.LaunchableApp
 
 /**
- * A folder bubble: clear glass, like the Vita's. The sphere is almost see-through (the background shows through it, a little
- * bluer toward the rim), with a pale rim, a glare across the top, a thin light arc along the bottom and a bright speck, and its
- * apps sit inside as small round icons.
+ * Clear glass, like the Vita's folders. The sphere is fully see-through: the wallpaper shows straight through it, with only a faint
+ * glassy hue (a little denser toward the edge, fading out at the very edge, so there is no outline). What shows it is glass is the
+ * light on it: a soft glare across the top, a faint bounce of light at the bottom and a bright speck. Its contents (the folder's apps,
+ * or a system bubble's pictogram) sit inside.
  */
 @Composable
 fun FolderGlass(
@@ -32,10 +32,10 @@ fun FolderGlass(
     size: Dp,
     modifier: Modifier = Modifier,
     selected: Boolean = false,
-    /** What sits inside the glass: the folder's cluster, or for a glass built-in bubble its pictogram. */
+    /** What sits inside the glass: the folder's cluster, or for a clear-glass system bubble its pictogram. */
     icon: ImageBitmap = app.icon,
     iconFraction: Float = 0.84f,
-    /** Colours the glass (a built-in bubble given the glass look); null keeps the folder's pale blue. */
+    /** The glass's hue (a system bubble given the clear glass look); null is the folder's pale blue. */
     bodyTint: Color? = null,
 ) {
     Box(
@@ -46,48 +46,42 @@ fun FolderGlass(
                 val h = this.size.height
                 val r = w / 2f
                 val c = Offset(r, h / 2f)
-                // Behind the icons: a faint body that darkens the middle a touch and glows blue (or the tint) at the edge.
-                val k = if (bodyTint != null) 1.9f else 1f
-                val deep = if (bodyTint != null) lerp(bodyTint, Color.Black, 0.55f) else Color(0xFF071A55)
-                val body = bodyTint ?: Color(0xFF3E78E0)
-                val edge = if (bodyTint != null) lerp(bodyTint, Color.White, 0.45f) else Color(0xFF8FC0FF)
-                val rimTint = if (bodyTint != null) lerp(bodyTint, Color.White, 0.8f) else Color(0xFFD6EAFF)
+                val hue = if (bodyTint != null) lerp(bodyTint, Color.White, 0.25f) else Color(0xFF6FA8FF)
+                // Behind the contents: only a faint hue, denser toward the edge and gone at the very edge (no ring).
                 drawCircle(
                     Brush.radialGradient(
-                        0.0f to deep.copy(alpha = (0.16f * k).coerceAtMost(1f)),
-                        0.65f to body.copy(alpha = (0.14f * k).coerceAtMost(1f)),
-                        0.90f to edge.copy(alpha = (0.30f * k).coerceAtMost(1f)),
-                        1.0f to rimTint.copy(alpha = (0.55f * (if (bodyTint != null) 1.2f else 1f)).coerceAtMost(1f)),
-                        center = Offset(r, h * 0.54f), radius = r,
+                        0.00f to hue.copy(alpha = 0.03f),
+                        0.60f to hue.copy(alpha = 0.06f),
+                        0.88f to hue.copy(alpha = 0.13f),
+                        1.00f to hue.copy(alpha = 0f),
+                        center = Offset(r, h * 0.55f), radius = r,
                     ),
                     radius = r, center = c,
                 )
                 drawContent()
-                // In front of them: the glass.
-                val rim = 2.2.dp.toPx()
-                drawCircle(
-                    Brush.linearGradient(
-                        0f to Color.White.copy(alpha = 0.95f), 0.5f to Color.White.copy(alpha = 0.25f), 1f to Color.White.copy(alpha = 0.65f),
-                        start = Offset(w * 0.15f, h * 0.05f), end = Offset(w * 0.85f, h * 0.95f),
-                    ),
-                    radius = r - rim / 2f, center = c, style = Stroke(rim),
-                )
-                drawCircle(Color(0xFFA9D2FF).copy(alpha = 0.28f), radius = r - rim * 2.2f, center = c, style = Stroke(1.dp.toPx()))
-                // The glare across the top.
+                // The glare across the top: the main sign of glass.
                 drawOval(
-                    Brush.verticalGradient(listOf(Color.White.copy(alpha = if (selected) 0.70f else 0.55f), Color.White.copy(alpha = 0.02f)), startY = h * 0.04f, endY = h * 0.42f),
-                    topLeft = Offset(w * 0.17f, h * 0.045f), size = Size(w * 0.66f, h * 0.38f),
+                    Brush.verticalGradient(
+                        listOf(Color.White.copy(alpha = if (selected) 0.85f else 0.70f), Color.White.copy(alpha = 0f)),
+                        startY = h * 0.05f, endY = h * 0.41f,
+                    ),
+                    topLeft = Offset(w * 0.16f, h * 0.05f), size = Size(w * 0.68f, h * 0.36f),
                 )
-                // The light arc along the bottom, where the glass bends light the other way.
-                drawArc(
-                    Color(0xFFCFE6FF).copy(alpha = 0.45f), startAngle = 40f, sweepAngle = 100f, useCenter = false,
-                    topLeft = Offset(w * 0.12f, h * 0.12f), size = Size(w * 0.76f, h * 0.76f), style = Stroke(3.dp.toPx()),
+                // A faint bounce of light at the bottom.
+                drawOval(
+                    Brush.verticalGradient(
+                        listOf(Color.White.copy(alpha = 0f), Color.White.copy(alpha = 0.20f)),
+                        startY = h * 0.72f, endY = h * 0.88f,
+                    ),
+                    topLeft = Offset(w * 0.28f, h * 0.72f), size = Size(w * 0.44f, h * 0.16f),
                 )
-                drawCircle(Color.White.copy(alpha = 0.85f), radius = w * 0.028f, center = Offset(w * 0.27f, h * 0.24f))
+                // The bright speck, with a soft glow round it.
+                drawCircle(Color.White.copy(alpha = 0.22f), radius = w * 0.06f, center = Offset(w * 0.26f, h * 0.22f))
+                drawCircle(Color.White.copy(alpha = 0.92f), radius = w * 0.026f, center = Offset(w * 0.26f, h * 0.22f))
             },
         contentAlignment = Alignment.Center,
     ) {
-        // A built-in bubble's own picture is round inside the glass; a folder's cluster already is.
+        // A system bubble's own picture is round inside the glass; a folder's cluster already is.
         Image(icon, null, if (bodyTint != null) Modifier.fillMaxSize(iconFraction).clip(CircleShape) else Modifier.fillMaxSize(iconFraction))
     }
 }

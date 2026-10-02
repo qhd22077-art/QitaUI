@@ -35,7 +35,9 @@ object Sounds {
 
     @Volatile private var on = false
     @Volatile private var volume = 0.6f
-    private var media = true
+    @Volatile private var wantMedia = true
+    @Volatile private var builtMedia: Boolean? = null
+    @Volatile private var building = false
     private var pool: SoundPool? = null
     private var appContext: Context? = null
     private val ids = ConcurrentHashMap<Sound, Int>()
@@ -56,15 +58,30 @@ object Sounds {
         appContext = c.applicationContext
         volume = vol.coerceIn(0f, 1f)
         if (!enabled) { on = false; return }
-        if (pool == null || useMedia != media) {
-            media = useMedia
-            // Making the files and loading them is done off the main thread; sounds start working as each one finishes loading.
-            Thread { rebuild() }.start()
-        }
+        wantMedia = useMedia
+        if (pool == null || builtMedia != useMedia) startBuild()
         on = true
     }
 
-    @Synchronized private fun rebuild() {
+    /** Makes the files and loads them off the main thread (one build at a time); sounds start working as each one finishes loading. */
+    @Synchronized private fun startBuild() {
+        if (building) return
+        building = true
+        Thread {
+            try {
+                while (true) {
+                    val m = wantMedia
+                    rebuild(m)
+                    builtMedia = m
+                    if (wantMedia == m) break
+                }
+            } finally {
+                building = false
+            }
+        }.start()
+    }
+
+    @Synchronized private fun rebuild(media: Boolean) {
         val c = appContext ?: return
         pool?.release()
         ids.clear()

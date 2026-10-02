@@ -187,7 +187,7 @@ fun NamePrompt(title: String, value: String, onValue: (String) -> Unit, onOk: ()
     CompositionLocalProvider(LocalPadLayer provides 4) {
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).pointerInput(Unit) { detectTapGestures { onCancel() } }, contentAlignment = Alignment.Center) {
             Column(
-                Modifier.padding(24.dp).fillMaxWidth(0.8f).background(Color(0xFF2B2B2B), RoundedCornerShape(16.dp)).pointerInput(Unit) { detectTapGestures { } }.padding(16.dp),
+                Modifier.padding(24.dp).fillMaxWidth(0.8f).popIn().background(Color(0xFF2B2B2B), RoundedCornerShape(16.dp)).pointerInput(Unit) { detectTapGestures { } }.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -213,7 +213,7 @@ fun ConfirmPrompt(title: String, text: String, okLabel: String, onOk: () -> Unit
     CompositionLocalProvider(LocalPadLayer provides 4) {
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).pointerInput(Unit) { detectTapGestures { onCancel() } }, contentAlignment = Alignment.Center) {
             Column(
-                Modifier.padding(24.dp).fillMaxWidth(0.8f).background(Color(0xFF2B2B2B), RoundedCornerShape(16.dp)).pointerInput(Unit) { detectTapGestures { } }.padding(16.dp),
+                Modifier.padding(24.dp).fillMaxWidth(0.8f).popIn().background(Color(0xFF2B2B2B), RoundedCornerShape(16.dp)).pointerInput(Unit) { detectTapGestures { } }.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)

@@ -182,6 +182,7 @@ fun FlashScreen(game: Game, onClose: () -> Unit) {
                         Modifier
                             .padding(24.dp)
                             .fillMaxWidth(0.86f)
+                            .popIn()
                             .background(Color(0xFF2B2B2B), RoundedCornerShape(16.dp))
                             .pointerInput(Unit) { detectTapGestures { } }
                             .padding(16.dp),

@@ -58,6 +58,7 @@ fun BubbleStylePanel(
                     .padding(24.dp)
                     .fillMaxWidth(0.82f)
                     .heightIn(max = 520.dp)
+                    .popIn()
                     .background(Color(0xFF2B2B2B), RoundedCornerShape(16.dp))
                     .pointerInput(Unit) { detectTapGestures { } }
                     .padScroller { scroll.animateScrollBy(it) }
@@ -89,13 +90,11 @@ fun BubbleStylePanel(
                     )
                 }
 
-                Text("Glass look", color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
+                Text("Look", color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StyleChip("bstyle:glass:auto", "Automatic", style.glass == null) { onStyle(style.copy(glass = null)) }
-                    StyleChip("bstyle:glass:on", "On", style.glass == true) { onStyle(style.copy(glass = true)) }
-                    StyleChip("bstyle:glass:off", "Off", style.glass == false) { onStyle(style.copy(glass = false)) }
+                    StyleChip("bstyle:glass:black", "Black glass", style.glass != true) { onStyle(style.copy(glass = null)) }
+                    StyleChip("bstyle:glass:clear", "Clear glass", style.glass == true) { onStyle(style.copy(glass = true)) }
                 }
-                Text("Automatic means glass while PS Vita mode is on.", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
 
                 Text("Tint", color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

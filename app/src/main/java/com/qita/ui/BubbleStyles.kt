@@ -20,7 +20,7 @@ import java.io.File
 data class BubbleStyle(
     /** 1 = solid, lower = more translucent. */
     val alpha: Float = 1f,
-    /** True = clear glass, false = solid, null = automatic (glass while PS Vita mode is on). */
+    /** True = clear glass; null or false = the usual black glass sphere. */
     val glass: Boolean? = null,
     /** ARGB tint for the bubble's background (or, with [glass], its glass), or null for the usual look. */
     val tint: Int? = null,
@@ -39,21 +39,6 @@ object BubbleStyles {
     /** Goes up whenever the art of a bubble has to be redrawn (everything but translucency); the home screen reads it. */
     var artRev by mutableIntStateOf(0)
         private set
-
-    /** Whether a system bubble with no glass choice of its own is glass: true while PS Vita mode is on. */
-    @Volatile var autoGlass = false
-        private set
-
-    /** Sets the automatic glass at start-up (no redraw needed yet). */
-    fun initAuto(on: Boolean) { autoGlass = on }
-
-    /** PS Vita mode was switched: the system bubbles that follow it are redrawn. */
-    fun setAuto(on: Boolean) {
-        if (on == autoGlass) return
-        autoGlass = on
-        SystemIcons.cache = null
-        artRev++
-    }
 
     private var prefs: SharedPreferences? = null
     private var dir: File? = null

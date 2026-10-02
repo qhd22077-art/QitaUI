@@ -357,8 +357,6 @@ fun HomeScreen(homePresses: Int = 0) {
             if (firstPage) firstPage = false else com.qita.ui.Sounds.play(com.qita.ui.Sound.PAGE)
         }
     }
-    // PS Vita mode makes the system bubbles clear glass (unless a bubble was given its own choice in Customise).
-    LaunchedEffect(settings.vitaMode) { com.qita.ui.BubbleStyles.setAuto(settings.vitaMode) }
     // Switching free placement off closes the empty slots up again.
     LaunchedEffect(settings.freePlacement) {
         if (!settings.freePlacement && home.any { HomeGaps.isGap(it) }) { home = home.filter { !HomeGaps.isGap(it) }; store.saveHome(home) }
