@@ -403,8 +403,8 @@ fun SettingsPage(
                             ) { lockTab = it }
                             when (lockTab) {
                                 0 -> {
-                                    ChoiceRow("set:lockPos", "▭", "Clock position", listOf("Bottom right", "Bottom left", "Top left"), settings.lockClockPos) { onChange(settings.copy(lockClockPos = it)) }
-                                    SliderRow("set:lockSize", "A", "Clock size", settings.lockClockSize, 0.6f..1.6f, 0.1f) { onChange(settings.copy(lockClockSize = it)) }
+                                    ChoiceRow("set:lockPos", "▭", "Clock position", listOf("Bottom right", "Bottom left", "Top left", "Centre"), settings.lockClockPos) { onChange(settings.copy(lockClockPos = it)) }
+                                    SliderRow("set:lockSize", "A", "Clock size", settings.lockClockSize, 0.6f..2.4f, 0.1f) { onChange(settings.copy(lockClockSize = it)) }
                                     ChoiceRow("set:lockFont", "Aa", "Clock and date font", LOCK_FONTS, settings.lockFont) { onChange(settings.copy(lockFont = it)) }
                                     SwatchRow("set:lockColor", "●", "Clock and date colour", settings.lockClockColor) { onChange(settings.copy(lockClockColor = it)) }
                                     CheckRow("set:lockDate", "◷", "Show the date", settings.lockShowDate) { onChange(settings.copy(lockShowDate = it)) }
@@ -433,6 +433,7 @@ fun SettingsPage(
                                         SliderRow("set:lockNotifCount", "✉", "How many notifications", settings.lockNotifCount.toFloat(), 1f..5f, 1f) { onChange(settings.copy(lockNotifCount = it.roundToInt())) }
                                     }
                                     CheckRow("set:lockTap", "☝", "Tap the corner to unlock (otherwise peel it)", settings.lockTapPeel) { onChange(settings.copy(lockTapPeel = it)) }
+                                    CheckRow("set:lockAnywhere", "↙", "Peel the sheet by dragging anywhere on it (down and to the left)", settings.lockPeelAnywhere) { onChange(settings.copy(lockPeelAnywhere = it)) }
                                     MenuRow("set:lockPreview", "▶", "Preview the real lock screen") { onPreviewLock() }
                                 }
                             }
@@ -738,6 +739,7 @@ private val LOCK_PRESETS: List<Pair<String, (Settings) -> Settings>> = listOf(
     "Vita" to { s -> s.copy(lockClockPos = 0, lockClockSize = 1f, lockFont = 0, lockClockColor = 0xFFFFFFFF.toInt(), lockShowDate = true, lockFrame = true, lockBorder = 0.6f, lockPanelTint = 0.06f, lockBevel = 0.7f) },
     "Glass" to { s -> s.copy(lockClockPos = 1, lockClockSize = 1f, lockFont = 0, lockShowDate = true, lockFrame = true, lockBorder = 0.9f, lockPanelTint = 0.14f, lockBevel = 1f) },
     "Deep bevel" to { s -> s.copy(lockClockPos = 0, lockClockSize = 1.1f, lockFrame = true, lockBorder = 0.75f, lockPanelTint = 0.10f, lockBevel = 1f) },
+    "Giant clock" to { s -> s.copy(lockClockPos = 3, lockClockSize = 2.1f, lockFont = 0, lockShowDate = true, lockFrame = true, lockBorder = 0.4f, lockPanelTint = 0.03f, lockBevel = 0.4f) },
     "Big clock" to { s -> s.copy(lockClockPos = 1, lockClockSize = 1.5f, lockFont = 1, lockShowDate = true, lockFrame = true, lockBorder = 0.5f, lockPanelTint = 0.04f, lockBevel = 0.5f) },
     "Clean" to { s -> s.copy(lockClockPos = 0, lockClockSize = 1.1f, lockShowDate = true, lockFrame = true, lockBorder = 0.3f, lockPanelTint = 0.02f, lockBevel = 0.3f) },
     "Minimal" to { s -> s.copy(lockClockPos = 2, lockClockSize = 0.8f, lockShowDate = false, lockFrame = false, lockPanelTint = 0f, lockBevel = 0f) },
@@ -846,7 +848,7 @@ private fun resetPage(page: String, s: Settings): Settings {
         "sounds" -> s.copy(soundOn = d.soundOn, soundVolume = d.soundVolume, soundMedia = d.soundMedia)
         "motion" -> s.copy(lightMode = d.lightMode, reduceMotion = d.reduceMotion, parallax = d.parallax, parallaxStrength = d.parallaxStrength, sceneSpeed = d.sceneSpeed, sway = d.sway, tapAnim = d.tapAnim)
         "lock" -> s.copy(
-            lockScreen = d.lockScreen, lockTapPeel = d.lockTapPeel, lockClockSize = d.lockClockSize, lockClockColor = d.lockClockColor, lockFont = d.lockFont,
+            lockScreen = d.lockScreen, lockTapPeel = d.lockTapPeel, lockPeelAnywhere = d.lockPeelAnywhere, lockClockSize = d.lockClockSize, lockClockColor = d.lockClockColor, lockFont = d.lockFont,
             lockShowDate = d.lockShowDate, lockPanelTint = d.lockPanelTint, lockBorder = d.lockBorder, lockBevel = d.lockBevel, lockFrame = d.lockFrame,
             lockBgMode = d.lockBgMode, lockTheme = d.lockTheme, lockNotifs = d.lockNotifs, lockNotifCount = d.lockNotifCount, lockClockPos = d.lockClockPos,
         )

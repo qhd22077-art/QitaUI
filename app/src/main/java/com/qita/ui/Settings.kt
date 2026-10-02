@@ -126,6 +126,8 @@ data class Settings(
     val lockScreen: Boolean = true,
     val vitaMode: Boolean = true,
     val lockTapPeel: Boolean = false,
+    /** The sheet can be peeled by a drag anywhere on it (down and left), not only from the corner. */
+    val lockPeelAnywhere: Boolean = true,
     val lockClockSize: Float = 1f,
     val lockClockColor: Int = 0xFFFFFFFF.toInt(),
     val lockFont: Int = 0,
@@ -251,6 +253,7 @@ class SettingsStore(private val context: Context) {
         lockScreen = prefs.getBoolean("lockScreen", true),
         vitaMode = prefs.getBoolean("vitaMode", true),
         lockTapPeel = prefs.getBoolean("lockTapPeel", false),
+        lockPeelAnywhere = prefs.getBoolean("lockPeelAnywhere", true),
         lockClockSize = prefs.getFloat("lockClockSize", 1f),
         lockClockColor = prefs.getInt("lockClockColor", 0xFFFFFFFF.toInt()),
         lockFont = prefs.getInt("lockFont", 0),
@@ -342,6 +345,7 @@ class SettingsStore(private val context: Context) {
             .putBoolean("lockScreen", s.lockScreen)
             .putBoolean("vitaMode", s.vitaMode)
             .putBoolean("lockTapPeel", s.lockTapPeel)
+            .putBoolean("lockPeelAnywhere", s.lockPeelAnywhere)
             .putFloat("lockClockSize", s.lockClockSize)
             .putInt("lockClockColor", s.lockClockColor)
             .putInt("lockFont", s.lockFont)

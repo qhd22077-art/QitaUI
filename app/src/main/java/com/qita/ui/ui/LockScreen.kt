@@ -119,7 +119,38 @@ fun LockScreen(
                 wallpaper = when (mode) { 0 -> wallpaper; 2 -> lockWallpaper; else -> null },
                 scene = { SceneMix(theme.scene, theme.scene, 0f, sky, sky) },
             )
-            Box(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp)) {
+            val peelScope = androidx.compose.runtime.rememberCoroutineScope()
+            val finishSpec = { fast: Boolean -> tween<Float>(if (fast) 220 else 380, easing = androidx.compose.animation.core.FastOutSlowInEasing) }
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    // A drag anywhere on the sheet (down and to the left, like pulling the curl) peels it; a quick fling finishes it.
+                    .pointerInput(settings.lockPeelAnywhere) {
+                        if (!settings.lockPeelAnywhere) return@pointerInput
+                        var velocity = 0f
+                        androidx.compose.foundation.gestures.detectDragGestures(
+                            onDragStart = { velocity = 0f; peelScope.launch { peel.stop() } },
+                            onDrag = { change, drag ->
+                                change.consume()
+                                val along = (-drag.x + drag.y) / 1.4142f
+                                val dt = (change.uptimeMillis - change.previousUptimeMillis).coerceAtLeast(1L)
+                                velocity = 0.6f * velocity + 0.4f * (along / dt * 1000f)
+                                peelScope.launch { peel.snapTo((peel.value + along).coerceAtLeast(0f)) }
+                            },
+                            onDragEnd = {
+                                val fling = velocity > 1400f && peel.value > 40f
+                                if (peel.value > pageWidth * 0.25f || fling) {
+                                    peelScope.launch {
+                                        peel.animateTo(pageWidth * 2f, finishSpec(fling))
+                                        onUnlock()
+                                    }
+                                } else peelScope.launch { peel.animateTo(0f, androidx.compose.animation.core.spring(dampingRatio = 0.65f, stiffness = 400f)) }
+                            },
+                            onDragCancel = { peelScope.launch { peel.animateTo(0f, androidx.compose.animation.core.spring(dampingRatio = 0.65f, stiffness = 400f)) } },
+                        )
+                    }
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+            ) {
                 BoxWithConstraints(
                     Modifier
                         .fillMaxSize()
@@ -131,7 +162,8 @@ fun LockScreen(
                         .tiltNear(com.qita.ui.ui.LocalLook.current.tilt, -5f)
                         .drawBehind { drawLockPanel(settings.lockPanelTint, settings.lockFrame, settings.lockBorder, settings.lockBevel, radius) },
                 ) {
-                    val clockSize = (maxHeight.value * 0.27f * settings.lockClockSize).sp
+                    // Bigger clocks are held to the width of the sheet, so a giant one never runs off the side.
+                    val clockSize = minOf(maxHeight.value * 0.27f * settings.lockClockSize, maxOf(maxHeight.value * 0.27f, maxWidth.value * 0.27f)).sp
                     val dateSize = (maxHeight.value * 0.072f * settings.lockClockSize).sp
                     val clockColor = Color(settings.lockClockColor)
                     val family = fontFor(settings.lockFont)
@@ -144,13 +176,13 @@ fun LockScreen(
                     val pos = settings.lockClockPos
                     Column(
                         Modifier
-                            .align(if (pos == 0) Alignment.BottomEnd else if (pos == 1) Alignment.BottomStart else Alignment.TopStart)
+                            .align(when (pos) { 0 -> Alignment.BottomEnd; 1 -> Alignment.BottomStart; 3 -> Alignment.Center; else -> Alignment.TopStart })
                             .padding(horizontal = 22.dp, vertical = 10.dp)
                             .graphicsLayer {
                                 alpha = enter.value * fade()
                                 translationY = (1f - enter.value) * 12.dp.toPx()
                             },
-                        horizontalAlignment = if (pos == 0) Alignment.End else Alignment.Start,
+                        horizontalAlignment = when (pos) { 0 -> Alignment.End; 3 -> Alignment.CenterHorizontally; else -> Alignment.Start },
                     ) {
                         if (settings.lockShowDate) Text(
                             SimpleDateFormat("MMMM d (EEEE)", Locale.getDefault()).format(now),
@@ -270,8 +302,8 @@ fun LockPreview(settings: Settings, modifier: Modifier = Modifier) {
             val color = Color(settings.lockClockColor)
             val pos = settings.lockClockPos
             Column(
-                Modifier.align(if (pos == 0) Alignment.BottomEnd else if (pos == 1) Alignment.BottomStart else Alignment.TopStart).padding(horizontal = 12.dp, vertical = 4.dp),
-                horizontalAlignment = if (pos == 0) Alignment.End else Alignment.Start,
+                Modifier.align(when (pos) { 0 -> Alignment.BottomEnd; 1 -> Alignment.BottomStart; 3 -> Alignment.Center; else -> Alignment.TopStart }).padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalAlignment = when (pos) { 0 -> Alignment.End; 3 -> Alignment.CenterHorizontally; else -> Alignment.Start },
             ) {
                 if (settings.lockShowDate) Text(SimpleDateFormat("MMMM d (EEEE)", Locale.getDefault()).format(now), color = color.copy(alpha = 0.92f), fontSize = dateSize, fontWeight = FontWeight.Light)
                 Text(SimpleDateFormat(if (settings.use24h) "HH : mm" else "h : mm", Locale.getDefault()).format(now), color = color, fontSize = clockSize, fontWeight = FontWeight.ExtraLight)
