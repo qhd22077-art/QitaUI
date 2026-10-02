@@ -1204,7 +1204,16 @@ internal fun Segmented(options: List<String>, selected: Int, onSelect: (Int) -> 
                     .background(if (on) TabDark else if (lit) Color.White.copy(alpha = 0.18f) else Color.Transparent),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(label, color = Color.White, fontSize = if (LocalConfiguration.current.screenWidthDp < 600) 11.sp else 17.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
+                // Centred, and a long label (Vita homebrew) wraps on two lines instead of being cut off at the cell's edge.
+                val wide = LocalConfiguration.current.screenWidthDp >= 600
+                val size = if (wide) (if (options.size > 5) 15f else 17f) else (if (options.size > 5) 11f else 12f)
+                Text(
+                    label,
+                    Modifier.padding(horizontal = 2.dp),
+                    color = Color.White, fontSize = size.sp, lineHeight = (size * 1.1f).sp,
+                    fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                    textAlign = TextAlign.Center, softWrap = true, maxLines = 2,
+                )
             }
             if (i < options.size - 1) Box(Modifier.width(1.dp).fillMaxHeight().background(Color(0xFF172248).copy(alpha = 0.8f)))
         }
