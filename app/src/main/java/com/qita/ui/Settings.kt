@@ -465,6 +465,12 @@ class SettingsStore(private val context: Context) {
             saveHome(saved)
             prefs.edit().putBoolean("mediaSeeded", true).apply()
         }
+        // And the Videos bubble.
+        if (!prefs.getBoolean("videosSeeded", false)) {
+            saved = if (SystemAction.VIDEOS.id in saved) saved else saved + SystemAction.VIDEOS.id
+            saveHome(saved)
+            prefs.edit().putBoolean("videosSeeded", true).apply()
+        }
         return saved
     }
 

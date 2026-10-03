@@ -175,6 +175,7 @@ fun HomeScreen(homePresses: Int = 0) {
     var showFolders by remember { mutableStateOf(false) }
     var showTrophies by remember { mutableStateOf(false) }
     var showPhotos by remember { mutableStateOf(false) }
+    var showVideos by remember { mutableStateOf(false) }
     var showMusic by remember { mutableStateOf(false) }
     // The games library: folders, which emulator plays what, and a status line while scanning or fetching cover art.
     var gameFolders by remember { mutableStateOf(GameLibrary.folders(context)) }
@@ -293,6 +294,17 @@ fun HomeScreen(homePresses: Int = 0) {
         }
     }
 
+    // Android asks before a screen recording; the answer starts the recorder.
+    val recordPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+    ) { r ->
+        val d = r.data
+        if (r.resultCode == android.app.Activity.RESULT_OK && d != null) {
+            com.qita.ui.Capture.startRecording(context, r.resultCode, d)
+            toast = "Recording. Stop it from the menu or the notification"
+        }
+    }
+
     // The look of a built-in bubble (translucency, glass, tint, picture), edited in a panel.
     var styleFor by remember { mutableStateOf<com.qita.ui.SystemAction?>(null) }
     val stylePicker = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -400,7 +412,7 @@ fun HomeScreen(homePresses: Int = 0) {
     }
 
     val menuOpen = menuFor != null || showQuickMenu || showNotifs
-    val anyOverlay = showLock || showDesktop || showGames || showStore || showBrowser || showFolders || showTrophies || showPhotos || showMusic || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null || flashGame != null
+    val anyOverlay = showLock || showDesktop || showGames || showStore || showBrowser || showFolders || showTrophies || showPhotos || showVideos || showMusic || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null || flashGame != null
     LaunchedEffect(Controller.padActive) { if (Controller.padActive) com.qita.ui.Trophies.award("pad") }
     // Tilt (parallax): the sensor is only listened to while the launcher is on screen and it is wanted (not in Light mode, with
     // Reduce motion, below the low-battery level, or under another screen; the lock screen shifts too).
@@ -644,6 +656,7 @@ fun HomeScreen(homePresses: Int = 0) {
             SystemAction.TROPHIES -> { selected = null; showTrophies = true }
             SystemAction.PHOTOS -> { selected = null; showPhotos = true }
             SystemAction.MUSIC -> { selected = null; showMusic = true }
+            SystemAction.VIDEOS -> { selected = null; showVideos = true }
             SystemAction.FOLDERS -> { selected = null; showFolders = true }
             SystemAction.ANDROID -> {
                 selected = null
@@ -1038,7 +1051,7 @@ fun HomeScreen(homePresses: Int = 0) {
             showIndex = true
         } else if (homePresses > 0) {
             showIndex = false
-            selected = null; showSettings = false; showSearch = false; showDesktop = false; showGames = false; showStore = false; showBrowser = false; showFolders = false; showTrophies = false; showPhotos = false; showMusic = false; menuFor = null; showQuickMenu = false; showNotifs = false; editMode = false; showBackgrounds = false; dragApp = null
+            selected = null; showSettings = false; showSearch = false; showDesktop = false; showGames = false; showStore = false; showBrowser = false; showFolders = false; showTrophies = false; showPhotos = false; showVideos = false; showMusic = false; menuFor = null; showQuickMenu = false; showNotifs = false; editMode = false; showBackgrounds = false; dragApp = null
             endMove(true)
             pagerState.animateScrollToPage(0)
         }
@@ -1151,7 +1164,7 @@ fun HomeScreen(homePresses: Int = 0) {
     ) {
     Box(Modifier.fillMaxSize().onSizeChanged { rootWidth = it.width; rootHeight = it.height; PadNav.viewport = Rect(0f, 0f, it.width.toFloat(), it.height.toFloat()) }) {
         BubbleBackground(
-            paused = { showDesktop || showGames || showStore || showBrowser || showFolders || showTrophies || showPhotos || showMusic || showSettings || flashGame != null },
+            paused = { showDesktop || showGames || showStore || showBrowser || showFolders || showTrophies || showPhotos || showVideos || showMusic || showSettings || flashGame != null },
             top = settings.theme.top, mid = settings.theme.mid, bottom = settings.theme.bottom, particles = settings.particles,
             wallpaper = when (pageBg[bgPage]) {
                 null -> wallpaper
@@ -1433,6 +1446,15 @@ fun HomeScreen(homePresses: Int = 0) {
             }
         }
         AnimatedVisibility(
+            visible = showVideos,
+            enter = fadeIn(tween(260)) + scaleIn(initialScale = 0.94f, animationSpec = spring(dampingRatio = 0.85f, stiffness = 400f)),
+            exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.96f, animationSpec = tween(200)),
+        ) {
+            CompositionLocalProvider(LocalPadLayer provides 1) {
+                VideosScreen(settings = settings, wallpaper = wallpaper, onClose = { showVideos = false })
+            }
+        }
+        AnimatedVisibility(
             visible = showMusic,
             enter = fadeIn(tween(260)) + scaleIn(initialScale = 0.94f, animationSpec = spring(dampingRatio = 0.85f, stiffness = 400f)),
             exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.96f, animationSpec = tween(200)),
@@ -1675,6 +1697,30 @@ fun HomeScreen(homePresses: Int = 0) {
                     MenuItem("Settings") { showQuickMenu = false; showSettings = true },
                     MenuItem(if (upright) "Rotate to landscape" else "Rotate to portrait") { showQuickMenu = false; rotate() },
                     MenuItem("Group games into console folders") { showQuickMenu = false; tidyGamesIntoFolders() },
+                    MenuItem("Screenshot of the launcher") {
+                        showQuickMenu = false
+                        scope.launch {
+                            // Waits for the menu to fade so it is not in the picture.
+                            delay(450)
+                            val a = activity
+                            if (a == null) toast = "Screenshot failed" else com.qita.ui.Capture.launcherShot(a) { ok -> toast = if (ok) "Screenshot saved to Photos" else "Screenshot failed" }
+                        }
+                    },
+                    MenuItem(if (com.qita.ui.Capture.anyScreenReady()) "Screenshot in 5 seconds (switch to a game)" else "Screenshot of any screen: turn on in Accessibility") {
+                        showQuickMenu = false
+                        if (com.qita.ui.Capture.anyScreenReady()) {
+                            toast = "Screenshot in 5 seconds"
+                            com.qita.ui.Capture.anyScreenShot(context, 5000)
+                        } else {
+                            toast = "Turn on QitaUI screenshots in Accessibility"
+                            com.qita.ui.Capture.openAccessibilitySettings(context)
+                        }
+                    },
+                    MenuItem(if (com.qita.ui.Capture.recording) "Stop screen recording" else "Record the screen") {
+                        showQuickMenu = false
+                        if (com.qita.ui.Capture.recording) com.qita.ui.Capture.stopRecording(context)
+                        else runCatching { recordPermission.launch(com.qita.ui.Capture.recordRequest(context)) }.onFailure { toast = "Screen recording is not available" }
+                    },
                     MenuItem("Cancel") { showQuickMenu = false },
                 ),
                 onDismiss = { showQuickMenu = false },
@@ -1905,7 +1951,7 @@ fun HomeScreen(homePresses: Int = 0) {
             showSearch -> listOf("D-pad" to "Move", "A" to "Open", "B" to "Close")
             showDesktop -> listOf("A" to "Launch", "X" to "Options", "Y" to "Add / remove", "L1" to "Folder", "L2" to "Close", "B" to "Back")
             showGames -> listOf("D-pad" to "Move", "A" to "Play", "X" to "Options", "Y" to "Add / remove", "B" to "Back")
-            showStore || showBrowser || showFolders || showTrophies || showPhotos || showMusic -> listOf("D-pad" to "Move", "A" to "Select", "B" to "Back")
+            showStore || showBrowser || showFolders || showTrophies || showPhotos || showVideos || showMusic -> listOf("D-pad" to "Move", "A" to "Select", "B" to "Back")
             editMode && selected == null -> listOf("A" to "Options", "Y" to "Move", "START" to "Background", "B" to "Done")
             selected != null -> listOf("A" to "Start", "X" to "Options", "L1" to "Prev", "R1" to "Next", "B" to "Home")
             else -> listOf("A" to "Open", "X" to "Options", "Y" to "Move", "L1" to "Prev", "R1" to "Next", "L2" to "Desktop", "R2" to "Search", "START" to "Settings")

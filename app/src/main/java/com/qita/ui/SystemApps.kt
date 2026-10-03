@@ -33,6 +33,7 @@ enum class SystemAction(val id: String, val label: String, val blurb: String) {
     ANDROID("qita.sys.android", "System Settings", "Open Android's own settings: Wi-Fi, Bluetooth, sound, display, apps and storage."),
     TROPHIES("qita.sys.trophies", "Trophies", "Trophies earned by using the launcher, and your RetroAchievements progress."),
     PHOTOS("qita.sys.photos", "Photos", "The pictures on this device by album, with a viewer. Any picture can become your wallpaper."),
+    VIDEOS("qita.sys.videos", "Videos", "The videos on this device, including your screen recordings, with a player."),
     MUSIC("qita.sys.music", "Music", "The music on this device, with search, shuffle and repeat. It keeps playing while you use the launcher."),
 }
 
@@ -66,6 +67,7 @@ private fun buildSystemApps(): List<LaunchableApp> =
         systemApp(SystemAction.TROPHIES, Color(0xFFE0A81E)) { drawCup() },
         systemApp(SystemAction.PHOTOS, Color(0xFF2FA89A)) { drawPhotos() },
         systemApp(SystemAction.MUSIC, Color(0xFFD0457A)) { drawNote() },
+        systemApp(SystemAction.VIDEOS, Color(0xFF5A6BD8)) { drawVideo() },
     )
 
 private val Ink = Color(0xFF14161A)
@@ -145,6 +147,12 @@ private fun DrawScope.drawPhotos() {
         moveTo(58f, 184f); lineTo(104f, 112f); lineTo(134f, 154f); lineTo(152f, 132f); lineTo(198f, 184f); close()
     }
     drawPath(hills, white(112f, 184f))
+}
+
+private fun DrawScope.drawVideo() {
+    // A film frame with a play triangle.
+    drawRoundRect(Color.White, Offset(38f, 62f), Size(180f, 132f), CornerRadius(18f), style = Stroke(width = 13f))
+    drawPath(Path().apply { moveTo(108f, 94f); lineTo(108f, 162f); lineTo(168f, 128f); close() }, Color.White)
 }
 
 private fun DrawScope.drawNote() {

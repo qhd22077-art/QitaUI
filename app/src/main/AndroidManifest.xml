@@ -11,6 +11,7 @@
     <!-- Downloads keep going in the background: a foreground service with a notification, and a wake lock while they run. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Lets the user exempt the launcher from battery limits so phones and handhelds do not stop downloads. -->
@@ -20,6 +21,7 @@
     <!-- The Photos and Music bubbles read the device's pictures and music from Android's media database. -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <!-- The Store installs emulator APKs it downloads; Android asks the user to allow this once. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
@@ -64,6 +66,19 @@
 
         <!-- Lets the launcher show the notifications panel; the user grants this in Android settings. -->
         <service android:name=".DownloadService" android:exported="false" android:foregroundServiceType="dataSync" />
+        <!-- Screen recording (video only) with a Stop button in its notification. -->
+        <service android:name=".RecordService" android:exported="false" android:foregroundServiceType="mediaProjection" />
+        <!-- Screenshots of any screen, e.g. a game; the user switches this on once in Accessibility settings. -->
+        <service
+            android:name=".QitaCaptureService"
+            android:exported="true"
+            android:label="QitaUI screenshots"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/capture_service" />
+        </service>
         <service
             android:name=".QitaNotificationListener"
             android:exported="true"

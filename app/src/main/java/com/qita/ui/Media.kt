@@ -20,6 +20,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 
 class Photo(val id: Long, val uri: Uri, val album: String)
 
+class Video(val id: Long, val uri: Uri, val title: String, val ms: Long, val album: String)
+
 class Track(val id: Long, val uri: Uri, val title: String, val artist: String, val album: String, val ms: Long)
 
 /**
@@ -36,6 +38,34 @@ object Media {
     fun allowed(c: Context, audio: Boolean): Boolean =
         c.checkSelfPermission(permission(audio)) == PackageManager.PERMISSION_GRANTED ||
             (Build.VERSION.SDK_INT >= 30 && Environment.isExternalStorageManager())
+
+    fun videoPermission(): String =
+        if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_EXTERNAL_STORAGE
+
+    fun videosAllowed(c: Context): Boolean =
+        c.checkSelfPermission(videoPermission()) == PackageManager.PERMISSION_GRANTED ||
+            (Build.VERSION.SDK_INT >= 30 && Environment.isExternalStorageManager())
+
+    /** Every video, newest first. Blocks. */
+    fun videos(c: Context): List<Video> = runCatching {
+        val out = ArrayList<Video>()
+        val uri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        c.contentResolver.query(
+            uri,
+            arrayOf(MediaStore.Video.Media._ID, MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.DURATION, MediaStore.Video.Media.BUCKET_DISPLAY_NAME),
+            null, null, "${MediaStore.Video.Media.DATE_ADDED} DESC",
+        )?.use { cur ->
+            val idC = cur.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
+            val nC = cur.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
+            val dC = cur.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
+            val bC = cur.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_DISPLAY_NAME)
+            while (cur.moveToNext()) {
+                val id = cur.getLong(idC)
+                out.add(Video(id, ContentUris.withAppendedId(uri, id), cur.getString(nC).orEmpty().substringBeforeLast('.').ifBlank { "Video" }, cur.getLong(dC), cur.getString(bC).orEmpty().ifBlank { "Other" }))
+            }
+        }
+        out
+    }.getOrDefault(emptyList())
 
     /** Every picture, newest first. Blocks. */
     fun photos(c: Context): List<Photo> = runCatching {
@@ -95,7 +125,7 @@ object Media {
             thumbs.get(key)?.let { return it }
             val bmp = runCatching {
                 if (Build.VERSION.SDK_INT >= 29) c.contentResolver.loadThumbnail(uri, Size(px, px), null) else decode(c, uri, px)
-            }.getOrNull() ?: decode(c, uri, px)
+            }.getOrNull() ?: runCatching { decode(c, uri, px) }.getOrNull()
             return bmp?.asImageBitmap()?.also { thumbs.put(key, it) }
         } finally {
             thumbGate.release()

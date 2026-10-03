@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">QitaUI</string>
+    <string name="capture_service_description">Lets QitaUI take a screenshot of whatever is on screen (for example a game) when you ask it to. It does not read or store anything else on screen.</string>
 </resources>
