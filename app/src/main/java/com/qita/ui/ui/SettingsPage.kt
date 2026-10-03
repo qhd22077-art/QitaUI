@@ -356,37 +356,48 @@ fun SettingsPage(
                             }
                         }
                         "bubbles" -> {
-                            ChoiceRow("set:glassBubbles", "◌", "Bubble style (Android 13+)", listOf("Opaque", "Glass"), if (settings.glassBubbles) 1 else 0) {
-                                onChange(settings.copy(glassBubbles = it == 1))
-                            }
-                            if (settings.glassBubbles) {
-                                SliderRow("set:glass", "◌", "Glass clearness", settings.glass, 0f..1f, 0.05f) { onChange(settings.copy(glass = it)) }
-                                // The glass is drawn by the live 3D shader; without it (turned off, or before Android 13) bubbles stay solid.
-                                if (!settings.bubble3d || !com.qita.ui.ui.Ball3D.supported) InfoBox("Glass needs “Live 3D bubbles” (Android 13 or later). Turn it on below, or the bubbles stay solid.")
-                            }
-                            // See-through: every bubble lets the wallpaper show, whichever style it has (names stay solid).
-                            SliderRow("set:bubbleAlpha", "◌", "Bubble transparency (how much of the wallpaper shows through)", 1f - settings.bubbleAlpha, 0f..0.8f, 0.05f) { onChange(settings.copy(bubbleAlpha = 1f - it)) }
+                            // Most of this page is drawn by the live 3D shader, which needs all of these at once; the rows that depend on it
+                            // only show while it is running, with a note on what to switch on when it is not.
+                            val liveShader = settings.bubble3d && com.qita.ui.ui.Ball3D.supported && settings.fullArt && !settings.roundedBubbles
                             CheckRow("set:bubble3d", "◍", "Live 3D bubbles (Android 13+)", settings.bubble3d) { onChange(settings.copy(bubble3d = it)) }
                             CheckRow("set:fullart", "◉", "Full-art bubbles (Vita style)", settings.fullArt) { onChange(settings.copy(fullArt = it)) }
                             CheckRow("set:rounded", "▢", "Rounded square bubbles", settings.roundedBubbles) { onChange(settings.copy(roundedBubbles = it)) }
-                            ChoiceRow(
-                                "set:bodyMode", "◐", "Glass colour behind icons",
-                                listOf("Icon colour", "One colour", "Black glass", "Milky white"), settings.bodyMode,
-                            ) { onChange(settings.copy(bodyMode = it)) }
-                            if (settings.bodyMode == 1) {
-                                SwatchRow("set:bodyColor", "●", "Glass colour", settings.bodyColor) { onChange(settings.copy(bodyColor = it)) }
+                            // See-through: every bubble lets the wallpaper show, whichever style it has (names stay solid).
+                            SliderRow("set:bubbleAlpha", "◌", "Bubble transparency (how much of the wallpaper shows through)", 1f - settings.bubbleAlpha, 0f..0.8f, 0.05f) { onChange(settings.copy(bubbleAlpha = 1f - it)) }
+                            if (!liveShader) {
+                                val needs = listOfNotNull(
+                                    if (!com.qita.ui.ui.Ball3D.supported) "Android 13 or later (this device is older)" else null,
+                                    if (!settings.bubble3d) "“Live 3D bubbles” switched on" else null,
+                                    if (!settings.fullArt) "“Full-art bubbles” switched on" else null,
+                                    if (settings.roundedBubbles) "“Rounded square bubbles” switched off" else null,
+                                )
+                                InfoBox("Glass, icon size and colour, disc thickness, dome, rim, shine and idle sway are drawn by the live 3D shader. It needs: " + needs.joinToString("; ") + ". They appear here once it can run.")
+                            } else {
+                                ChoiceRow("set:glassBubbles", "◌", "Bubble style", listOf("Opaque", "Glass"), if (settings.glassBubbles) 1 else 0) {
+                                    onChange(settings.copy(glassBubbles = it == 1))
+                                }
+                                if (settings.glassBubbles) {
+                                    SliderRow("set:glass", "◌", "Glass clearness", settings.glass, 0f..1f, 0.05f) { onChange(settings.copy(glass = it)) }
+                                }
+                                ChoiceRow(
+                                    "set:bodyMode", "◐", "Glass colour behind icons",
+                                    listOf("Icon colour", "One colour", "Black glass", "Milky white"), settings.bodyMode,
+                                ) { onChange(settings.copy(bodyMode = it)) }
+                                if (settings.bodyMode == 1) {
+                                    SwatchRow("set:bodyColor", "●", "Glass colour", settings.bodyColor) { onChange(settings.copy(bodyColor = it)) }
+                                }
+                                SliderRow("set:iconScale", "▣", "Icon size inside the bubble", settings.iconScale, 0.7f..1.05f, 0.05f) { onChange(settings.copy(iconScale = it)) }
+                                SliderRow("set:iconSat", "◑", "Icon colour strength", settings.iconSat, 0f..1.6f, 0.1f) { onChange(settings.copy(iconSat = it)) }
+                                SliderRow("set:iconBright", "☀", "Icon brightness", settings.iconBright, 0.6f..1.4f, 0.05f) { onChange(settings.copy(iconBright = it)) }
+                                SliderRow("set:thickness", "◫", "Disc thickness", settings.thickness, 0f..1.8f, 0.1f) { onChange(settings.copy(thickness = it)) }
+                                SliderRow("set:dome", "◠", "Dome (flat to puffy)", settings.dome, 0.5f..2f, 0.1f) { onChange(settings.copy(dome = it)) }
+                                SliderRow("set:rimWidth", "○", "Milky rim width", settings.rimWidth, 0.3f..2.5f, 0.1f) { onChange(settings.copy(rimWidth = it)) }
+                                SliderRow("set:highlight", "✦", "Shine", settings.highlight, 0f..2f, 0.1f) { onChange(settings.copy(highlight = it)) }
+                                SliderRow("set:sway", "≈", "Idle sway", settings.sway, 0f..3f, 0.25f) { onChange(settings.copy(sway = it)) }
                             }
-                            SliderRow("set:iconScale", "▣", "Icon size inside the bubble", settings.iconScale, 0.7f..1.05f, 0.05f) { onChange(settings.copy(iconScale = it)) }
-                            SliderRow("set:iconSat", "◑", "Icon colour strength", settings.iconSat, 0f..1.6f, 0.1f) { onChange(settings.copy(iconSat = it)) }
-                            SliderRow("set:iconBright", "☀", "Icon brightness", settings.iconBright, 0.6f..1.4f, 0.05f) { onChange(settings.copy(iconBright = it)) }
-                            SliderRow("set:thickness", "◫", "Disc thickness", settings.thickness, 0f..1.8f, 0.1f) { onChange(settings.copy(thickness = it)) }
-                            SliderRow("set:dome", "◠", "Dome (flat to puffy)", settings.dome, 0.5f..2f, 0.1f) { onChange(settings.copy(dome = it)) }
-                            SliderRow("set:rimWidth", "○", "Milky rim width", settings.rimWidth, 0.3f..2.5f, 0.1f) { onChange(settings.copy(rimWidth = it)) }
-                            SliderRow("set:highlight", "✦", "Shine", settings.highlight, 0f..2f, 0.1f) { onChange(settings.copy(highlight = it)) }
-                            SliderRow("set:sway", "≈", "Idle sway", settings.sway, 0f..3f, 0.25f) { onChange(settings.copy(sway = it)) }
-                            ChoiceRow("set:tapAnim", "↻", "When tapped", listOf("Flip", "Pulse", "Nothing"), settings.tapAnim) { onChange(settings.copy(tapAnim = it)) }
+                            ChoiceRow("set:tapAnim", "↻", "When tapped" + if (liveShader) "" else " (Flip needs the live 3D shader)", listOf("Flip", "Pulse", "Nothing"), settings.tapAnim) { onChange(settings.copy(tapAnim = it)) }
                             // The built-in bubbles can each be made see-through, glass, tinted or given a picture.
-                            InfoBox("System bubbles (Settings, Store, Desktop, Games, Browser, Folders, System Settings): make one see-through, glassy or tinted, or give it a picture of your own.")
+                            InfoBox("System bubbles (Settings, Store, Desktop, Games, Browser, Folders, System Settings, Trophies, Photos, Music): make one see-through, glassy or tinted, or give it a picture of your own.")
                             com.qita.ui.SystemAction.values().forEach { a ->
                                 MenuRow("set:customise:${a.id}", "✎", "Customise ${a.label}") { onCustomise(a) }
                             }
@@ -433,6 +444,10 @@ fun SettingsPage(
                                 }
                                 else -> {
                                     CheckRow("set:lockNotifs", "✉", "Show notifications on the lock screen", settings.lockNotifs) { onChange(settings.copy(lockNotifs = it)) }
+                                    if (settings.lockNotifs && !com.qita.ui.Notifications.granted) {
+                                        InfoBox("Notifications only show once the launcher is allowed to read them.")
+                                        MenuRow("set:lockNotifAccess", "✉", "Allow the launcher to read notifications") { com.qita.ui.Notifications.openListenerPage(batteryContext) }
+                                    }
                                     if (settings.lockNotifs) {
                                         SliderRow("set:lockNotifCount", "✉", "How many notifications", settings.lockNotifCount.toFloat(), 1f..5f, 1f) { onChange(settings.copy(lockNotifCount = it.roundToInt())) }
                                     }
@@ -597,7 +612,6 @@ fun SettingsPage(
                                 com.qita.ui.Caches.clear(batteryContext); cacheRev++
                             }
                             MenuRow("set:tutorial", "i", "Show tutorial") { onShowTutorial() }
-                            MenuRow("set:reset", "↺", "Reset all settings") { onChange(Settings()); com.qita.ui.Sounds.resetEvents(batteryContext); soundRev++ }
                         }
                         else -> {}
                     }
@@ -620,8 +634,8 @@ fun SettingsPage(
                     if (current == "system") {
                         MenuRow("set:resetall", "↺", "Reset all settings to defaults") {
                             ask = ConfirmAsk(
-                                "Reset all settings?", "Every setting goes back to its original value. Your apps, folders, games, themes and pictures are not touched.", "Reset all",
-                            ) { onChange(Settings()) }
+                                "Reset all settings?", "Every setting, and your choices of interface sounds, goes back to its original value. Your apps, folders, games, themes and pictures are not touched.", "Reset all",
+                            ) { onChange(Settings()); com.qita.ui.Sounds.resetEvents(batteryContext); soundRev++ }
                         }
                     }
                 }

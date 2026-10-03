@@ -83,14 +83,23 @@ object Media {
         override fun sizeOf(key: String, value: ImageBitmap) = value.asAndroidBitmap().allocationByteCount
     }
 
+    // Only a few thumbnails are made at once, so scrolling a big grid quickly does not start dozens of decodes (memory and battery).
+    private val thumbGate = java.util.concurrent.Semaphore(3)
+
     /** A thumbnail about [px] pixels wide. Blocks; call off the main thread. */
     fun thumb(c: Context, uri: Uri, px: Int): ImageBitmap? {
         val key = "$uri@$px"
         thumbs.get(key)?.let { return it }
-        val bmp = runCatching {
-            if (Build.VERSION.SDK_INT >= 29) c.contentResolver.loadThumbnail(uri, Size(px, px), null) else decode(c, uri, px)
-        }.getOrNull() ?: decode(c, uri, px)
-        return bmp?.asImageBitmap()?.also { thumbs.put(key, it) }
+        thumbGate.acquire()
+        try {
+            thumbs.get(key)?.let { return it }
+            val bmp = runCatching {
+                if (Build.VERSION.SDK_INT >= 29) c.contentResolver.loadThumbnail(uri, Size(px, px), null) else decode(c, uri, px)
+            }.getOrNull() ?: decode(c, uri, px)
+            return bmp?.asImageBitmap()?.also { thumbs.put(key, it) }
+        } finally {
+            thumbGate.release()
+        }
     }
 
     fun clearThumbs() = thumbs.evictAll()
