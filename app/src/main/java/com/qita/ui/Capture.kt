@@ -79,7 +79,7 @@ object Capture {
             val dir = File(c.getExternalFilesDir(if (video) Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_PICTURES), "QitaUI").apply { mkdirs() }
             val f = File(dir, name)
             if (video) Target(null, ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_WRITE or ParcelFileDescriptor.MODE_CREATE or ParcelFileDescriptor.MODE_TRUNCATE)) { ok -> if (!ok) f.delete() }
-            else Target(f.outputStream()) { ok -> if (!ok) f.delete() }
+            else Target(f.outputStream(), null) { ok -> if (!ok) f.delete() }
         }
     }.getOrNull()
 
