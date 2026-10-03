@@ -1942,7 +1942,7 @@ fun HomeScreen(homePresses: Int = 0) {
         // Button hints for whatever is on screen, while the gamepad is in use.
         val hints = when {
             showLock -> listOf("A" to "Unlock")
-            showTutorial -> listOf("A" to "Got it")
+            showTutorial -> listOf("D-pad" to "Choose", "A" to "Select")
             menuOpen -> listOf("D-pad" to "Move", "A" to "Choose", "B" to "Cancel")
             showIndex -> listOf("D-pad" to "Move", "A" to "Open", "HOME" to "Home screen", "B" to "Back")
             showBackgrounds -> listOf("D-pad" to "Choose", "A" to "Apply", "L1" to "Prev page", "R1" to "Next page", "B" to "Back")
