@@ -304,8 +304,8 @@ fun HomeScreen(homePresses: Int = 0) {
                 val ok = withContext(Dispatchers.IO) { com.qita.ui.BubbleStyles.savePicture(context, action.id, uri) }
                 if (ok) com.qita.ui.BubbleStyles.set(action.id, com.qita.ui.BubbleStyles.of(action.id).copy(picture = true))
                 else toast = "That picture could not be used"
-                // The art is bumped even if the file is the same one as before, so the bubble shows the new picture.
-                if (ok) com.qita.ui.SystemIcons.cache = null
+                // The art is redrawn even if the picture replaced another (the look itself did not change), so the bubble shows the new one.
+                if (ok) com.qita.ui.BubbleStyles.refresh()
                 reload++
             }
         }
@@ -425,7 +425,7 @@ fun HomeScreen(homePresses: Int = 0) {
     LaunchedEffect(anyOverlay, showLock) {
         when {
             soundLockPrev && !showLock -> com.qita.ui.Sounds.play(com.qita.ui.Sound.UNLOCK)
-            soundLockPrev != showLock -> {}
+            !soundLockPrev && showLock -> com.qita.ui.Sounds.play(com.qita.ui.Sound.LOCK)
             anyOverlay && !soundOverlayPrev -> com.qita.ui.Sounds.play(com.qita.ui.Sound.OPEN)
             !anyOverlay && soundOverlayPrev -> com.qita.ui.Sounds.play(com.qita.ui.Sound.BACK)
         }
@@ -509,6 +509,7 @@ fun HomeScreen(homePresses: Int = 0) {
             refreshThemes()
             themeUndo = store.hasLookBackup()
             toast = "Applied \u201c${pack.name}\u201d" + (extrasNote?.let { " with $it" } ?: "")
+            com.qita.ui.Sounds.play(com.qita.ui.Sound.THEME)
             com.qita.ui.Trophies.award("theme")
         }
     }
@@ -575,6 +576,7 @@ fun HomeScreen(homePresses: Int = 0) {
             home = settle(vacate(home.map { if (it == target.packageName) id else it }, dragged.packageName))
             store.saveHome(home)
             toast = "Folder made. Tap it to open it; edit the home screen to rename or undo it"
+            com.qita.ui.Sounds.play(com.qita.ui.Sound.FOLDER)
             com.qita.ui.Trophies.award("folder")
         }
     }
@@ -616,6 +618,7 @@ fun HomeScreen(homePresses: Int = 0) {
         if (app.folderMembers != null) { dissolveFolder(app.packageName); toast = "Folder undone: its bubbles are back on the home screen"; return }
         forgetFromHome(app.packageName)
         toast = "Removed ${app.label} from home"
+        com.qita.ui.Sounds.play(com.qita.ui.Sound.REMOVE)
     }
     fun launchApp(app: LaunchableApp) {
         when (app.action) {
@@ -643,6 +646,7 @@ fun HomeScreen(homePresses: Int = 0) {
                 } else {
                     AppRepository.launch(context, app)
                 }
+                com.qita.ui.Sounds.play(com.qita.ui.Sound.LAUNCH)
                 store.recordLaunch(app.packageName)
                 counts = store.loadLaunchCounts()
                 com.qita.ui.Trophies.launched(app.game != null, app.game?.systemId == "flash")
@@ -679,6 +683,7 @@ fun HomeScreen(homePresses: Int = 0) {
     fun scanGames() {
         if (gamesBusy != null) return
         gamesBusy = "Scanning for games…"
+        com.qita.ui.Sounds.play(com.qita.ui.Sound.SCAN)
         scope.launch {
             val found = withContext(Dispatchers.IO) {
                 // The folders the user added, plus the Flash games kept inside the app.
@@ -700,6 +705,7 @@ fun HomeScreen(homePresses: Int = 0) {
             toast = filedNote?.let { "$it  ·  ${found.size} game${if (found.size == 1) "" else "s"} in your library" }
                 ?: "Found ${found.size} game${if (found.size == 1) "" else "s"}"
             filedNote = null
+            com.qita.ui.Sounds.play(com.qita.ui.Sound.SCAN_DONE)
             com.qita.ui.Trophies.library(found.size)
             if (found.isNotEmpty() && settings.gameCovers) fetchCovers()
         }
@@ -1797,15 +1803,22 @@ fun HomeScreen(homePresses: Int = 0) {
         flashGame?.let { g -> FlashScreen(g) { flashGame = null } }
         // The panel for the look of a system bubble.
         styleFor?.let { action ->
-            BackHandler(enabled = true) { styleFor = null }
+            BackHandler(enabled = true) { com.qita.ui.BubbleStyles.save(); styleFor = null }
             val style = com.qita.ui.BubbleStyles.all[action.id] ?: com.qita.ui.BubbleStyle()
             BubbleStylePanel(
                 label = action.label,
                 style = style,
-                onStyle = { com.qita.ui.BubbleStyles.set(action.id, it) },
+                // While a slider moves the look is applied but not yet written to storage; letting go writes it once.
+                onStyle = { com.qita.ui.BubbleStyles.set(action.id, it, persist = false) },
+                onSettled = { com.qita.ui.BubbleStyles.save() },
+                preview = {
+                    // The real bubble, rebuilt whenever its look changes.
+                    val sample = remember(action, com.qita.ui.BubbleStyles.artRev) { SYSTEM_APPS.firstOrNull { it.action == action } }
+                    if (sample != null) Bubble(sample, 84.dp, onClick = {}, showLabel = false, removable = false)
+                },
                 onPicture = { stylePicker.launch("image/*") },
                 onReset = { com.qita.ui.BubbleStyles.reset(action.id) },
-                onClose = { styleFor = null },
+                onClose = { com.qita.ui.BubbleStyles.save(); styleFor = null },
             )
         }
 

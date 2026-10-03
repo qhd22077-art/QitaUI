@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -24,6 +25,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -46,6 +49,10 @@ fun BubbleStylePanel(
     label: String,
     style: BubbleStyle,
     onStyle: (BubbleStyle) -> Unit,
+    /** Called when a slider is let go, so the look is saved once instead of at every step. */
+    onSettled: () -> Unit,
+    /** The bubble as it looks now, drawn over a sample of the sky (null shows nothing). */
+    preview: @Composable () -> Unit,
     onPicture: () -> Unit,
     onReset: () -> Unit,
     onClose: () -> Unit,
@@ -67,6 +74,15 @@ fun BubbleStylePanel(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text("Customise $label", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                // How it looks right now, over a patch of sky (the screen behind this panel is dimmed).
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(120.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Brush.verticalGradient(listOf(Color(0xFF0A2C9A), Color(0xFF1B5BD8), Color(0xFFB4D8FF)))),
+                    contentAlignment = Alignment.Center,
+                ) { preview() }
 
                 // Translucency: 0% is solid.
                 val see = ((1f - style.alpha) * 100).roundToInt()
@@ -76,6 +92,7 @@ fun BubbleStylePanel(
                         .fillMaxWidth()
                         .padTarget("bstyle:alpha", corner = 10.dp, pad = 2.dp, ring = false, onAdjust = { dir ->
                             onStyle(style.copy(alpha = (style.alpha - dir * 0.05f).coerceIn(0.25f, 1f)))
+                            onSettled()
                         })
                         .litEdge(sliderLit, 10.dp)
                         .background(Color.White.copy(alpha = if (sliderLit) 0.16f else 0.08f), RoundedCornerShape(10.dp))
@@ -85,6 +102,7 @@ fun BubbleStylePanel(
                     Slider(
                         value = 1f - style.alpha,
                         onValueChange = { onStyle(style.copy(alpha = 1f - it)) },
+                        onValueChangeFinished = onSettled,
                         valueRange = 0f..0.75f,
                         colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White, inactiveTrackColor = Color.White.copy(alpha = 0.3f)),
                     )

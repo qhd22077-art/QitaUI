@@ -259,6 +259,7 @@ object DownloadEngine {
         item.post = post
         items.add(0, item)
         persist()
+        Sounds.play(Sound.BUY)
         start(item)
         return item
     }
@@ -447,6 +448,7 @@ object DownloadEngine {
             if (!item.partFile.renameTo(out)) item.partFile.copyTo(out, overwrite = true).also { item.partFile.delete() }
             item.finalPath = out.path
             item.bytes = out.length()
+            Sounds.play(Sound.DONE)
             val headless = canFinishHeadless(item)
             item.finishing = headless
             item.state = DlState.DONE
@@ -471,6 +473,7 @@ object DownloadEngine {
             }
             item.state = DlState.FAILED
             item.error = msg.ifBlank { e.javaClass.simpleName }
+            Sounds.play(Sound.ERROR)
             persist()
         }
     }

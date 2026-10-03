@@ -178,7 +178,11 @@ float4 frontPix(float u, float v, float rr, float cy, float sy, float cp, float 
     col = clamp(col, 0.0, 1.0);
     // Glass: the face is see-through, more so where there is no art, with the rim and the lit edge staying solid.
     float g = t2.w;
-    float clear = clamp(0.22 + 0.55 * artA + 0.9 * f + 1.6 * edgeLine + 2.0 * max(ndh - 0.96, 0.0) * 25.0 * t2.y, 0.0, 1.0);
+    // Clear glass: a nearly invisible body whose edge is shown by light only where it falls (strongly on the lit side, faintly on the far
+    // side), never as a full ring. The art stays solid.
+    float litRim = f * facing;
+    float farRim = f * max(dot(n.xy / nl, -L.xy / 0.72), 0.0);
+    float clear = clamp(0.12 + 0.88 * artA + 3.0 * litRim * t2.y + 0.8 * farRim + 1.8 * edgeLine * facing + 2.0 * max(ndh - 0.96, 0.0) * 25.0 * t2.y, 0.0, 1.0);
     cov *= mix(1.0, clear, g);
     return float4(col * cov, cov);
 }

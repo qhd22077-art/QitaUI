@@ -64,9 +64,8 @@ object BubbleStyles {
 
     fun of(id: String): BubbleStyle = all[id] ?: BubbleStyle()
 
-    fun set(id: String, style: BubbleStyle) {
-        val old = of(id)
-        all = if (style.isDefault) all - id else all + (id to style)
+    /** Writes every look to storage. [set] does it for each change unless told to wait (a slider being dragged saves once, when let go). */
+    fun save() {
         val o = JSONObject()
         for ((k, s) in all) {
             val j = JSONObject().put("a", s.alpha.toDouble()).put("gm", when (s.glass) { true -> 1; false -> 2; null -> 0 }).put("p", s.picture)
@@ -74,6 +73,26 @@ object BubbleStyles {
             o.put(k, j)
         }
         prefs?.edit()?.putString("styles", o.toString())?.apply()
+    }
+
+    /** Draws every built-in bubble's art again (a picture was replaced by another one of the same name, say). */
+    fun refresh() {
+        SystemIcons.cache = null
+        artRev++
+    }
+
+    /** Back to the built-in look for every bubble, deleting their pictures. */
+    fun resetAll() {
+        dir?.listFiles()?.forEach { it.delete() }
+        all = emptyMap()
+        save()
+        refresh()
+    }
+
+    fun set(id: String, style: BubbleStyle, persist: Boolean = true) {
+        val old = of(id)
+        all = if (style.isDefault) all - id else all + (id to style)
+        if (persist) save()
         if (!style.isDefault) Trophies.award("customise")
         // Translucency is applied while drawing; anything else is baked into the bubble's art.
         if (old.copy(alpha = style.alpha) != style) {

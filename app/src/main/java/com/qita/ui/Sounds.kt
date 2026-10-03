@@ -25,6 +25,18 @@ enum class Sound(val id: String, val label: String, val gapMs: Long, val gain: F
     DROP("drop", "Putting a bubble down", 100, 1f),
     UNLOCK("unlock", "Unlocking", 300, 1f),
     TROPHY("trophy", "Trophy earned", 500, 1f),
+    SCAN("scan", "Scanning for games", 800, 0.8f),
+    SCAN_DONE("scandone", "Scan finished", 400, 1f),
+    BUY("buy", "Starting a download (buying)", 300, 1f),
+    DONE("done", "Download finished", 300, 1f),
+    ERROR("error", "Something went wrong", 600, 0.9f),
+    FOLDER("folder", "Making a folder", 200, 1f),
+    REMOVE("remove", "Removing something", 150, 0.9f),
+    THEME("theme", "Applying a theme", 500, 0.9f),
+    LAUNCH("launch", "Starting a game or app", 400, 0.9f),
+    LOCK("lock", "Locking the screen", 400, 1f),
+    SWITCH_ON("on", "Switch turned on", 80, 0.8f),
+    SWITCH_OFF("off", "Switch turned off", 80, 0.8f),
 }
 
 /**
@@ -43,7 +55,7 @@ object Sounds {
     private var appContext: Context? = null
     private val ids = ConcurrentHashMap<Sound, Int>()
     private val ready = ConcurrentHashMap.newKeySet<Int>()
-    private val last = HashMap<Sound, Long>()
+    private val last = ConcurrentHashMap<Sound, Long>()
 
     private fun prefs(c: Context) = c.getSharedPreferences("qita_sounds", Context.MODE_PRIVATE)
 
@@ -234,6 +246,20 @@ object Sounds {
         Sound.PAGE -> swish(170, 0.30f)
         Sound.PICK -> sweep(110, 320f, 640f, 0.5f)
         Sound.DROP -> sweep(130, 620f, 260f, 0.5f)
+        // Scanning: five blips climbing, like a sweep; done: two notes up.
+        Sound.SCAN -> chime(700, 0.28f, Triple(0, 660, 90), Triple(110, 740, 90), Triple(220, 830, 90), Triple(330, 935, 90), Triple(440, 1050, 220))
+        Sound.SCAN_DONE -> chime(500, 0.40f, Triple(0, 880, 150), Triple(120, 1175, 330))
+        // Buying: a bright till bell, two high notes together over a short low thump.
+        Sound.BUY -> chime(600, 0.30f, Triple(0, 1318, 140), Triple(70, 1760, 430), Triple(70, 2637, 280), Triple(0, 330, 90))
+        Sound.DONE -> chime(520, 0.40f, Triple(0, 988, 200), Triple(140, 1480, 360))
+        Sound.ERROR -> chime(520, 0.42f, Triple(0, 330, 170), Triple(150, 247, 330))
+        Sound.FOLDER -> chime(260, 0.40f, Triple(0, 523, 120), Triple(60, 659, 190))
+        Sound.REMOVE -> sweep(160, 700f, 250f, 0.45f)
+        Sound.THEME -> chime(760, 0.28f, Triple(0, 1047, 200), Triple(90, 1319, 200), Triple(180, 1568, 230), Triple(270, 2093, 420))
+        Sound.LAUNCH -> sweep(230, 280f, 880f, 0.42f)
+        Sound.LOCK -> chime(520, 0.38f, Triple(0, 784, 220), Triple(110, 659, 220), Triple(220, 523, 320))
+        Sound.SWITCH_ON -> sweep(75, 600f, 920f, 0.42f)
+        Sound.SWITCH_OFF -> sweep(75, 920f, 600f, 0.42f)
         Sound.TROPHY -> chime(900, 0.42f, Triple(0, 784f, 320), Triple(130, 988f, 340), Triple(260, 1319f, 560))
         Sound.UNLOCK -> chime(520, 0.40f, Triple(0, 523f, 260), Triple(110, 659f, 260), Triple(220, 784f, 300))
     }

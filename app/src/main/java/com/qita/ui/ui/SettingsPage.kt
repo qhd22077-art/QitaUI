@@ -361,6 +361,8 @@ fun SettingsPage(
                             }
                             if (settings.glassBubbles) {
                                 SliderRow("set:glass", "◌", "Glass clearness", settings.glass, 0f..1f, 0.05f) { onChange(settings.copy(glass = it)) }
+                                // The glass is drawn by the live 3D shader; without it (turned off, or before Android 13) bubbles stay solid.
+                                if (!settings.bubble3d || !com.qita.ui.ui.Ball3D.supported) InfoBox("Glass needs “Live 3D bubbles” (Android 13 or later). Turn it on below, or the bubbles stay solid.")
                             }
                             CheckRow("set:bubble3d", "◍", "Live 3D bubbles (Android 13+)", settings.bubble3d) { onChange(settings.copy(bubble3d = it)) }
                             CheckRow("set:fullart", "◉", "Full-art bubbles (Vita style)", settings.fullArt) { onChange(settings.copy(fullArt = it)) }
@@ -601,9 +603,14 @@ fun SettingsPage(
                     val pageName = tabs.firstOrNull { it.first == current }?.second ?: "this page"
                     MenuRow("set:reset:$current", "↺", "Reset $pageName settings to defaults") {
                         ask = ConfirmAsk(
-                            "Reset $pageName?", "Every setting on this page goes back to its original value. Your apps, folders, games and pictures are not touched.", "Reset",
+                            "Reset $pageName?",
+                            "Every setting on this page goes back to its original value. Your apps, folders and games are not touched." +
+                                if (current == "bubbles") " The looks you gave the system bubbles, and their pictures, are cleared too." else " Your pictures are not touched.",
+                            "Reset",
                         ) {
                             onChange(resetPage(current, settings))
+                            // The system bubbles' own looks (translucency, glass, tint, picture) are on this page too.
+                            if (current == "bubbles") com.qita.ui.BubbleStyles.resetAll()
                             com.qita.ui.Trophies.award("reset")
                             if (current == "sounds") { com.qita.ui.Sounds.resetEvents(batteryContext); soundRev++ }
                         }
@@ -704,6 +711,8 @@ private fun MenuRow(
     label: String,
     trailing: @Composable () -> Unit = {},
     onAdjust: ((Int) -> Unit)? = null,
+    /** False for a switch, which makes its own on or off sound. */
+    tapSound: Boolean = true,
     onClick: () -> Unit,
 ) {
     val lit = padHighlighted(key) || padHovered(key)
@@ -711,7 +720,7 @@ private fun MenuRow(
         Modifier
             .fillMaxWidth()
             .heightIn(min = 54.dp)
-            .padClickable(key, corner = 0.dp, ring = false, onAdjust = onAdjust, onClick = { com.qita.ui.Sounds.play(com.qita.ui.Sound.TAP); onClick() })
+            .padClickable(key, corner = 0.dp, ring = false, onAdjust = onAdjust, onClick = { if (tapSound) com.qita.ui.Sounds.play(com.qita.ui.Sound.TAP); onClick() })
             .rowBand(lit)
             .padding(horizontal = 6.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -730,7 +739,10 @@ private fun NavRow(key: String, glyph: String, label: String, onClick: () -> Uni
 
 @Composable
 private fun CheckRow(key: String, glyph: String, label: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
-    MenuRow(key, glyph, label, trailing = { GlowCheck(checked) }) { onChecked(!checked) }
+    MenuRow(key, glyph, label, trailing = { GlowCheck(checked) }, tapSound = false) {
+        com.qita.ui.Sounds.play(if (checked) com.qita.ui.Sound.SWITCH_OFF else com.qita.ui.Sound.SWITCH_ON)
+        onChecked(!checked)
+    }
 }
 
 private val FONT_NAMES = listOf("Built-in", "System", "Serif", "Monospace", "Loaded file")
