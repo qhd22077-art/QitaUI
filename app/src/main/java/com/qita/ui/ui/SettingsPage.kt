@@ -345,6 +345,11 @@ fun SettingsPage(
                             }
                             CheckRow("set:labels", "A", "Show app names", settings.showLabels) { onChange(settings.copy(showLabels = it)) }
                             CheckRow("set:dots", "•", "Show page dots", settings.showDots) { onChange(settings.copy(showDots = it)) }
+                            CheckRow("set:badges", "●", "Show a count of waiting notifications on bubbles", settings.badges) { onChange(settings.copy(badges = it)) }
+                            if (settings.badges && !com.qita.ui.Notifications.granted) {
+                                InfoBox("Counts need the launcher to be allowed to read notifications.")
+                                MenuRow("set:badgeAccess", "✉", "Allow the launcher to read notifications") { com.qita.ui.Notifications.openListenerPage(batteryContext) }
+                            }
                             SliderRow("set:size", "●", "Bubble size", settings.bubbleScale, 0.5f..1.1f, 0.05f) { onChange(settings.copy(bubbleScale = it)) }
                             CheckRow("set:fitnames", "▭", "Keep the bottom row's names on screen (makes the bubbles a little smaller if needed)", settings.fitNames) { onChange(settings.copy(fitNames = it)) }
                             CheckRow("set:newest", "↓", "Sort newest apps first", settings.sortNewest) { onChange(settings.copy(sortNewest = it)) }
@@ -548,7 +553,7 @@ fun SettingsPage(
                             // Reading the counter here redraws the rows when a choice changes.
                             @Suppress("UNUSED_VARIABLE") val rev = soundRev
                             CheckRow("set:soundOn", "♪", "Interface sounds", settings.soundOn) { onChange(settings.copy(soundOn = it)) }
-                            if (settings.lightMode) InfoBox("Light mode keeps the sounds off to save battery.")
+                            if (settings.lightMode || com.qita.ui.BatterySaver.active) InfoBox("Light mode and the battery saver keep the sounds off to save battery.")
                             SliderRow("set:soundVol", "♪", "Volume", settings.soundVolume, 0f..1f, 0.1f) { onChange(settings.copy(soundVolume = it)) }
                             CheckRow("set:soundMedia", "♪", "Follow the media volume (otherwise the system sounds volume, which silent mode mutes)", settings.soundMedia) { onChange(settings.copy(soundMedia = it)) }
                             InfoBox("Each sound can be the built-in one, a short clip of your own (a few seconds; .wav, .ogg or .mp3), or off. Tap a choice to hear it.")
@@ -571,6 +576,13 @@ fun SettingsPage(
                             }
                         }
                         "motion" -> {
+                            // The battery saver: Light mode plus holding still, switched on by hand or when the battery runs low.
+                            ChoiceRow("set:saver", "⚡", "Battery saver", listOf("Off", "Automatic", "On"), settings.saverMode) { onChange(settings.copy(saverMode = it)) }
+                            InfoBox(
+                                "The battery saver draws everything lighter and holds still: no moving backgrounds, sway, flip, tilt or sounds, and a calmer screen refresh. " +
+                                    "Automatic turns it on while the battery is at or below ${settings.batteryLow}% and not charging (change that level on the Top Bar page)." +
+                                    if (com.qita.ui.BatterySaver.active) "  It is on now." else "",
+                            )
                             CheckRow("set:light", "◌", "Light mode (30 fps, fewer symbols, no blur, less memory and battery)", settings.lightMode) { onChange(settings.copy(lightMode = it)) }
                             CheckRow("set:reduce", "■", "Reduce motion (still background, no sway or flip)", settings.reduceMotion) { onChange(settings.copy(reduceMotion = it)) }
                             CheckRow("set:parallax", "◫", "Parallax (tilt the device to shift the background and bubbles)", settings.parallax) { onChange(settings.copy(parallax = it)) }
@@ -856,7 +868,7 @@ private fun resetPage(page: String, s: Settings): Settings {
             dim = d.dim, symbolCount = d.symbolCount, sceneSpeed = d.sceneSpeed,
         )
         "home" -> s.copy(
-            layoutIndex = d.layoutIndex, showLabels = d.showLabels, showDots = d.showDots, bubbleScale = d.bubbleScale, fitNames = d.fitNames,
+            layoutIndex = d.layoutIndex, showLabels = d.showLabels, showDots = d.showDots, badges = d.badges, bubbleScale = d.bubbleScale, fitNames = d.fitNames,
             sortNewest = d.sortNewest, autoAdd = d.autoAdd, dragMakesFolder = d.dragMakesFolder, freePlacement = d.freePlacement,
         )
         "bubbles" -> s.copy(
@@ -874,7 +886,7 @@ private fun resetPage(page: String, s: Settings): Settings {
         )
         "status" -> s.copy(use24h = d.use24h, showBattery = d.showBattery)
         "sounds" -> s.copy(soundOn = d.soundOn, soundVolume = d.soundVolume, soundMedia = d.soundMedia)
-        "motion" -> s.copy(lightMode = d.lightMode, reduceMotion = d.reduceMotion, parallax = d.parallax, parallaxStrength = d.parallaxStrength, sceneSpeed = d.sceneSpeed, sway = d.sway, tapAnim = d.tapAnim)
+        "motion" -> s.copy(saverMode = d.saverMode, lightMode = d.lightMode, reduceMotion = d.reduceMotion, parallax = d.parallax, parallaxStrength = d.parallaxStrength, sceneSpeed = d.sceneSpeed, sway = d.sway, tapAnim = d.tapAnim)
         "lock" -> s.copy(
             lockScreen = d.lockScreen, lockTapPeel = d.lockTapPeel, lockPeelAnywhere = d.lockPeelAnywhere, lockClockSize = d.lockClockSize, lockClockColor = d.lockClockColor, lockFont = d.lockFont,
             lockShowDate = d.lockShowDate, lockPanelTint = d.lockPanelTint, lockBorder = d.lockBorder, lockBevel = d.lockBevel, lockFrame = d.lockFrame,

@@ -53,7 +53,7 @@ val LocalLook = compositionLocalOf { Look() }
 /** The font of the bubble names; null keeps the screen's font. */
 val LocalNameFont = compositionLocalOf<FontFamily?> { null }
 
-fun Settings.look() = Look(
+fun Settings.look(saver: Boolean = false) = Look(
     bodyMode = bodyMode,
     bodyColor = bodyColor,
     accent = Color(accent),
@@ -64,16 +64,16 @@ fun Settings.look() = Look(
     highlight = highlight,
     thickness = thickness,
     dome = dome,
-    sway = if (reduceMotion) 0f else sway,
-    tapAnim = if (reduceMotion) 2 else tapAnim,
+    sway = if (reduceMotion || saver) 0f else sway,
+    tapAnim = if (reduceMotion || saver) 2 else tapAnim,
     nameSize = nameSize,
     nameWeight = when (nameWeight) { 0 -> FontWeight.Light; 2 -> FontWeight.Bold; else -> FontWeight.Normal },
     nameColor = Color(nameColor),
     namePill = namePill,
     // Light mode keeps the battery: only the one you are on moves.
-    scrollNames = if (lightMode && scrollNames == 2) 1 else scrollNames,
+    scrollNames = if ((lightMode || saver) && scrollNames == 2) 1 else scrollNames,
     sceneSpeed = sceneSpeed,
-    reduceMotion = reduceMotion,
+    reduceMotion = reduceMotion || saver,
     showClock = showClock,
     barOpacity = barOpacity,
     barColor = Color(barColor),
@@ -81,11 +81,11 @@ fun Settings.look() = Look(
     clockSize = clockSize,
     glass = if (glassBubbles) glass else 0f,
     bubbleAlpha = bubbleAlpha,
-    symbols = if (lightMode) minOf(symbolCount, 18) else symbolCount,
-    light = lightMode,
+    symbols = if (lightMode || saver) minOf(symbolCount, 18) else symbolCount,
+    light = lightMode || saver,
     batteryLow = batteryLow,
     batteryCritical = batteryCritical,
-    tilt = if (parallax && !lightMode && !reduceMotion) parallaxStrength else 0f,
+    tilt = if (parallax && !lightMode && !reduceMotion && !saver) parallaxStrength else 0f,
 )
 
 /** The swatches offered wherever a colour is picked. */

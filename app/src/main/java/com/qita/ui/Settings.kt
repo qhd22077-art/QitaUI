@@ -199,6 +199,10 @@ data class Settings(
     val reduceMotion: Boolean = false,
     /** Tilting the device shifts the wallpaper, bubbles and lock screen against each other; [parallaxStrength] scales it. */
     val parallax: Boolean = true,
+    /** Battery saver: 0 off, 1 on automatically when the battery is low (and not charging), 2 always on. */
+    val saverMode: Int = 0,
+    /** A count of waiting notifications on each bubble (needs notification access). */
+    val badges: Boolean = true,
     val parallaxStrength: Float = 1f,
     val showClock: Boolean = true,
     val barOpacity: Float = 1f,
@@ -315,6 +319,8 @@ class SettingsStore(private val context: Context) {
         sceneSpeed = prefs.getFloat("sceneSpeed", 1f),
         reduceMotion = prefs.getBoolean("reduceMotion", false),
         parallax = prefs.getBoolean("parallax", true),
+        saverMode = prefs.getInt("saverMode", 0),
+        badges = prefs.getBoolean("badges", true),
         parallaxStrength = prefs.getFloat("parallaxStrength", 1f),
         showClock = prefs.getBoolean("showClock", true),
         barOpacity = prefs.getFloat("barOpacity", 1f),
@@ -408,6 +414,8 @@ class SettingsStore(private val context: Context) {
             .putFloat("sceneSpeed", s.sceneSpeed)
             .putBoolean("reduceMotion", s.reduceMotion)
             .putBoolean("parallax", s.parallax)
+            .putInt("saverMode", s.saverMode)
+            .putBoolean("badges", s.badges)
             .putFloat("parallaxStrength", s.parallaxStrength)
             .putBoolean("showClock", s.showClock)
             .putFloat("barOpacity", s.barOpacity)

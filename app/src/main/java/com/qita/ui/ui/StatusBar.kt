@@ -134,6 +134,8 @@ fun StatusBar(
             if (status.wifi) WifiIcon() else if (status.cellular) SignalIcon()
             if (status.bluetooth) BluetoothIcon()
             if (status.silent) SilentIcon()
+            // The battery saver is working.
+            if (com.qita.ui.BatterySaver.active) Text("ECO", color = Color(0xFF7CFC9A), fontSize = 10.sp, fontWeight = FontWeight.Bold)
             ScreenRotator.onRotate?.let { rotate ->
                 Box(Modifier.clip(CircleShape).clickable(onClick = rotate).padding(horizontal = 6.dp, vertical = 4.dp)) { RotateIcon() }
             }

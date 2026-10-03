@@ -21,6 +21,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -98,6 +99,8 @@ fun Bubble(
     scrollRoll: () -> Float = { 0f },
     /** 0 (far, top row) .. 1 (near, bottom row): nearer bubbles are a little bigger with a longer shadow. */
     depth: Float = 0.5f,
+    /** Number of notifications waiting for this app (a folder: for all its apps); 0 shows no badge. */
+    badge: Int = 0,
 ) {
     val look = LocalLook.current
     val interaction = remember { MutableInteractionSource() }
@@ -244,6 +247,7 @@ fun Bubble(
         val styleId = app.action?.id
         // Every bubble can be made see-through (Settings, Bubbles & Icons), and a system bubble has its own translucency on top of that.
         val seeThrough = look.bubbleAlpha
+        Box {
         Box(
             if (styleId != null || seeThrough < 0.999f) Modifier.graphicsLayer { alpha = (if (styleId != null) BubbleStyles.all[styleId]?.alpha ?: 1f else 1f) * seeThrough }
             else Modifier,
@@ -293,6 +297,9 @@ fun Bubble(
                 }
             }
         }
+            // The waiting-notification count sits on the top right of the bubble, solid even when the bubble is see-through.
+            if (badge > 0 && !editing) CountBadge(badge, Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-2).dp))
+        }
         if (showLabel) {
             // The pill behind a name: on the selected bubble, or always if chosen. Dark names on a pale pill keep their contrast.
             val pill = lit || look.namePill
@@ -319,5 +326,20 @@ fun Bubble(
                 textAlign = TextAlign.Center,
             )
         }
+    }
+}
+
+/** A small red count for waiting notifications. */
+@Composable
+private fun CountBadge(count: Int, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .defaultMinSize(minWidth = 20.dp, minHeight = 20.dp)
+            .background(Color(0xFFE53935), CircleShape)
+            .border(1.5.dp, Color.White, CircleShape)
+            .padding(horizontal = 5.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(if (count > 99) "99+" else "$count", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
     }
 }

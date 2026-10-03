@@ -43,6 +43,9 @@ object Notifications {
     /** The current notifications, newest first. */
     val items = mutableStateListOf<NotificationItem>()
 
+    /** How many notifications each app has waiting (read where it is drawn, so it follows the list). */
+    val counts: Map<String, Int> get() = items.groupingBy { it.packageName }.eachCount()
+
     /** Whether the user has allowed this launcher to read notifications. */
     var granted by mutableStateOf(false)
         private set

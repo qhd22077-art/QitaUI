@@ -354,8 +354,22 @@ fun HomeScreen(homePresses: Int = 0) {
     // Where the pages are on screen (root pixels), so a dropped bubble can be put in the nearest free slot.
     var pageArea by remember { mutableStateOf(Rect.Zero) }
     // The interface sounds follow the settings (and are off in Light mode, which saves battery).
-    LaunchedEffect(settings.soundOn, settings.soundVolume, settings.soundMedia, settings.lightMode) {
-        com.qita.ui.Sounds.configure(context, settings.soundOn && !settings.lightMode, settings.soundVolume, settings.soundMedia)
+    // The battery saver: by hand, or automatically while the battery is low and not charging (checked once a minute).
+    LaunchedEffect(settings.saverMode, settings.batteryLow) {
+        when (settings.saverMode) {
+            2 -> com.qita.ui.BatterySaver.active = true
+            1 -> while (true) {
+                val st = readStatus(context)
+                com.qita.ui.BatterySaver.active = !st.charging && st.battery <= settings.batteryLow
+                kotlinx.coroutines.delay(60_000)
+            }
+            else -> com.qita.ui.BatterySaver.active = false
+        }
+    }
+    // Light mode, or the battery saver working: the same lighter drawing.
+    val lightNow = settings.lightMode || com.qita.ui.BatterySaver.active
+    LaunchedEffect(settings.soundOn, settings.soundVolume, settings.soundMedia, lightNow) {
+        com.qita.ui.Sounds.configure(context, settings.soundOn && !lightNow, settings.soundVolume, settings.soundMedia)
     }
     // Turning a home page.
     LaunchedEffect(pagerState) {
@@ -377,8 +391,8 @@ fun HomeScreen(homePresses: Int = 0) {
     // The page whose photo (if any) is shown: the nearest one while swiping.
     val bgPage by remember { derivedStateOf { (pagerState.currentPage + pagerState.currentPageOffsetFraction).roundToInt().coerceAtLeast(0) } }
     // Keep the photos of the page on screen and its neighbours decoded and drop the rest, so many big pictures cost little memory.
-    LaunchedEffect(bgPage, pageBg, settings.lightMode, wallpaperRev) {
-        val near = if (settings.lightMode) listOf(bgPage) else listOf(bgPage, bgPage + 1, bgPage - 1)
+    LaunchedEffect(bgPage, pageBg, lightNow, wallpaperRev) {
+        val near = if (lightNow) listOf(bgPage) else listOf(bgPage, bgPage + 1, bgPage - 1)
         val want = near.filter { it >= 0 && pageBg[it] == PAGE_PHOTO }
         val have = pageWallpapers
         val loaded = withContext(Dispatchers.IO) { want.filter { it !in have }.mapNotNull { p -> store.loadWallpaper(p)?.let { p to it } } }
@@ -390,7 +404,7 @@ fun HomeScreen(homePresses: Int = 0) {
     LaunchedEffect(Controller.padActive) { if (Controller.padActive) com.qita.ui.Trophies.award("pad") }
     // Tilt (parallax): the sensor is only listened to while the launcher is on screen and it is wanted (not in Light mode, with
     // Reduce motion, below the low-battery level, or under another screen; the lock screen shifts too).
-    val tiltWanted = settings.parallax && !settings.lightMode && !settings.reduceMotion && (showLock || !anyOverlay)
+    val tiltWanted = settings.parallax && !lightNow && !settings.reduceMotion && (showLock || !anyOverlay)
     var tiltResumed by remember { mutableStateOf(true) }
     // Back from a game: the time away is its play time (a Flash game open in the launcher is settled when it closes instead).
     val flashOpenNow by rememberUpdatedState(flashGame != null)
@@ -1120,19 +1134,19 @@ fun HomeScreen(homePresses: Int = 0) {
     val hintPad by animateDpAsState(if (Controller.padActive) 46.dp else 0.dp, tween(220), label = "hintPad")
 
     // One looping clock drives the idle sway of every 3D bubble.
-    val ballClock = rememberLoopClock(9000, settings.lightMode)
+    val ballClock = rememberLoopClock(9000, lightNow)
     // Light mode: the system picks the refresh rate instead of asking for the fastest, and image caches are smaller.
     val activity = context.findMainActivity()
-    LaunchedEffect(settings.lightMode) {
-        activity?.setTopRefreshRate(!settings.lightMode)
-        RemoteImages.setLight(settings.lightMode)
+    LaunchedEffect(lightNow) {
+        activity?.setTopRefreshRate(!lightNow)
+        RemoteImages.setLight(lightNow)
     }
     CompositionLocalProvider(
         LocalFullArt provides settings.fullArt,
         LocalBall3D provides settings.bubble3d,
         LocalBallClock provides ballClock,
         LocalTextStyle provides LocalTextStyle.current.merge(TextStyle(fontFamily = familyOf(settings.uiFontChoice))),
-        LocalLook provides settings.look(),
+        LocalLook provides settings.look(com.qita.ui.BatterySaver.active),
         LocalNameFont provides familyOf(settings.nameFont),
     ) {
     Box(Modifier.fillMaxSize().onSizeChanged { rootWidth = it.width; rootHeight = it.height; PadNav.viewport = Rect(0f, 0f, it.width.toFloat(), it.height.toFloat()) }) {
@@ -1952,7 +1966,9 @@ private fun BubblePager(
     onDisposed: (String) -> Unit,
 ) {
     val pages = apps.chunked(layout.size)
-    val tilt = if (settings.parallax && !settings.lightMode && !settings.reduceMotion) settings.parallaxStrength else 0f
+    val tilt = if (settings.parallax && !settings.lightMode && !settings.reduceMotion && !com.qita.ui.BatterySaver.active) settings.parallaxStrength else 0f
+    // Waiting notifications per app, counted once for all bubbles.
+    val badgeCounts = if (settings.badges && com.qita.ui.Notifications.granted) com.qita.ui.Notifications.counts else emptyMap()
     if (pages.isEmpty()) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -2000,7 +2016,7 @@ private fun BubblePager(
             Modifier.fillMaxSize().padScroller { pagerState.animateScrollBy(it) },
             // The page edit view zooms out: the pages shrink inside a margin, so the frame and neighbours show.
             contentPadding = PaddingValues(horizontal = (44.dp * editAmt()).coerceAtLeast(0.dp), vertical = (22.dp * editAmt()).coerceAtLeast(0.dp)),
-            beyondViewportPageCount = minOf(pages.size, if (settings.lightMode) 1 else 3),
+            beyondViewportPageCount = minOf(pages.size, if (settings.lightMode || com.qita.ui.BatterySaver.active) 1 else 3),
         ) { index ->
             val pageApps = pages.getOrElse(index) { emptyList() }
             BoxWithConstraints(
@@ -2067,6 +2083,7 @@ private fun BubblePager(
                                     }
                                 },
                             padKey = "home:${app.packageName}",
+                            badge = app.folderMembers?.sumOf { badgeCounts[it.packageName] ?: 0 } ?: (badgeCounts[app.packageName] ?: 0),
                             hidden = app.packageName == hiddenPackage,
                             shape = if (settings.roundedBubbles) RoundedCornerShape(28) else CircleShape,
                             showLabel = settings.showLabels,
