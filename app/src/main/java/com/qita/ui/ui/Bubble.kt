@@ -242,7 +242,12 @@ fun Bubble(
     ) {
         // A built-in bubble can be made translucent (the name under it stays solid).
         val styleId = app.action?.id
-        Box(if (styleId != null) Modifier.graphicsLayer { alpha = BubbleStyles.all[styleId]?.alpha ?: 1f } else Modifier) {
+        // Every bubble can be made see-through (Settings, Bubbles & Icons), and a system bubble has its own translucency on top of that.
+        val seeThrough = look.bubbleAlpha
+        Box(
+            if (styleId != null || seeThrough < 0.999f) Modifier.graphicsLayer { alpha = (if (styleId != null) BubbleStyles.all[styleId]?.alpha ?: 1f else 1f) * seeThrough }
+            else Modifier,
+        ) {
             if (app.folderMembers != null) {
                 // A folder is clear glass with its apps inside, not a coloured ball.
                 FolderGlass(

@@ -37,6 +37,8 @@ data class Look(
     val clockSize: Float = 1f,
     /** 0 opaque discs .. 1 clear glass (PS Vita mode). */
     val glass: Float = 0f,
+    /** 1 solid .. lower: every bubble lets the wallpaper show through. */
+    val bubbleAlpha: Float = 1f,
     val symbols: Int = 45,
     /** Light mode: the drawing code skips its costliest effects. */
     val light: Boolean = false,
@@ -78,6 +80,7 @@ fun Settings.look() = Look(
     indicatorColor = Color(indicatorColor),
     clockSize = clockSize,
     glass = if (glassBubbles) glass else 0f,
+    bubbleAlpha = bubbleAlpha,
     symbols = if (lightMode) minOf(symbolCount, 18) else symbolCount,
     light = lightMode,
     batteryLow = batteryLow,

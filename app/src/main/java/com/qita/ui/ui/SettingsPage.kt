@@ -364,6 +364,8 @@ fun SettingsPage(
                                 // The glass is drawn by the live 3D shader; without it (turned off, or before Android 13) bubbles stay solid.
                                 if (!settings.bubble3d || !com.qita.ui.ui.Ball3D.supported) InfoBox("Glass needs “Live 3D bubbles” (Android 13 or later). Turn it on below, or the bubbles stay solid.")
                             }
+                            // See-through: every bubble lets the wallpaper show, whichever style it has (names stay solid).
+                            SliderRow("set:bubbleAlpha", "◌", "Bubble transparency (how much of the wallpaper shows through)", 1f - settings.bubbleAlpha, 0f..0.8f, 0.05f) { onChange(settings.copy(bubbleAlpha = 1f - it)) }
                             CheckRow("set:bubble3d", "◍", "Live 3D bubbles (Android 13+)", settings.bubble3d) { onChange(settings.copy(bubble3d = it)) }
                             CheckRow("set:fullart", "◉", "Full-art bubbles (Vita style)", settings.fullArt) { onChange(settings.copy(fullArt = it)) }
                             CheckRow("set:rounded", "▢", "Rounded square bubbles", settings.roundedBubbles) { onChange(settings.copy(roundedBubbles = it)) }
@@ -844,7 +846,7 @@ private fun resetPage(page: String, s: Settings): Settings {
             sortNewest = d.sortNewest, autoAdd = d.autoAdd, dragMakesFolder = d.dragMakesFolder, freePlacement = d.freePlacement,
         )
         "bubbles" -> s.copy(
-            glassBubbles = d.glassBubbles, glass = d.glass, bubble3d = d.bubble3d, fullArt = d.fullArt, roundedBubbles = d.roundedBubbles,
+            glassBubbles = d.glassBubbles, glass = d.glass, bubbleAlpha = d.bubbleAlpha, bubble3d = d.bubble3d, fullArt = d.fullArt, roundedBubbles = d.roundedBubbles,
             bodyMode = d.bodyMode, bodyColor = d.bodyColor, iconScale = d.iconScale, iconSat = d.iconSat, iconBright = d.iconBright,
             thickness = d.thickness, dome = d.dome, rimWidth = d.rimWidth, highlight = d.highlight, sway = d.sway, tapAnim = d.tapAnim,
         )

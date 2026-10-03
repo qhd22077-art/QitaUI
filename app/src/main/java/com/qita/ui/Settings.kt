@@ -162,6 +162,8 @@ data class Settings(
     val lightMode: Boolean = false,
     val glass: Float = 0.85f,
     val glassBubbles: Boolean = true,
+    /** How solid every bubble is: 1 solid, lower lets the wallpaper show through (the bubble name stays solid). */
+    val bubbleAlpha: Float = 1f,
     val prevTheme: Int = 0,
     val bodyMode: Int = 0,
     val bodyColor: Int = 0xFF4A78D0.toInt(),
@@ -283,6 +285,7 @@ class SettingsStore(private val context: Context) {
         batteryCritical = prefs.getInt("batteryCritical", 8),
         glass = prefs.getFloat("glass", 0.85f),
         glassBubbles = prefs.getBoolean("glassBubbles", true),
+        bubbleAlpha = prefs.getFloat("bubbleAlpha", 1f),
         prevTheme = prefs.getInt("prevTheme", 0),
         bodyMode = prefs.getInt("bodyMode", 0),
         bodyColor = prefs.getInt("bodyColor", 0xFF4A78D0.toInt()),
@@ -375,6 +378,7 @@ class SettingsStore(private val context: Context) {
             .putInt("batteryCritical", s.batteryCritical)
             .putFloat("glass", s.glass)
             .putBoolean("glassBubbles", s.glassBubbles)
+            .putFloat("bubbleAlpha", s.bubbleAlpha)
             .putInt("prevTheme", s.prevTheme)
             .putInt("bodyMode", s.bodyMode)
             .putInt("bodyColor", s.bodyColor)
