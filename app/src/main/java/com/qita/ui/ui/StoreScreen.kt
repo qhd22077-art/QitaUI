@@ -467,7 +467,7 @@ fun StoreScreen(
         val url = when {
             t.startsWith("http://") || t.startsWith("https://") -> t
             " " !in t && "." in t -> "https://$t"
-            else -> "https://duckduckgo.com/?q=" + java.net.URLEncoder.encode(t, "UTF-8")
+            else -> com.qita.ui.SearchEngines.url(settings.searchEngine, t)
         }
         openPage(url)
     }

@@ -117,6 +117,8 @@ data class Settings(
     val particleCount: Int = 28,
     val dim: Float = 0f,
     val haptics: Boolean = true,
+    /** The web search used by the Browser and the Store: 0 Google, 1 Bing (Edge), 2 DuckDuckGo. */
+    val searchEngine: Int = 0,
     val cursorMode: Boolean = false,
     val cursorSpeed: Float = 1f,
     val psLabels: Boolean = true,
@@ -250,6 +252,7 @@ class SettingsStore(private val context: Context) {
         particleCount = prefs.getInt("particleCount", 28),
         dim = prefs.getFloat("dim", 0f),
         haptics = prefs.getBoolean("haptics", true),
+        searchEngine = prefs.getInt("searchEngine", 0),
         cursorMode = prefs.getBoolean("cursorMode", false),
         cursorSpeed = prefs.getFloat("cursorSpeed", 1f),
         psLabels = prefs.getBoolean("psLabels", true),
@@ -345,6 +348,7 @@ class SettingsStore(private val context: Context) {
             .putInt("particleCount", s.particleCount)
             .putFloat("dim", s.dim)
             .putBoolean("haptics", s.haptics)
+            .putInt("searchEngine", s.searchEngine)
             .putBoolean("cursorMode", s.cursorMode)
             .putFloat("cursorSpeed", s.cursorSpeed)
             .putBoolean("psLabels", s.psLabels)
