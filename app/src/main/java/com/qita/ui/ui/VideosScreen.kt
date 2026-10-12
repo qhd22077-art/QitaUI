@@ -139,11 +139,14 @@ private fun clock(ms: Long): String {
 /** Full-screen playback with Android's own controls (tap the picture to show them). */
 @Composable
 private fun Player(video: Video, onClose: () -> Unit) {
+    var view by remember { mutableStateOf<VideoView?>(null) }
+    var paused by remember { mutableStateOf(false) }
     CompositionLocalProvider(LocalPadLayer provides 4) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             AndroidView(
                 factory = { c ->
                     VideoView(c).apply {
+                        view = this
                         val controls = MediaController(c)
                         controls.setAnchorView(this)
                         setMediaController(controls)
@@ -156,7 +159,15 @@ private fun Player(video: Video, onClose: () -> Unit) {
                 modifier = Modifier.align(Alignment.Center).fillMaxSize(),
                 onRelease = { it.stopPlayback() },
             )
-            Row(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp)) { BarButton("player:close", "Close", onClose) }
+            // Buttons for a gamepad (Android's own controls only show when the picture is touched).
+            Row(Modifier.align(Alignment.BottomCenter).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                BarButton("player:back", "◀ 10 s") { view?.let { it.seekTo((it.currentPosition - 10_000).coerceAtLeast(0)) } }
+                BarButton("player:pause", if (paused) "Play" else "Pause") {
+                    view?.let { if (it.isPlaying) { it.pause(); paused = true } else { it.start(); paused = false } }
+                }
+                BarButton("player:fwd", "10 s ▶") { view?.let { it.seekTo((it.currentPosition + 10_000).coerceAtMost(it.duration)) } }
+                BarButton("player:close", "Close", onClose)
+            }
         }
     }
 }

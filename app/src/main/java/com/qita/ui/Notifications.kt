@@ -26,6 +26,8 @@ class NotificationItem(
     val progress: Int,
     val icon: ImageBitmap?,
     val intent: PendingIntent?,
+    /** A running service's notification (a music player, a sync): shown in the panel but not counted on a bubble. */
+    val ongoing: Boolean = false,
 )
 
 /** Android hands notifications only to a listener service the user has allowed; this service feeds [Notifications]. */
@@ -44,7 +46,7 @@ object Notifications {
     val items = mutableStateListOf<NotificationItem>()
 
     /** How many notifications each app has waiting (read where it is drawn, so it follows the list). */
-    val counts: Map<String, Int> get() = items.groupingBy { it.packageName }.eachCount()
+    val counts: Map<String, Int> get() = items.filter { !it.ongoing }.groupingBy { it.packageName }.eachCount()
 
     /** Whether the user has allowed this launcher to read notifications. */
     var granted by mutableStateOf(false)
@@ -78,6 +80,7 @@ object Notifications {
                 NotificationItem(
                     key = sbn.key, packageName = sbn.packageName, title = title.ifBlank { appLabel(s, sbn.packageName) }, text = text,
                     time = sbn.postTime, progress = progress, icon = iconOf(s, sbn.packageName), intent = n.contentIntent,
+                    ongoing = n.flags and Notification.FLAG_ONGOING_EVENT != 0,
                 )
             }
         items.clear()

@@ -203,10 +203,10 @@ class RecordService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == STOP) { finish(); return START_NOT_STICKY }
-        if (Capture.recording) return START_NOT_STICKY
         val note = notification()
-        // Must be announced right away as a media projection service, before the projection is used.
+        // Must be announced right away as a media projection service (Android ends an app that starts one and does not), even if one is running already.
         if (Build.VERSION.SDK_INT >= 29) startForeground(ID, note, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION) else startForeground(ID, note)
+        if (Capture.recording) return START_NOT_STICKY
         val code = intent?.getIntExtra("code", Activity.RESULT_CANCELED) ?: Activity.RESULT_CANCELED
         val data = if (Build.VERSION.SDK_INT >= 33) intent?.getParcelableExtra("data", Intent::class.java) else @Suppress("DEPRECATION") intent?.getParcelableExtra<Intent>("data")
         if (data == null || !begin(code, data)) { fail("Could not start the recording"); return START_NOT_STICKY }
@@ -216,6 +216,7 @@ class RecordService : Service() {
     private fun begin(code: Int, data: Intent): Boolean = runCatching {
         val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         val p = mpm.getMediaProjection(code, data) ?: return false
+        projection = p
         // Android 14 requires a callback before the projection is used; it also tells us if the user ends the recording from the system.
         p.registerCallback(object : MediaProjection.Callback() { override fun onStop() { finish() } }, Handler(Looper.getMainLooper()))
         val metrics = DisplayMetrics()
@@ -225,7 +226,9 @@ class RecordService : Service() {
         val w = (metrics.widthPixels * scale).toInt() and 1.inv()
         val h = (metrics.heightPixels * scale).toInt() and 1.inv()
         val t = Capture.newVideoTarget(this) ?: return false
+        target = t
         val r = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(this) else @Suppress("DEPRECATION") MediaRecorder()
+        recorder = r
         r.setVideoSource(MediaRecorder.VideoSource.SURFACE)
         r.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
         r.setOutputFile(t.pfd!!.fileDescriptor)
@@ -236,12 +239,18 @@ class RecordService : Service() {
         r.prepare()
         display = p.createVirtualDisplay("QitaUI", w, h, metrics.densityDpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, r.surface, null, null)
         r.start()
-        projection = p
-        recorder = r
-        target = t
         Capture.recording = true
         true
-    }.getOrDefault(false)
+    }.getOrElse {
+        // Something failed part way: drop the empty file and let go of everything that was opened.
+        runCatching { recorder?.release() }
+        runCatching { display?.release() }
+        runCatching { projection?.stop() }
+        runCatching { target?.pfd?.close() }
+        target?.finish(false)
+        recorder = null; display = null; projection = null; target = null
+        false
+    }
 
     private fun fail(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
