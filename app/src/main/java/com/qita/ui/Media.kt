@@ -125,7 +125,12 @@ object Media {
             thumbs.get(key)?.let { return it }
             val bmp = runCatching {
                 if (Build.VERSION.SDK_INT >= 29) c.contentResolver.loadThumbnail(uri, Size(px, px), null) else decode(c, uri, px)
-            }.getOrNull() ?: runCatching { decode(c, uri, px) }.getOrNull()
+            }.getOrNull() ?: runCatching {
+                if (uri.toString().contains("/video/")) {
+                    @Suppress("DEPRECATION")
+                    MediaStore.Video.Thumbnails.getThumbnail(c.contentResolver, ContentUris.parseId(uri), MediaStore.Video.Thumbnails.MINI_KIND, null)
+                } else decode(c, uri, px)
+            }.getOrNull()
             return bmp?.asImageBitmap()?.also { thumbs.put(key, it) }
         } finally {
             thumbGate.release()
