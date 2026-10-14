@@ -103,7 +103,7 @@ private val PAGES = listOf(
         listOf(
             "Screenshot of the launcher" to "saves the home screen to Photos instantly.",
             "Screenshot in 5 seconds" to "captures any screen, such as a game. Turn on QitaUI screenshots once in Android's Accessibility settings; the menu opens it for you.",
-            "Record the screen" to "asks Android for permission each time and saves a video to Videos. Stop it from the menu or the notification. Sound is not recorded.",
+            "Record the screen" to "asks Android for permission each time and saves a video to Videos. Stop it from the menu or the notification. Choose sound (game audio or microphone) in Settings, System.",
         ),
     ),
     TutorialPage(

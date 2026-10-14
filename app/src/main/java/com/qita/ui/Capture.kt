@@ -10,10 +10,15 @@ import android.app.Service
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
+import android.media.MediaCodec
+import android.media.MediaExtractor
+import android.media.MediaFormat
+import android.media.MediaMuxer
 import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
@@ -36,6 +41,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import java.io.File
+import java.io.FileOutputStream
+import java.nio.ByteBuffer
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -73,7 +80,7 @@ object Capture {
                 else runCatching { c.contentResolver.delete(uri, null, null) }
                 Unit
             }
-            if (video) Target(null, c.contentResolver.openFileDescriptor(uri, "w"), done)
+            if (video) Target(null, c.contentResolver.openFileDescriptor(uri, "rw"), done)
             else Target(c.contentResolver.openOutputStream(uri), null, done)
         } else {
             val dir = File(c.getExternalFilesDir(if (video) Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_PICTURES), "QitaUI").apply { mkdirs() }
@@ -130,8 +137,9 @@ object Capture {
     fun recordRequest(c: Context): Intent =
         (c.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager).createScreenCaptureIntent()
 
-    fun startRecording(c: Context, resultCode: Int, data: Intent) {
-        val i = Intent(c, RecordService::class.java).putExtra("code", resultCode).putExtra("data", data)
+    /** [audio]: 0 no sound, 1 what the device plays, 2 the microphone. */
+    fun startRecording(c: Context, resultCode: Int, data: Intent, audio: Int = 0) {
+        val i = Intent(c, RecordService::class.java).putExtra("code", resultCode).putExtra("data", data).putExtra("audio", audio)
         if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i) else c.startService(i)
     }
 
@@ -182,12 +190,20 @@ class QitaCaptureService : AccessibilityService() {
     }
 }
 
-/** Records the screen with MediaProjection into Movies/QitaUI (video only), with a notification that has a Stop button. */
+/**
+ * Records the screen with MediaProjection into Movies/QitaUI, with a notification that has a Stop button. With sound on, the video goes
+ * to a temporary file first and, when the recording stops, is joined with the sound ([SoundCapture]) into the final file.
+ */
 class RecordService : Service() {
     private var projection: MediaProjection? = null
     private var display: VirtualDisplay? = null
     private var recorder: MediaRecorder? = null
     private var target: Capture.Target? = null
+    private var sound: SoundCapture? = null
+    private var videoFile: File? = null
+    /** True while the finished recording is being joined with its sound. */
+    @Volatile private var busy = false
+    private val main = Handler(Looper.getMainLooper())
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -203,22 +219,30 @@ class RecordService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == STOP) { finish(); return START_NOT_STICKY }
+        val audio = intent?.getIntExtra("audio", 0) ?: 0
         val note = notification()
         // Must be announced right away as a media projection service (Android ends an app that starts one and does not), even if one is running already.
-        if (Build.VERSION.SDK_INT >= 29) startForeground(ID, note, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION) else startForeground(ID, note)
+        // The microphone type is only added when the permission is there: Android 14 refuses it otherwise.
+        if (Build.VERSION.SDK_INT >= 29) {
+            var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+            if (audio != 0 && Build.VERSION.SDK_INT >= 30 && checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            }
+            startForeground(ID, note, type)
+        } else startForeground(ID, note)
         if (Capture.recording) return START_NOT_STICKY
         val code = intent?.getIntExtra("code", Activity.RESULT_CANCELED) ?: Activity.RESULT_CANCELED
         val data = if (Build.VERSION.SDK_INT >= 33) intent?.getParcelableExtra("data", Intent::class.java) else @Suppress("DEPRECATION") intent?.getParcelableExtra<Intent>("data")
-        if (data == null || !begin(code, data)) { fail("Could not start the recording"); return START_NOT_STICKY }
+        if (data == null || !begin(code, data, audio)) { fail("Could not start the recording"); return START_NOT_STICKY }
         return START_NOT_STICKY
     }
 
-    private fun begin(code: Int, data: Intent): Boolean = runCatching {
+    private fun begin(code: Int, data: Intent, audio: Int): Boolean = runCatching {
         val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         val p = mpm.getMediaProjection(code, data) ?: return false
         projection = p
         // Android 14 requires a callback before the projection is used; it also tells us if the user ends the recording from the system.
-        p.registerCallback(object : MediaProjection.Callback() { override fun onStop() { finish() } }, Handler(Looper.getMainLooper()))
+        p.registerCallback(object : MediaProjection.Callback() { override fun onStop() { finish() } }, main)
         val metrics = DisplayMetrics()
         @Suppress("DEPRECATION") (getSystemService(WINDOW_SERVICE) as WindowManager).defaultDisplay.getRealMetrics(metrics)
         // A little smaller than the screen on big displays keeps files and effort modest; sizes must be even.
@@ -231,7 +255,13 @@ class RecordService : Service() {
         recorder = r
         r.setVideoSource(MediaRecorder.VideoSource.SURFACE)
         r.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-        r.setOutputFile(t.pfd!!.fileDescriptor)
+        if (audio != 0) {
+            val temp = File(cacheDir, "rec_video.mp4")
+            videoFile = temp
+            r.setOutputFile(temp.path)
+        } else {
+            r.setOutputFile(t.pfd!!.fileDescriptor)
+        }
         r.setVideoEncoder(MediaRecorder.VideoEncoder.H264)
         r.setVideoSize(w, h)
         r.setVideoFrameRate(30)
@@ -240,6 +270,10 @@ class RecordService : Service() {
         display = p.createVirtualDisplay("QitaUI", w, h, metrics.densityDpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, r.surface, null, null)
         r.start()
         Capture.recording = true
+        if (audio != 0) {
+            val s = SoundCapture(p, audio, File(cacheDir, "rec_audio.m4a"))
+            if (s.start()) sound = s else Toast.makeText(this, "No sound could be recorded on this device, so the recording has none", Toast.LENGTH_LONG).show()
+        }
         true
     }.getOrElse {
         // Something failed part way: drop the empty file and let go of everything that was opened.
@@ -248,7 +282,8 @@ class RecordService : Service() {
         runCatching { projection?.stop() }
         runCatching { target?.pfd?.close() }
         target?.finish(false)
-        recorder = null; display = null; projection = null; target = null
+        videoFile?.delete()
+        recorder = null; display = null; projection = null; target = null; videoFile = null; sound = null
         false
     }
 
@@ -258,21 +293,107 @@ class RecordService : Service() {
     }
 
     private fun finish(silent: Boolean = false) {
-        var ok = false
-        if (recorder != null) {
-            // stop() throws if almost nothing was recorded; then the file is dropped.
-            ok = runCatching { recorder?.stop() }.isSuccess
-        }
-        runCatching { recorder?.release() }
-        runCatching { display?.release() }
-        runCatching { projection?.stop() }
-        runCatching { target?.pfd?.close() }
-        target?.finish(ok)
-        if (!silent && recorder != null) Toast.makeText(this, if (ok) "Recording saved to Videos" else "Recording was too short to save", Toast.LENGTH_SHORT).show()
-        recorder = null; display = null; projection = null; target = null
+        if (busy) return
+        val rec = recorder
+        val disp = display
+        val proj = projection
+        val tgt = target
+        val snd = sound
+        val video = videoFile
+        recorder = null; display = null; projection = null; target = null; sound = null; videoFile = null
         Capture.recording = false
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        // stop() throws if almost nothing was recorded; then the file is dropped.
+        val ok = rec != null && runCatching { rec.stop() }.isSuccess
+        runCatching { rec?.release() }
+        runCatching { disp?.release() }
+        runCatching { proj?.stop() }
+        snd?.stop()
+        if (video == null) {
+            runCatching { tgt?.pfd?.close() }
+            tgt?.finish(ok)
+            if (!silent && rec != null) Toast.makeText(this, if (ok) "Recording saved to Videos" else "Recording was too short to save", Toast.LENGTH_SHORT).show()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return
+        }
+        // With sound: join the video and the sound into the final file, off the main thread.
+        busy = true
+        Thread {
+            var saved = false
+            if (ok && tgt != null) {
+                saved = runCatching { join(video, snd?.takeIf { it.ok }, tgt) }.getOrDefault(false)
+                // If joining failed, keep the picture without sound rather than lose the recording.
+                if (!saved) saved = runCatching { copyPlain(video, tgt) }.getOrDefault(false)
+            }
+            runCatching { tgt?.pfd?.close() }
+            tgt?.finish(saved)
+            video.delete()
+            snd?.file?.delete()
+            val note = if (!saved) "Recording was too short to save" else if (snd == null || !snd.ok) "Recording saved to Videos (without sound)" else "Recording saved to Videos"
+            main.post {
+                if (!silent) Toast.makeText(this, note, Toast.LENGTH_SHORT).show()
+                busy = false
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+        }.start()
+    }
+
+    /** Writes [video] and [sound] (if there is any) as one MP4 into the gallery file. */
+    private fun join(video: File, sound: SoundCapture?, tgt: Capture.Target): Boolean {
+        val fd = tgt.pfd?.fileDescriptor ?: return false
+        val muxer = MediaMuxer(fd, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        val vx = MediaExtractor().apply { setDataSource(video.path) }
+        val ax = sound?.let { MediaExtractor().apply { setDataSource(it.file.path) } }
+        var started = false
+        try {
+            fun trackOf(x: MediaExtractor, prefix: String) = (0 until x.trackCount).first { x.getTrackFormat(it).getString(MediaFormat.KEY_MIME).orEmpty().startsWith(prefix) }
+            val vIn = trackOf(vx, "video/")
+            vx.selectTrack(vIn)
+            val vOut = muxer.addTrack(vx.getTrackFormat(vIn))
+            var aOut = -1
+            if (ax != null) {
+                val aIn = trackOf(ax, "audio/")
+                ax.selectTrack(aIn)
+                aOut = muxer.addTrack(ax.getTrackFormat(aIn))
+            }
+            muxer.start()
+            started = true
+            copySamples(vx, muxer, vOut)
+            if (ax != null) copySamples(ax, muxer, aOut)
+            muxer.stop()
+            started = false
+            return true
+        } finally {
+            if (started) runCatching { muxer.stop() }
+            runCatching { muxer.release() }
+            runCatching { vx.release() }
+            runCatching { ax?.release() }
+        }
+    }
+
+    private fun copySamples(x: MediaExtractor, muxer: MediaMuxer, track: Int) {
+        val buf = ByteBuffer.allocate(2 shl 20)
+        val info = MediaCodec.BufferInfo()
+        while (true) {
+            buf.clear()
+            val n = x.readSampleData(buf, 0)
+            if (n < 0) break
+            info.set(0, n, x.sampleTime, x.sampleFlags)
+            muxer.writeSampleData(track, buf, info)
+            x.advance()
+        }
+    }
+
+    /** The video as it is, into the gallery file (used when joining with the sound did not work). */
+    private fun copyPlain(video: File, tgt: Capture.Target): Boolean {
+        val fd = tgt.pfd?.fileDescriptor ?: return false
+        val out = FileOutputStream(fd)
+        out.channel.truncate(0)
+        out.channel.position(0)
+        video.inputStream().use { it.copyTo(out) }
+        out.flush()
+        return true
     }
 
     override fun onDestroy() {

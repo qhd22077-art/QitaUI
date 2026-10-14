@@ -304,9 +304,19 @@ fun HomeScreen(homePresses: Int = 0) {
     ) { r ->
         val d = r.data
         if (r.resultCode == android.app.Activity.RESULT_OK && d != null) {
-            com.qita.ui.Capture.startRecording(context, r.resultCode, d)
-            toast = "Recording. Stop it from the menu or the notification"
+            val want = settings.recordSound
+            val allowed = context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            // Game audio needs Android 10; without the permission or the version the recording simply has no sound.
+            val sound = if (want != 0 && allowed && (want == 2 || android.os.Build.VERSION.SDK_INT >= 29)) want else 0
+            com.qita.ui.Capture.startRecording(context, r.resultCode, d, sound)
+            toast = if (want != 0 && sound == 0) "Recording without sound. Stop it from the menu or the notification" else "Recording. Stop it from the menu or the notification"
         }
+    }
+    // Sound needs the microphone permission (also for game audio); asked before the screen capture question.
+    val audioPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { _ ->
+        runCatching { recordPermission.launch(com.qita.ui.Capture.recordRequest(context)) }.onFailure { toast = "Screen recording is not available" }
     }
 
     // The look of a built-in bubble (translucency, glass, tint, picture), edited in a panel.
@@ -1758,6 +1768,7 @@ fun HomeScreen(homePresses: Int = 0) {
                     MenuItem(if (com.qita.ui.Capture.recording) "Stop screen recording" else "Record the screen") {
                         showQuickMenu = false
                         if (com.qita.ui.Capture.recording) com.qita.ui.Capture.stopRecording(context)
+                        else if (settings.recordSound != 0 && context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) audioPermission.launch(android.Manifest.permission.RECORD_AUDIO)
                         else runCatching { recordPermission.launch(com.qita.ui.Capture.recordRequest(context)) }.onFailure { toast = "Screen recording is not available" }
                     },
                     MenuItem("Cancel") { showQuickMenu = false },

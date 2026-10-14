@@ -12,6 +12,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <!-- Sound in a screen recording: what the device plays, or the microphone, when the user asks for it. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Lets the user exempt the launcher from battery limits so phones and handhelds do not stop downloads. -->
@@ -68,8 +71,8 @@
 
         <!-- Lets the launcher show the notifications panel; the user grants this in Android settings. -->
         <service android:name=".DownloadService" android:exported="false" android:foregroundServiceType="dataSync" />
-        <!-- Screen recording (video only) with a Stop button in its notification. -->
-        <service android:name=".RecordService" android:exported="false" android:foregroundServiceType="mediaProjection" />
+        <!-- Screen recording (with sound if chosen) and a Stop button in its notification. -->
+        <service android:name=".RecordService" android:exported="false" android:foregroundServiceType="mediaProjection|microphone" />
         <!-- Screenshots of any screen, e.g. a game; the user switches this on once in Accessibility settings. -->
         <service
             android:name=".QitaCaptureService"

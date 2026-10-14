@@ -626,6 +626,8 @@ fun SettingsPage(
                         "system" -> {
                             ChoiceRow("set:orientation", "↻", "Screen orientation", listOf("Landscape", "Portrait", "Auto"), settings.orientation) { onChange(settings.copy(orientation = it)) }
                             ChoiceRow("set:search", "⌕", "Web search engine (Browser and Store)", listOf("Google", "Bing", "DuckDuckGo"), settings.searchEngine) { onChange(settings.copy(searchEngine = it)) }
+                            ChoiceRow("set:recsound", "●", "Sound in screen recordings", listOf("None", "Game audio", "Microphone"), settings.recordSound) { onChange(settings.copy(recordSound = it)) }
+                            if (settings.recordSound != 0) InfoBox("Game audio needs Android 10 or newer and only picks up apps that allow it (most games and emulators do). Microphone records your voice and whatever the speakers play. Android asks for the microphone permission the first time. If the sound cannot be recorded, the video is saved without it.")
                             CheckRow("set:haptics", "∷", "Vibrate on long-press and highlight", settings.haptics) { onChange(settings.copy(haptics = it)) }
                             CheckRow("set:lock", "▭", "Lock screen when the launcher starts or the screen wakes", settings.lockScreen) { onChange(settings.copy(lockScreen = it)) }
                             MenuRow("set:export", "↥", "Save my settings to a file") { exporter.launch("qitaui-settings.json") }
@@ -910,7 +912,7 @@ private fun resetPage(page: String, s: Settings): Settings {
         )
         "games" -> s.copy(gameCovers = d.gameCovers, gamesOnHome = d.gamesOnHome, gameFoldersAuto = d.gameFoldersAuto)
         "controller" -> s.copy(cursorMode = d.cursorMode, cursorSpeed = d.cursorSpeed, psLabels = d.psLabels, swapAB = d.swapAB, debugInput = d.debugInput)
-        "system" -> s.copy(orientation = d.orientation, haptics = d.haptics, searchEngine = d.searchEngine)
+        "system" -> s.copy(orientation = d.orientation, haptics = d.haptics, searchEngine = d.searchEngine, recordSound = d.recordSound)
         else -> s
     }
 }

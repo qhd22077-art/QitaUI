@@ -119,6 +119,8 @@ data class Settings(
     val haptics: Boolean = true,
     /** The web search used by the Browser and the Store: 0 Google, 1 Bing (Edge), 2 DuckDuckGo. */
     val searchEngine: Int = 0,
+    /** Sound in screen recordings: 0 none, 1 what the device plays (Android 10+), 2 the microphone. */
+    val recordSound: Int = 0,
     val cursorMode: Boolean = false,
     val cursorSpeed: Float = 1f,
     val psLabels: Boolean = true,
@@ -253,6 +255,7 @@ class SettingsStore(private val context: Context) {
         dim = prefs.getFloat("dim", 0f),
         haptics = prefs.getBoolean("haptics", true),
         searchEngine = prefs.getInt("searchEngine", 0),
+        recordSound = prefs.getInt("recordSound", 0),
         cursorMode = prefs.getBoolean("cursorMode", false),
         cursorSpeed = prefs.getFloat("cursorSpeed", 1f),
         psLabels = prefs.getBoolean("psLabels", true),
@@ -349,6 +352,7 @@ class SettingsStore(private val context: Context) {
             .putFloat("dim", s.dim)
             .putBoolean("haptics", s.haptics)
             .putInt("searchEngine", s.searchEngine)
+            .putInt("recordSound", s.recordSound)
             .putBoolean("cursorMode", s.cursorMode)
             .putFloat("cursorSpeed", s.cursorSpeed)
             .putBoolean("psLabels", s.psLabels)
