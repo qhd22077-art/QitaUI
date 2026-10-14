@@ -42,7 +42,8 @@ private val PAGES = listOf(
             "Tap a bubble" to "to open its LiveArea page, then tap the page to start it.",
             "Swipe up" to "(or the desktop bubble) for every app on the device, to add to the home screen.",
             "Swipe down" to "to search every app, game and setting.",
-            "Hold the background" to "for the launcher menu: edit, desktop, search, settings, screenshots and recording.",
+            "Hold the background" to "for the launcher menu: quick panel, edit, desktop, search, settings, screenshots and recording.",
+            "Tap the Wi-Fi and Bluetooth icons" to "at the top left for the quick panel: brightness, volume, Wi-Fi, Bluetooth, battery saver and the games you played or starred last.",
         ),
     ),
     TutorialPage(
@@ -90,7 +91,7 @@ private val PAGES = listOf(
         "Games and Flash",
         "Open Games for your library. A game's page has its cover, notes, tags, play time and screenshots.",
         listOf(
-            "Emulators" to "are launched with the game for you; set which one a console uses from the game's options.",
+            "Emulators" to "are launched with the game for you. Pick one for a whole console in Settings, Games, or for a single game with \"Play with…\" in its options.",
             "Flash games" to "play inside the launcher with Ruffle, with on-screen controls for touch.",
             "RetroAchievements" to "(Settings, Games) shows each game's achievements once you enter your name and Web API key.",
             "Play time and trophies" to "are counted by the launcher while a game runs.",

@@ -135,6 +135,13 @@ object GameLibrary {
         prefs(c).edit().apply { if (pkg == null) remove("emu_$systemId") else putString("emu_$systemId", pkg) }.apply()
     }
 
+    /** The package chosen to play this one game, if the user chose one (it wins over the console's choice). */
+    fun gameEmulator(c: Context, gameId: String): String? = prefs(c).getString("emug_$gameId", null)
+
+    fun setGameEmulator(c: Context, gameId: String, pkg: String?) {
+        prefs(c).edit().apply { if (pkg == null) remove("emug_$gameId") else putString("emug_$gameId", pkg) }.apply()
+    }
+
     fun games(c: Context): List<Game> = runCatching {
         val f = gamesFile(c)
         if (!f.exists()) return emptyList()
@@ -325,9 +332,9 @@ object GameScanner {
 /** Opens a game in the emulator that plays its system, the way other frontends (ES-DE, Daijisho) do: one explicit activity per emulator. */
 object GameLauncher {
     /** The emulator (and its installed package) that will play [system]: the user's choice if it is installed, else the first that is. */
-    fun emulatorFor(context: Context, system: GameSystem): Pair<Emulator, String>? {
-        val chosen = GameLibrary.emulatorChoice(context, system.id)
-        if (chosen != null) {
+    fun emulatorFor(context: Context, system: GameSystem, game: Game? = null): Pair<Emulator, String>? {
+        // The game's own choice first, then the console's; each only if that emulator is still installed.
+        for (chosen in listOfNotNull(game?.let { GameLibrary.gameEmulator(context, it.id) }, GameLibrary.emulatorChoice(context, system.id))) {
             EMULATORS.firstOrNull { chosen in it.packages }?.let { e ->
                 if (runCatching { context.packageManager.getPackageInfo(chosen, 0); true }.getOrDefault(false)) return e to chosen
             }
@@ -417,7 +424,7 @@ object GameLauncher {
     /** Starts the game. Returns a message to show the user when something went wrong, or null when it started. */
     fun launch(context: Context, game: Game): String? {
         val system = systemById(game.systemId) ?: return "Unknown system"
-        val (emu, pkg) = emulatorFor(context, system) ?: return "No emulator for ${system.name} is installed"
+        val (emu, pkg) = emulatorFor(context, system, game) ?: return "No emulator for ${system.name} is installed"
         val (list, problem) = intents(context, emu, pkg, system, game)
         if (problem != null) return problem
         val data = Uri.parse(game.uri)

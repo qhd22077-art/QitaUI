@@ -18,6 +18,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -105,6 +106,8 @@ fun StatusBar(
     onPick: (Int) -> Unit = {},
     /** Live position of the page on screen (-1 = home, 0.. = open apps), fractional while swiping. Read while drawing. */
     position: (() -> Float)? = null,
+    /** Tapping the connection icons (Wi-Fi, Bluetooth, battery saver) opens the quick panel when this is set. */
+    onStatus: (() -> Unit)? = null,
 ) {
     // How strongly icon [i] is highlighted: follows the live position if there is one, so the ring moves with the page.
     fun strength(i: Int): Float = position?.let { (1f - kotlin.math.abs(it() - i)).coerceIn(0f, 1f) } ?: if (i == current) 1f else 0f
@@ -130,12 +133,18 @@ fun StatusBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(9.dp),
         ) {
-            if (status.airplane) AirplaneIcon()
-            if (status.wifi) WifiIcon() else if (status.cellular) SignalIcon()
-            if (status.bluetooth) BluetoothIcon()
-            if (status.silent) SilentIcon()
-            // The battery saver is working.
-            if (com.qita.ui.BatterySaver.active) Text("ECO", color = Color(0xFF7CFC9A), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Row(
+                (if (onStatus != null) Modifier.padClickable("home:status", corner = 6.dp, pad = 2.dp, onClick = onStatus).defaultMinSize(minWidth = 40.dp, minHeight = 24.dp) else Modifier),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(9.dp),
+            ) {
+                if (status.airplane) AirplaneIcon()
+                if (status.wifi) WifiIcon() else if (status.cellular) SignalIcon()
+                if (status.bluetooth) BluetoothIcon()
+                if (status.silent) SilentIcon()
+                // The battery saver is working.
+                if (com.qita.ui.BatterySaver.active) Text("ECO", color = Color(0xFF7CFC9A), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            }
             ScreenRotator.onRotate?.let { rotate ->
                 Box(Modifier.clip(CircleShape).clickable(onClick = rotate).padding(horizontal = 6.dp, vertical = 4.dp)) { RotateIcon() }
             }

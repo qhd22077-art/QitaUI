@@ -122,6 +122,7 @@ import com.qita.ui.GameLibrary
 import com.qita.ui.GameScanner
 import com.qita.ui.SYSTEMS
 import com.qita.ui.installedEmulators
+import com.qita.ui.installedPackage
 import com.qita.ui.systemById
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -176,6 +177,9 @@ fun HomeScreen(homePresses: Int = 0) {
     var showTrophies by remember { mutableStateOf(false) }
     var showPhotos by remember { mutableStateOf(false) }
     var showVideos by remember { mutableStateOf(false) }
+    var showQuick by remember { mutableStateOf(false) }
+    // The "Play with" list of a game.
+    var playWithFor by remember { mutableStateOf<LaunchableApp?>(null) }
     var showMusic by remember { mutableStateOf(false) }
     // The games library: folders, which emulator plays what, and a status line while scanning or fetching cover art.
     var gameFolders by remember { mutableStateOf(GameLibrary.folders(context)) }
@@ -411,8 +415,8 @@ fun HomeScreen(homePresses: Int = 0) {
         pageWallpapers = pageWallpapers.filterKeys { it in want } + loaded
     }
 
-    val menuOpen = menuFor != null || showQuickMenu || showNotifs
-    val anyOverlay = showLock || showDesktop || showGames || showStore || showBrowser || showFolders || showTrophies || showPhotos || showVideos || showMusic || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null || flashGame != null
+    val menuOpen = menuFor != null || playWithFor != null || showQuickMenu || showNotifs
+    val anyOverlay = showLock || showDesktop || showGames || showStore || showBrowser || showFolders || showTrophies || showPhotos || showVideos || showMusic || showQuick || showSettings || showSearch || showTutorial || selected != null || menuOpen || crashTrace != null || flashGame != null
     LaunchedEffect(Controller.padActive) { if (Controller.padActive) com.qita.ui.Trophies.award("pad") }
     // Tilt (parallax): the sensor is only listened to while the launcher is on screen and it is wanted (not in Light mode, with
     // Reduce motion, below the low-battery level, or under another screen; the lock screen shifts too).
@@ -1051,7 +1055,7 @@ fun HomeScreen(homePresses: Int = 0) {
             showIndex = true
         } else if (homePresses > 0) {
             showIndex = false
-            selected = null; showSettings = false; showSearch = false; showDesktop = false; showGames = false; showStore = false; showBrowser = false; showFolders = false; showTrophies = false; showPhotos = false; showVideos = false; showMusic = false; menuFor = null; showQuickMenu = false; showNotifs = false; editMode = false; showBackgrounds = false; dragApp = null
+            selected = null; showSettings = false; showSearch = false; showDesktop = false; showGames = false; showStore = false; showBrowser = false; showFolders = false; showTrophies = false; showPhotos = false; showVideos = false; showMusic = false; showQuick = false; menuFor = null; showQuickMenu = false; showNotifs = false; editMode = false; showBackgrounds = false; dragApp = null
             endMove(true)
             pagerState.animateScrollToPage(0)
         }
@@ -1126,7 +1130,7 @@ fun HomeScreen(homePresses: Int = 0) {
     BackHandler(enabled = editMode) { editMode = false }
     BackHandler(enabled = showBackgrounds && !menuOpen) { showBackgrounds = false }
     BackHandler(enabled = crashTrace != null && !showLock) { CrashReporter.clear(context); crashTrace = null }
-    BackHandler(enabled = menuOpen && !showNotifs && crashTrace == null) { menuFor = null; showQuickMenu = false }
+    BackHandler(enabled = menuOpen && !showNotifs && crashTrace == null) { menuFor = null; playWithFor = null; showQuickMenu = false }
     BackHandler(enabled = showTutorial && !menuOpen) { showTutorial = false; store.setTutorialSeen() }
     BackHandler(enabled = showSettings && !menuOpen && !showTutorial) { showSettings = false }
     BackHandler(enabled = showSearch && !showSettings && !menuOpen && !showTutorial) { showSearch = false }
@@ -1164,7 +1168,7 @@ fun HomeScreen(homePresses: Int = 0) {
     ) {
     Box(Modifier.fillMaxSize().onSizeChanged { rootWidth = it.width; rootHeight = it.height; PadNav.viewport = Rect(0f, 0f, it.width.toFloat(), it.height.toFloat()) }) {
         BubbleBackground(
-            paused = { showDesktop || showGames || showStore || showBrowser || showFolders || showTrophies || showPhotos || showVideos || showMusic || showSettings || flashGame != null },
+            paused = { showDesktop || showGames || showStore || showBrowser || showFolders || showTrophies || showPhotos || showVideos || showMusic || showQuick || showSettings || flashGame != null },
             top = settings.theme.top, mid = settings.theme.mid, bottom = settings.theme.bottom, particles = settings.particles,
             wallpaper = when (pageBg[bgPage]) {
                 null -> wallpaper
@@ -1335,6 +1339,7 @@ fun HomeScreen(homePresses: Int = 0) {
                     onHome = { selected = null },
                     onPick = { i -> openPages.getOrNull(i)?.let { selected = it } },
                     position = { if (selected != null) livePosition.floatValue else -1f },
+                    onStatus = { showQuick = true },
                 )
             }
             CornerSphere(
@@ -1678,6 +1683,18 @@ fun HomeScreen(homePresses: Int = 0) {
             }
         }
 
+        AnimatedVisibility(visible = showQuick, enter = fadeIn(tween(180)), exit = fadeOut(tween(140))) {
+            QuickPanel(
+                saverMode = settings.saverMode,
+                onSaver = { m -> settings = settings.copy(saverMode = m); store.save(settings) },
+                games = apps.filter { it.game != null },
+                favourites = gameFavs,
+                played = gamePlayed,
+                onLaunch = { app -> showQuick = false; launchApp(app) },
+                onClose = { showQuick = false },
+            )
+        }
+
         if (showNotifs) {
             NotificationPanel(
                 color = Color(settings.notifColor),
@@ -1691,6 +1708,7 @@ fun HomeScreen(homePresses: Int = 0) {
                 title = "QitaUI",
                 subtitle = "Launcher menu",
                 items = listOf(
+                    MenuItem("Quick panel (brightness, volume, recent games)") { showQuickMenu = false; showQuick = true },
                     MenuItem("Edit home screen") { showQuickMenu = false; editMode = true },
                     MenuItem("Desktop") { showQuickMenu = false; showDesktop = true },
                     MenuItem("Search") { showQuickMenu = false; showSearch = true },
@@ -1791,6 +1809,7 @@ fun HomeScreen(homePresses: Int = 0) {
                         if (onHome) removeFromHome(app) else addToHome(app)
                     },
                     MenuItem(if (app.game!!.id in gameFavs) "Remove from favourites" else "Add to favourites") { menuFor = null; gameFavs = GameLibrary.toggleFavourite(context, app.game!!.id) },
+                    MenuItem("Play with… (choose the emulator for this game)") { menuFor = null; playWithFor = app },
                     MenuItem("Choose a cover picture") { menuFor = null; coverTarget = app.game!!.id; coverPicker.launch("image/*") },
                     MenuItem("Get cover art online") { menuFor = null; fetchCovers(app.game) },
                     MenuItem("Remove from library") {
@@ -1819,6 +1838,29 @@ fun HomeScreen(homePresses: Int = 0) {
                 )),
                 onDismiss = { menuFor = null },
             )
+        }
+
+        // The emulators that can play one game; the choice is kept for that game only.
+        playWithFor?.let { app ->
+            val game = app.game
+            val system = game?.let { systemById(it.systemId) }
+            if (game == null || system == null) {
+                playWithFor = null
+            } else {
+                val current = GameLibrary.gameEmulator(context, game.id)
+                val options = system.emulators.mapNotNull { id -> EMULATORS.firstOrNull { it.id == id } }.mapNotNull { e -> installedPackage(context, e)?.let { e to it } }
+                val default = GameLauncher.emulatorFor(context, system)?.first?.name
+                ContextMenu(
+                    title = "Play ${app.label} with",
+                    subtitle = system.name,
+                    items = listOf(MenuItem((if (current == null) "✓ " else "") + "Console default" + (default?.let { " ($it)" } ?: "")) {
+                        GameLibrary.setGameEmulator(context, game.id, null); playWithFor = null
+                    }) + options.map { (e, pkg) ->
+                        MenuItem((if (current == pkg) "✓ " else "") + e.name) { GameLibrary.setGameEmulator(context, game.id, pkg); playWithFor = null; toast = "${app.label} will start in ${e.name}" }
+                    } + MenuItem("Cancel") { playWithFor = null },
+                    onDismiss = { playWithFor = null },
+                )
+            }
         }
 
         // An open folder: a big glass bubble over the home screen with its bubbles inside.
@@ -1951,7 +1993,7 @@ fun HomeScreen(homePresses: Int = 0) {
             showSearch -> listOf("D-pad" to "Move", "A" to "Open", "B" to "Close")
             showDesktop -> listOf("A" to "Launch", "X" to "Options", "Y" to "Add / remove", "L1" to "Folder", "L2" to "Close", "B" to "Back")
             showGames -> listOf("D-pad" to "Move", "A" to "Play", "X" to "Options", "Y" to "Add / remove", "B" to "Back")
-            showStore || showBrowser || showFolders || showTrophies || showPhotos || showVideos || showMusic -> listOf("D-pad" to "Move", "A" to "Select", "B" to "Back")
+            showStore || showBrowser || showFolders || showTrophies || showPhotos || showVideos || showMusic || showQuick -> listOf("D-pad" to "Move", "A" to "Select", "B" to "Back")
             editMode && selected == null -> listOf("A" to "Options", "Y" to "Move", "START" to "Background", "B" to "Done")
             selected != null -> listOf("A" to "Start", "X" to "Options", "L1" to "Prev", "R1" to "Next", "B" to "Home")
             else -> listOf("A" to "Open", "X" to "Options", "Y" to "Move", "L1" to "Prev", "R1" to "Next", "L2" to "Desktop", "R2" to "Search", "START" to "Settings")
