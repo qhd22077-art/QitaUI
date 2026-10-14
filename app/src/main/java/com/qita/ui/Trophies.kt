@@ -76,6 +76,17 @@ object Trophies {
         }
     }
 
+    /** Reads the earned trophies again from the saved data (after a backup was loaded). */
+    @Synchronized fun reload(c: Context) {
+        ctx = c.applicationContext
+        earned = HashMap()
+        runCatching {
+            val o = JSONObject(prefs(c).getString("earned", "{}").orEmpty())
+            for (k in o.keys()) earned[k] = o.getLong(k)
+        }
+        rev++
+    }
+
     fun earnedAt(id: String): Long? = earned[id]
 
     fun isEarned(id: String): Boolean = id in earned

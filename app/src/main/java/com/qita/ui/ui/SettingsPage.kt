@@ -139,6 +139,8 @@ fun SettingsPage(
     onClearFont: () -> Unit,
     onExport: (Uri) -> Unit,
     onImport: (Uri) -> Unit,
+    onExportProgress: (Uri) -> Unit = {},
+    onImportProgress: (Uri) -> Unit = {},
     hasLockPicture: Boolean,
     onLockPicture: (Uri) -> Unit,
     onClearLockPicture: () -> Unit,
@@ -160,6 +162,12 @@ fun SettingsPage(
     }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) onImport(uri)
+    }
+    val progressExporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) onExportProgress(uri)
+    }
+    val progressImporter = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) onImportProgress(uri)
     }
     val batteryContext = androidx.compose.ui.platform.LocalContext.current
     var batteryTarget by remember { mutableStateOf<String?>(null) }
@@ -200,6 +208,7 @@ fun SettingsPage(
     // The settings are tabs; the selected one is [page].
     var page by remember { mutableStateOf(startPage ?: "theme") }
     var lockTab by remember { mutableStateOf(0) }
+    var searching by remember { mutableStateOf(false) }
     // A destructive row asks first; this holds the question while it is on screen.
     var ask by remember { mutableStateOf<ConfirmAsk?>(null) }
     // RetroAchievements account: which field is being typed ("user" or "key"), its text, and what the last test said.
@@ -239,11 +248,14 @@ fun SettingsPage(
         VitaGreen()
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             StatusBar(settings.use24h, settings.showBattery, showHome = false)
-            Text(
-                title,
-                Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 8.dp),
-                color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center,
-            )
+            Box(Modifier.fillMaxWidth()) {
+                Text(
+                    title,
+                    Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 8.dp),
+                    color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center,
+                )
+                Box(Modifier.align(Alignment.CenterEnd).padding(end = 16.dp)) { BarButton("set:search", "⌕ Search") { searching = true } }
+            }
             TabStrip(
                 labels = tabs.map { it.second },
                 selected = tabs.indexOfFirst { it.first == page }.coerceAtLeast(0),
@@ -618,6 +630,8 @@ fun SettingsPage(
                             CheckRow("set:lock", "▭", "Lock screen when the launcher starts or the screen wakes", settings.lockScreen) { onChange(settings.copy(lockScreen = it)) }
                             MenuRow("set:export", "↥", "Save my settings to a file") { exporter.launch("qitaui-settings.json") }
                             MenuRow("set:import", "↧", "Load settings from a file") { importer.launch("*/*") }
+                            MenuRow("set:progressexport", "↥", "Save my play time, notes, favourites and trophies to a file") { progressExporter.launch("qitaui-progress.zip") }
+                            MenuRow("set:progressimport", "↧", "Load play time, notes, favourites and trophies from a file") { progressImporter.launch("*/*") }
                             // Things kept only to save a download next time.
                             var cacheRev by remember { mutableStateOf(0) }
                             val cacheSize = remember(cacheRev) { com.qita.ui.Caches.format(com.qita.ui.Caches.bytes(batteryContext)) }
@@ -655,6 +669,7 @@ fun SettingsPage(
             }
         }
         optionPicker.value?.let { p -> OptionPicker(p) { optionPicker.value = null } }
+        if (searching) SettingsSearch(tabs, onPick = { id -> page = id; searching = false }, onClose = { searching = false })
         raEdit?.let { which ->
             BackHandler(enabled = true) { raEdit = null }
             NamePrompt(

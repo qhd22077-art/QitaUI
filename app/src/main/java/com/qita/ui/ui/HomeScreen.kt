@@ -1545,6 +1545,27 @@ fun HomeScreen(homePresses: Int = 0) {
                         }.getOrDefault(false)
                         toast = if (ok) "Settings saved" else "Could not save the file"
                     },
+                    onExportProgress = { uri ->
+                        scope.launch {
+                            val ok = withContext(Dispatchers.IO) {
+                                runCatching { context.contentResolver.openOutputStream(uri)?.use { com.qita.ui.ProgressBackup.write(context, it) } != null }.getOrDefault(false)
+                            }
+                            toast = if (ok) "Saved" else "Could not save the file"
+                        }
+                    },
+                    onImportProgress = { uri ->
+                        scope.launch {
+                            val ok = withContext(Dispatchers.IO) {
+                                runCatching { context.contentResolver.openInputStream(uri)?.use { com.qita.ui.ProgressBackup.read(context, it) } == true }.getOrDefault(false)
+                            }
+                            if (ok) {
+                                com.qita.ui.ProgressBackup.reloadAll(context)
+                                gameFavs = GameLibrary.favourites(context)
+                                gamePlayed = GameLibrary.lastPlayed(context)
+                                toast = "Loaded"
+                            } else toast = "That file is not a QitaUI progress file"
+                        }
+                    },
                     onImport = { uri ->
                         val text = runCatching { context.contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString() } }.getOrNull()
                         if (text != null && store.importJson(text)) {

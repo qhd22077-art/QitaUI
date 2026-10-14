@@ -113,6 +113,8 @@ private val PAGES = listOf(
             "Battery saver" to "acts like light mode and also stops tilt, particles, sway and sounds. Choose Off, Automatic (at your low-battery level, when not charging) or On. ECO shows in the top bar.",
             "Reduce motion and Light mode" to "make everything calmer and lighter on memory.",
             "Reset buttons" to "at the bottom of each Settings page put that page back to its defaults.",
+            "Search" to "at the top of Settings finds a setting by a word of its name.",
+            "Backup" to "of your play time, notes, favourites and trophies: Settings, System, Save my play time.",
             "This tutorial" to "can be opened again from Settings, System.",
         ),
     ),

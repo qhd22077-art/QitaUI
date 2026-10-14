@@ -55,6 +55,12 @@ object GameStats {
         return map
     }
 
+    /** Drops the copy kept in memory, so the next read comes from the saved data (after a backup was loaded). */
+    @Synchronized fun reload() {
+        data = null
+        rev++
+    }
+
     @Synchronized private fun put(c: Context, id: String, stat: GameStat) {
         val map = all(c)
         if (stat == GameStat()) map.remove(id) else map[id] = stat
