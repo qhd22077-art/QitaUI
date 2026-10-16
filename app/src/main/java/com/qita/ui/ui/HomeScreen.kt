@@ -1037,11 +1037,9 @@ fun HomeScreen(homePresses: Int = 0) {
 
     // Hovering a dragged bubble near the left or right edge flips pages.
     val edgePx = with(density) { 56.dp.toPx() }
-    val edge = if (dragApp == null) 0 else when {
-        dragPos.y < edgePx + with(density) { 28.dp.toPx() } -> -1
-        dragPos.y > rootHeight - edgePx -> 1
-        else -> 0
-    }
+    // Derived, so the whole screen is recomposed only when the carried bubble enters or leaves an edge, not at every move of the finger.
+    val topEdgePx = edgePx + with(density) { 28.dp.toPx() }
+    val edge by remember { derivedStateOf { if (dragApp == null) 0 else if (dragPos.y < topEdgePx) -1 else if (dragPos.y > rootHeight - edgePx) 1 else 0 } }
     LaunchedEffect(edge) {
         if (edge != 0) {
             while (true) {
@@ -1359,7 +1357,7 @@ fun HomeScreen(homePresses: Int = 0) {
                 onClick = { showNotifs = true },
                 onLongClick = { showQuickMenu = true },
                 color = Color(settings.notifColor),
-                count = Notifications.items.size,
+                count = Notifications.count,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .offset(x = 24.dp, y = (-22).dp)

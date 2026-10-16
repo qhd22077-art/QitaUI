@@ -8,6 +8,7 @@ import android.graphics.Canvas
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -45,8 +46,14 @@ object Notifications {
     /** The current notifications, newest first. */
     val items = mutableStateListOf<NotificationItem>()
 
-    /** How many notifications each app has waiting (read where it is drawn, so it follows the list). */
-    val counts: Map<String, Int> get() = items.filter { !it.ongoing }.groupingBy { it.packageName }.eachCount()
+    /**
+     * How many notifications each app has waiting, and how many there are in all. They are separate state, replaced only when the
+     * numbers change, so a download or a music player updating its notification many times a second does not redraw the home screen.
+     */
+    var counts by mutableStateOf<Map<String, Int>>(emptyMap())
+        private set
+    var count by mutableIntStateOf(0)
+        private set
 
     /** Whether the user has allowed this launcher to read notifications. */
     var granted by mutableStateOf(false)
@@ -54,7 +61,7 @@ object Notifications {
 
     fun attach(s: NotificationListenerService) { service = s; granted = true; refresh() }
 
-    fun detach() { service = null; items.clear() }
+    fun detach() { service = null; items.clear(); count = 0; counts = emptyMap() }
 
     /** Re-checks the permission (the user may have just come back from Android's settings). */
     fun checkAccess(context: Context) {
@@ -83,8 +90,19 @@ object Notifications {
                     ongoing = n.flags and Notification.FLAG_ONGOING_EVENT != 0,
                 )
             }
-        items.clear()
-        items.addAll(list)
+        // Only a real change replaces the list (it is read by the panel and the lock screen).
+        val same = list.size == items.size && list.indices.all { i ->
+            val a = list[i]
+            val b = items[i]
+            a.key == b.key && a.title == b.title && a.text == b.text && a.progress == b.progress && a.time == b.time
+        }
+        if (!same) {
+            items.clear()
+            items.addAll(list)
+        }
+        if (count != list.size) count = list.size
+        val newCounts = list.filter { !it.ongoing }.groupingBy { it.packageName }.eachCount()
+        if (newCounts != counts) counts = newCounts
     }
 
     /** True after App info was opened to unlock the switch: when the user comes back, the launcher opens the notification page itself. */

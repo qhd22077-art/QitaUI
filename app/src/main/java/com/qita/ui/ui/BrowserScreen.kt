@@ -232,6 +232,8 @@ fun BrowserScreen(
         val w = web ?: return@LaunchedEffect
         var last = 0L
         while (true) {
+            // Nothing to do while the stick rests: check now and then instead of waking up for every frame.
+            if (kotlin.math.abs(com.qita.ui.Controller.scrollY) <= 0.15f) { last = 0L; kotlinx.coroutines.delay(50); continue }
             withFrameNanos { now ->
                 val dt = if (last == 0L) 0f else ((now - last) / 1_000_000_000f).coerceAtMost(0.05f)
                 last = now
