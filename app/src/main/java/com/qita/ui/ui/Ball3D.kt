@@ -30,6 +30,11 @@ object Ball3D {
 
     class Paint @RequiresApi(Build.VERSION_CODES.TIRAMISU) constructor(val shader: RuntimeShader, val system: Boolean = false) {
         val brush = ShaderBrush(shader)
+        // What the look-dependent uniforms were last set from, so a frame that only turns the ball sets just the turn.
+        var lastLook: Look? = null
+        var lastW = -1f
+        var lastH = -1f
+        var lastBody = 0
     }
 
     /** [body] is the ARGB glass colour that shows where the icon is not. */
@@ -60,15 +65,21 @@ object Ball3D {
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     fun update(paint: Paint, width: Float, height: Float, yaw: Float, pitch: Float, glow: Float, look: Look, body: Int) {
-        paint.shader.setFloatUniform("size", width, height)
-        paint.shader.setFloatUniform(
-            "body",
-            ((body shr 16) and 0xFF) / 255f, ((body shr 8) and 0xFF) / 255f, (body and 0xFF) / 255f,
-        )
-        // Icon saturation, brightness, icon size, dome exponent; then rim width, highlight, thickness.
-        paint.shader.setFloatUniform("t1", look.iconSat, look.iconBright, look.iconScale.coerceIn(0.6f, 1.1f), 3f / look.dome.coerceIn(0.5f, 2f))
-        paint.shader.setFloatUniform("acc", look.accent.red, look.accent.green, look.accent.blue)
-        paint.shader.setFloatUniform("t2", look.rimWidth.coerceIn(0.3f, 2.5f), look.highlight, look.thickness.coerceIn(0f, 1.8f), look.glass * (if (paint.system) 0.6f else 1f))
+        if (paint.lastLook !== look || paint.lastW != width || paint.lastH != height || paint.lastBody != body) {
+            paint.lastLook = look
+            paint.lastW = width
+            paint.lastH = height
+            paint.lastBody = body
+            paint.shader.setFloatUniform("size", width, height)
+            paint.shader.setFloatUniform(
+                "body",
+                ((body shr 16) and 0xFF) / 255f, ((body shr 8) and 0xFF) / 255f, (body and 0xFF) / 255f,
+            )
+            // Icon saturation, brightness, icon size, dome exponent; then rim width, highlight, thickness.
+            paint.shader.setFloatUniform("t1", look.iconSat, look.iconBright, look.iconScale.coerceIn(0.6f, 1.1f), 3f / look.dome.coerceIn(0.5f, 2f))
+            paint.shader.setFloatUniform("acc", look.accent.red, look.accent.green, look.accent.blue)
+            paint.shader.setFloatUniform("t2", look.rimWidth.coerceIn(0.3f, 2.5f), look.highlight, look.thickness.coerceIn(0f, 1.8f), look.glass * (if (paint.system) 0.6f else 1f))
+        }
         paint.shader.setFloatUniform("rot", yaw, pitch)
         paint.shader.setFloatUniform("glow", glow)
     }
@@ -210,6 +221,8 @@ half4 main(float2 frag) {
     float rb = sqrt(ub * ub + vb * vb);
 
     float4 f = frontPix(u, v, rr, cy, sy, cp, sp);
+    // Where the front is fully solid the back wall is hidden behind it: skip its (costly) shading.
+    if (f.a >= 0.999) { return half4(half3(f.rgb), half(1.0)); }
     float4 w = wallPix(ub, vb, rb, cy, sy, cp, sp);
     float3 rgb = f.rgb + w.rgb * (1.0 - f.a);
     float a = f.a + w.a * (1.0 - f.a);

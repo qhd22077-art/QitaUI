@@ -103,7 +103,8 @@ fun Sphere(
         if (paint != null) {
             // The live ball: the shader draws the whole sphere, lit and rolled, every frame.
             Box(
-                Modifier.fillMaxSize().drawBehind {
+                // Its own layer: when the ball turns only this is redrawn, not the name, the glow and the rest of the bubble.
+                Modifier.fillMaxSize().graphicsLayer { }.drawBehind {
                     val r = roll()
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         Ball3D.update(paint, this.size.width, this.size.height, r.x, r.y, glow(), look, body)

@@ -154,7 +154,8 @@ fun Bubble(
     }
     val seed = remember(app.packageName) { (app.packageName.hashCode() and 0xFFFF) / 10430f }
     val roll: () -> Offset = {
-        val t = clock.value
+        // The clock is only read when there is a sway to draw, so with it off nothing here is redrawn by the clock.
+        val t = if (look.sway > 0.001f) clock.value else 0f
         val p = spin.value
         Offset(
             // A full turn is the same orientation as none, so it lands exactly where it started.

@@ -49,6 +49,7 @@ object Parallax {
         val l = object : SensorEventListener {
             private var rotation = Surface.ROTATION_0
             private var turnedAt = 0L
+            private var shownAt = 0L
 
             override fun onSensorChanged(e: SensorEvent) {
                 SensorManager.getRotationMatrixFromVector(matrix, e.values)
@@ -83,8 +84,12 @@ object Parallax {
                 val ty = ((pitch - restPitch) / 0.35f).coerceIn(-1f, 1f)
                 val nx = x + (tx - x) * 0.15f
                 val ny = y + (ty - y) * 0.15f
-                if (abs(nx - x) > 0.003f) x = nx
-                if (abs(ny - y) > 0.003f) y = ny
+                // Hand tremor would otherwise make a new frame for every reading; tiny changes are left, and at most about 40 a second are shown.
+                if (now - shownAt >= 24 && (abs(nx - x) > 0.006f || abs(ny - y) > 0.006f)) {
+                    shownAt = now
+                    x = nx
+                    y = ny
+                }
             }
 
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}

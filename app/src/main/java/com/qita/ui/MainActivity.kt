@@ -46,13 +46,13 @@ class MainActivity : ComponentActivity() {
      * the system's own choice applies (light mode, which saves battery).
      */
     @Suppress("DEPRECATION")
-    fun setTopRefreshRate(top: Boolean) {
+    /** [top] asks for the fastest screen mode; with [cap60] the best mode of 60 Hz or less (steadier on weaker devices, easier on the battery). */
+    fun setTopRefreshRate(top: Boolean, cap60: Boolean = false) {
         runCatching {
             val display = windowManager.defaultDisplay
             val current = display.mode
-            val best = if (!top) null else display.supportedModes
-                .filter { it.physicalWidth == current.physicalWidth && it.physicalHeight == current.physicalHeight }
-                .maxByOrNull { it.refreshRate }
+            val same = display.supportedModes.filter { it.physicalWidth == current.physicalWidth && it.physicalHeight == current.physicalHeight }
+            val best = if (!top) null else if (cap60) same.filter { it.refreshRate <= 61f }.maxByOrNull { it.refreshRate } else same.maxByOrNull { it.refreshRate }
             window.attributes = window.attributes.apply { preferredDisplayModeId = best?.modeId ?: 0 }
         }
     }
@@ -70,7 +70,7 @@ class MainActivity : ComponentActivity() {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
         val saved = SettingsStore(this).load()
-        setTopRefreshRate(!saved.lightMode)
+        setTopRefreshRate(!saved.lightMode, saved.refreshRate == 1)
         requestedOrientation = orientationFlag(saved.orientation)
         setContent { HomeScreen(homePresses) }
     }

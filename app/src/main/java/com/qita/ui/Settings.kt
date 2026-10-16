@@ -121,6 +121,8 @@ data class Settings(
     val searchEngine: Int = 0,
     /** Sound in screen recordings: 0 none, 1 what the device plays (Android 10+), 2 the microphone. */
     val recordSound: Int = 0,
+    /** Screen refresh rate: 0 the highest the screen has, 1 at most 60 Hz (steadier and lighter on weaker devices). */
+    val refreshRate: Int = 0,
     val cursorMode: Boolean = false,
     val cursorSpeed: Float = 1f,
     val psLabels: Boolean = true,
@@ -256,6 +258,7 @@ class SettingsStore(private val context: Context) {
         haptics = prefs.getBoolean("haptics", true),
         searchEngine = prefs.getInt("searchEngine", 0),
         recordSound = prefs.getInt("recordSound", 0),
+        refreshRate = prefs.getInt("refreshRate", 0),
         cursorMode = prefs.getBoolean("cursorMode", false),
         cursorSpeed = prefs.getFloat("cursorSpeed", 1f),
         psLabels = prefs.getBoolean("psLabels", true),
@@ -353,6 +356,7 @@ class SettingsStore(private val context: Context) {
             .putBoolean("haptics", s.haptics)
             .putInt("searchEngine", s.searchEngine)
             .putInt("recordSound", s.recordSound)
+            .putInt("refreshRate", s.refreshRate)
             .putBoolean("cursorMode", s.cursorMode)
             .putFloat("cursorSpeed", s.cursorSpeed)
             .putBoolean("psLabels", s.psLabels)

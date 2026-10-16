@@ -590,6 +590,8 @@ fun SettingsPage(
                         "motion" -> {
                             // The battery saver: Light mode plus holding still, switched on by hand or when the battery runs low.
                             ChoiceRow("set:saver", "⚡", "Battery saver", listOf("Off", "Automatic", "On"), settings.saverMode) { onChange(settings.copy(saverMode = it)) }
+                            ChoiceRow("set:refresh", "◔", "Screen refresh rate", listOf("Highest", "60 Hz"), settings.refreshRate) { onChange(settings.copy(refreshRate = it)) }
+                            InfoBox("Highest uses the fastest mode the screen has (90 or 120 Hz), which is smoothest when the device keeps up. 60 Hz is steadier and lighter on the battery on weaker devices or if the home screen stutters.")
                             InfoBox(
                                 "The battery saver draws everything lighter and holds still: no moving backgrounds, sway, flip, tilt or sounds, and a calmer screen refresh. " +
                                     "Automatic turns it on while the battery is at or below ${settings.batteryLow}% and not charging (change that level on the Top Bar page)." +
@@ -904,7 +906,7 @@ private fun resetPage(page: String, s: Settings): Settings {
         )
         "status" -> s.copy(use24h = d.use24h, showBattery = d.showBattery)
         "sounds" -> s.copy(soundOn = d.soundOn, soundVolume = d.soundVolume, soundMedia = d.soundMedia)
-        "motion" -> s.copy(saverMode = d.saverMode, lightMode = d.lightMode, reduceMotion = d.reduceMotion, parallax = d.parallax, parallaxStrength = d.parallaxStrength, sceneSpeed = d.sceneSpeed, sway = d.sway, tapAnim = d.tapAnim)
+        "motion" -> s.copy(refreshRate = d.refreshRate, saverMode = d.saverMode, lightMode = d.lightMode, reduceMotion = d.reduceMotion, parallax = d.parallax, parallaxStrength = d.parallaxStrength, sceneSpeed = d.sceneSpeed, sway = d.sway, tapAnim = d.tapAnim)
         "lock" -> s.copy(
             lockScreen = d.lockScreen, lockTapPeel = d.lockTapPeel, lockPeelAnywhere = d.lockPeelAnywhere, lockClockSize = d.lockClockSize, lockClockColor = d.lockClockColor, lockFont = d.lockFont,
             lockShowDate = d.lockShowDate, lockPanelTint = d.lockPanelTint, lockBorder = d.lockBorder, lockBevel = d.lockBevel, lockFrame = d.lockFrame,

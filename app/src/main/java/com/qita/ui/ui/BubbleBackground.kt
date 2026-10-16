@@ -79,7 +79,11 @@ fun BubbleBackground(
 private fun SceneCanvas(mix: () -> SceneMix, scroll: () -> Float, paused: () -> Boolean) {
     val look = LocalLook.current
     // Read only while drawing, so the scene is redrawn each tick without recomposing anything.
-    val running = rememberLoopClock((26_000 / look.sceneSpeed.coerceIn(0.2f, 3f)).toInt(), look.light)
+    // The background drifts slowly, so it is redrawn 30 times a second (20 in light mode), and not at all while another screen covers
+    // it, the launcher is not in front, or motion is reduced.
+    val covered = paused()
+    val inFront by rememberResumed()
+    val running = rememberTickClock((26_000 / look.sceneSpeed.coerceIn(0.2f, 3f)).toInt(), if (look.light) 20 else 30, !covered && inFront && !look.reduceMotion)
     val frozen = remember { floatArrayOf(1.9f) }
     val cache = remember { SceneCache() }
     cache.symbolCount = look.symbols

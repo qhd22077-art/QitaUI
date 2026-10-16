@@ -46,6 +46,44 @@ private fun rememberSlowClock(periodMs: Int): androidx.compose.runtime.State<Flo
     return phase
 }
 
+/** True while the launcher is the screen in front (between resume and pause), so loops can stop when it is not. */
+@Composable
+fun rememberResumed(): androidx.compose.runtime.State<Boolean> {
+    val owner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    val state = remember { androidx.compose.runtime.mutableStateOf(owner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) }
+    androidx.compose.runtime.DisposableEffect(owner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) state.value = true
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) state.value = false
+        }
+        owner.lifecycle.addObserver(observer)
+        onDispose { owner.lifecycle.removeObserver(observer) }
+    }
+    return state
+}
+
+/**
+ * A looping clock from 0 to 2π that ticks [hz] times a second, and not at all while [active] is false (nothing is woken up then).
+ * For slow motion (the idle sway of the bubbles, the drifting background) a few ticks a second look the same as every frame but
+ * cost a fraction of the drawing; read the value only while drawing.
+ */
+@Composable
+fun rememberTickClock(periodMs: Int, hz: Int, active: Boolean): androidx.compose.runtime.State<Float> {
+    val phase = remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    LaunchedEffect(periodMs, hz, active) {
+        if (!active) return@LaunchedEffect
+        val step = (1000 / hz.coerceIn(1, 60)).toLong()
+        var last = android.os.SystemClock.uptimeMillis()
+        while (true) {
+            delay(step)
+            val now = android.os.SystemClock.uptimeMillis()
+            phase.floatValue = (phase.floatValue + (now - last).toFloat() / periodMs * 6.2831855f) % 6.2831855f
+            last = now
+        }
+    }
+    return phase
+}
+
 /** The motion vocabulary of the launcher: one set of curves and springs so everything moves alike. */
 object VitaMotion {
     /** Fast start, long soft landing, like the Vita's transitions. */

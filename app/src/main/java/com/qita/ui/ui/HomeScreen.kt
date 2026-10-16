@@ -1160,12 +1160,15 @@ fun HomeScreen(homePresses: Int = 0) {
     // A tween, never a spring: springs overshoot and padding must never go negative.
     val hintPad by animateDpAsState(if (Controller.padActive) 46.dp else 0.dp, tween(220), label = "hintPad")
 
-    // One looping clock drives the idle sway of every 3D bubble.
-    val ballClock = rememberLoopClock(9000, lightNow)
+    // One slow clock drives the idle sway of every 3D bubble: 12 ticks a second look the same as every frame (the sway is a few
+    // degrees over nine seconds) and cost a fraction of it. It stops while something covers the home screen, while the launcher is
+    // not in front, and when the sway is off.
+    val launcherInFront by rememberResumed()
+    val ballClock = rememberTickClock(9000, 12, settings.sway > 0f && !lightNow && !settings.reduceMotion && !anyOverlay && launcherInFront)
     // Light mode: the system picks the refresh rate instead of asking for the fastest, and image caches are smaller.
     val activity = context.findMainActivity()
-    LaunchedEffect(lightNow) {
-        activity?.setTopRefreshRate(!lightNow)
+    LaunchedEffect(lightNow, settings.refreshRate) {
+        activity?.setTopRefreshRate(!lightNow, settings.refreshRate == 1)
         RemoteImages.setLight(lightNow)
     }
     CompositionLocalProvider(
@@ -2136,7 +2139,10 @@ private fun BubblePager(
             Modifier.fillMaxSize().padScroller { pagerState.animateScrollBy(it) },
             // The page edit view zooms out: the pages shrink inside a margin, so the frame and neighbours show.
             contentPadding = PaddingValues(horizontal = (44.dp * editAmt()).coerceAtLeast(0.dp), vertical = (22.dp * editAmt()).coerceAtLeast(0.dp)),
-            beyondViewportPageCount = minOf(pages.size, if (settings.lightMode || com.qita.ui.BatterySaver.active) 1 else 3),
+            // Only the pages next to this one are kept ready (every extra page is a dozen more live bubbles to draw). While a bubble
+            // is being carried, or the pages are being edited, more are kept so the carried bubble's page is not dropped when the
+            // pages scroll far away.
+            beyondViewportPageCount = minOf(pages.size, if (editing || hiddenPackage != null || movingPackage != null) 3 else 1),
         ) { index ->
             val pageApps = pages.getOrElse(index) { emptyList() }
             BoxWithConstraints(
